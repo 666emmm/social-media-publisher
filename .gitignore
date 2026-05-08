@@ -12,7 +12,6 @@ data/db/*.db
 data/videoFile/*
 data/cookiesFile/*
 !data/**/.gitkeep
-vendor/upstream/
 .DS_Store
 Thumbs.db
 .env

@@ -1,48 +1,56 @@
-// Element Plus CSS 变量暗色覆盖
 :root {
-  // 背景色
-  --el-bg-color: #1E293B;
-  --el-bg-color-page: #020617;
-  --el-bg-color-overlay: #0F172A;
+  // Background
+  --el-bg-color: #12122a;
+  --el-bg-color-page: #0a0a1a;
+  --el-bg-color-overlay: #12122a;
 
-  // 文字色
-  --el-text-color-primary: #F8FAFC;
-  --el-text-color-regular: #94A3B8;
-  --el-text-color-secondary: #94A3B8;
-  --el-text-color-placeholder: #64748B;
+  // Text
+  --el-text-color-primary: #f1f5f9;
+  --el-text-color-regular: #94a3b8;
+  --el-text-color-secondary: #94a3b8;
+  --el-text-color-placeholder: #64748b;
   --el-text-color-disabled: #475569;
 
-  // 边框色
-  --el-border-color: #334155;
-  --el-border-color-light: #334155;
-  --el-border-color-lighter: #1E293B;
-  --el-border-color-extra-light: #1E293B;
+  // Border
+  --el-border-color: rgba(255, 255, 255, 0.08);
+  --el-border-color-light: rgba(255, 255, 255, 0.06);
+  --el-border-color-lighter: rgba(255, 255, 255, 0.04);
+  --el-border-color-extra-light: rgba(255, 255, 255, 0.04);
 
-  // 填充色
-  --el-fill-color: #1E293B;
-  --el-fill-color-light: #1E293B;
-  --el-fill-color-lighter: #0F172A;
-  --el-fill-color-extra-light: #0F172A;
-  --el-fill-color-dark: #020617;
-  --el-fill-color-darker: #020617;
-  --el-fill-color-blank: #1E293B;
+  // Fill
+  --el-fill-color: #12122a;
+  --el-fill-color-light: rgba(255, 255, 255, 0.06);
+  --el-fill-color-lighter: rgba(255, 255, 255, 0.04);
+  --el-fill-color-extra-light: rgba(255, 255, 255, 0.03);
+  --el-fill-color-dark: #0a0a1a;
+  --el-fill-color-darker: #0a0a1a;
+  --el-fill-color-blank: #12122a;
 
-  // 主色
-  --el-color-primary: #22C55E;
-  --el-color-primary-light-3: #4ade80;
-  --el-color-primary-light-5: #86efac;
-  --el-color-primary-light-7: #bbf7d0;
-  --el-color-primary-light-8: #dcfce7;
-  --el-color-primary-light-9: #f0fdf4;
-  --el-color-primary-dark-2: #16a34a;
+  // Primary — use brand purple
+  --el-color-primary: #8b5cf6;
+  --el-color-primary-light-3: #a78bfa;
+  --el-color-primary-light-5: #c4b5fd;
+  --el-color-primary-light-7: #ddd6fe;
+  --el-color-primary-light-8: #ede9fe;
+  --el-color-primary-light-9: #f5f3ff;
+  --el-color-primary-dark-2: #7c3aed;
 
-  // 阴影
-  --el-box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 6px rgba(0, 0, 0, 0.2);
-  --el-box-shadow-light: 0 2px 12px 0 rgba(0, 0, 0, 0.3);
-  --el-box-shadow-lighter: 0 1px 4px rgba(0, 0, 0, 0.2);
-  --el-box-shadow-dark: 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 6px rgba(0, 0, 0, 0.3);
+  // Shadow
+  --el-box-shadow: 0 0 20px rgba(139, 92, 246, 0.08);
+  --el-box-shadow-light: 0 0 12px rgba(139, 92, 246, 0.06);
+  --el-box-shadow-lighter: 0 0 6px rgba(139, 92, 246, 0.04);
+  --el-box-shadow-dark: 0 0 30px rgba(0, 0, 0, 0.4);
 
-  // 遮罩
+  // Mask
   --el-mask-color: rgba(0, 0, 0, 0.6);
   --el-mask-color-extra-light: rgba(0, 0, 0, 0.3);
+
+  // Radius
+  --el-border-radius-base: 10px;
+  --el-border-radius-small: 8px;
+  --el-border-radius-round: 20px;
+
+  // Font
+  --el-font-size-base: 14px;
+  --el-font-size-small: 13px;
 }

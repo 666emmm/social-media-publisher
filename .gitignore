@@ -19,3 +19,11 @@ Thumbs.db
 .superpowers/
 data/logs/*
 vendor/data/logs/*
+
+# Tauri
+src-tauri/target/
+src-tauri/src-tauri/
+*.pdb
+
+# Build outputs
+frontend-dist/

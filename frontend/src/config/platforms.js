@@ -31,7 +31,7 @@ export const PLATFORMS = {
       { key: 'isOriginal', label: '原创声明', type: 'radio', options: [{ label: '原创', value: true }, { label: '非原创', value: false }] },
       { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
     ],
-    defaultSettings: { collection: '', groupChat: '', location: '', isOriginal: false, scheduleTime: '' },
+    defaultSettings: { title: '', description: '', collection: '', groupChat: '', location: '', isOriginal: false, scheduleTime: '' },
   },
   CHANNELS: {
     id: 2,
@@ -49,7 +49,7 @@ export const PLATFORMS = {
       { key: 'location', label: '位置', type: 'select', placeholder: '选择位置' },
       { key: 'isOriginal', label: '原创声明', type: 'radio', options: [{ label: '原创', value: true }, { label: '非原创', value: false }] },
     ],
-    defaultSettings: { isDraft: false, location: '', isOriginal: false },
+    defaultSettings: { title: '', description: '', isDraft: false, location: '', isOriginal: false },
   },
   DOUYIN: {
     id: 3,
@@ -71,7 +71,7 @@ export const PLATFORMS = {
       { key: 'visibility', label: '谁可以看', type: 'radio', options: [{ label: '公开', value: 'public' }, { label: '私密', value: 'private' }] },
       { key: 'allowDownload', label: '允许下载', type: 'switch' },
     ],
-    defaultSettings: { productTitle: '', productLink: '', aiContent: false, isOriginal: false, scheduleTime: '', visibility: 'public', allowDownload: true },
+    defaultSettings: { title: '', description: '', productTitle: '', productLink: '', aiContent: false, isOriginal: false, scheduleTime: '', visibility: 'public', allowDownload: true },
   },
   KUAISHOU: {
     id: 4,
@@ -91,7 +91,7 @@ export const PLATFORMS = {
       { key: 'isOriginal', label: '原创声明', type: 'radio', options: [{ label: '原创', value: true }, { label: '非原创', value: false }] },
       { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
     ],
-    defaultSettings: { productTitle: '', productLink: '', aiContent: false, isOriginal: false, scheduleTime: '' },
+    defaultSettings: { title: '', description: '', productTitle: '', productLink: '', aiContent: false, isOriginal: false, scheduleTime: '' },
   },
   BILIBILI: {
     id: 5,
@@ -111,7 +111,7 @@ export const PLATFORMS = {
       { key: 'isOriginal', label: '原创声明', type: 'radio', options: [{ label: '原创', value: true }, { label: '非原创', value: false }] },
       { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
     ],
-    defaultSettings: { zone: '', tags: '', topic: '', isOriginal: false, scheduleTime: '' },
+    defaultSettings: { title: '', description: '', zone: '', tags: '', topic: '', isOriginal: false, scheduleTime: '' },
   },
 }
 

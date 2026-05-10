@@ -23,25 +23,25 @@
             </el-icon>
             <span class="platform-badge" :style="{ background: group.color }">{{ group.letter }}</span>
             <span class="group-name">{{ group.name }}</span>
-            <span class="group-count">{{ group.accounts.length }}</span>
+            <span class="group-count">{{ group.accounts.filter(a => publishAccountIds.has(a.id)).length }}</span>
           </div>
 
           <!-- Expandable account list -->
           <transition name="slide">
             <div v-show="expandedGroups.has(group.key)" class="group-accounts">
               <div
-                v-for="account in group.accounts"
+                v-for="account in group.accounts.filter(a => publishAccountIds.has(a.id))"
                 :key="account.id"
-                :class="['account-item', 'cursor-pointer', { active: selectedAccountId === account.id }]"
-                @click="selectAccount(account, group)"
+                class="account-item cursor-pointer"
               >
-                <div :class="['account-avatar', { ring: selectedAccountId === account.id }]" :style="selectedAccountId === account.id ? { borderColor: group.color } : {}">
+                <div class="account-avatar" :style="{ borderColor: group.color }">
                   {{ account.name ? account.name.charAt(0) : '?' }}
                 </div>
                 <span class="account-name">{{ account.name }}</span>
                 <span :class="['dot', account.status === '正常' ? 'on' : 'off']"></span>
+                <el-icon class="account-remove" @click.stop="publishAccountIds.delete(account.id)"><Close /></el-icon>
               </div>
-              <div v-if="group.accounts.length === 0" class="no-accounts">暂无账号</div>
+              <div v-if="group.accounts.filter(a => publishAccountIds.has(a.id)).length === 0" class="no-accounts">暂无账号</div>
             </div>
           </transition>
         </div>
@@ -68,9 +68,9 @@
         </div>
         <div class="header-right">
           <span class="text-btn cursor-pointer" @click="saveDraft">保存草稿</span>
-          <el-button type="primary" class="publish-btn" @click="publishAll" :loading="publishing">
-            一键发布
-          </el-button>
+          <button class="publish-btn" @click="publishAll" :disabled="publishing">
+            {{ publishing ? '发布中...' : '一键发布' }}
+          </button>
         </div>
       </div>
 
@@ -84,99 +84,171 @@
             <span class="hint">所有账号共享</span>
           </div>
 
-          <!-- Video + Cover side by side -->
-          <div class="media-row">
-            <!-- Video upload card -->
-            <div class="media-card">
-              <div class="media-label">视频</div>
-              <div v-if="commonConfig.fileList.length === 0" class="media-empty">
-                <div class="empty-icon">
-                  <el-icon :size="32"><Upload /></el-icon>
-                </div>
-                <div class="empty-text">无视频 - 请选择视频</div>
-                <div class="empty-actions">
-                  <el-button size="small" plain @click="triggerUploadVideo" class="cursor-pointer">本地选择</el-button>
-                  <el-button size="small" plain @click="selectFromLibrary" class="cursor-pointer">素材库</el-button>
-                </div>
+          <!-- Video Section -->
+          <div class="media-section">
+            <div class="section-label">视频</div>
+            <!-- Empty state -->
+            <div v-if="commonConfig.fileList.length === 0" class="video-empty">
+              <div class="empty-icon">
+                <el-icon :size="40"><VideoCameraFilled /></el-icon>
               </div>
-              <div v-else class="media-filled">
-                <div v-for="(file, idx) in commonConfig.fileList" :key="idx" class="filled-item">
-                  <div class="filled-info">
-                    <el-link :href="file.url" target="_blank" type="primary" class="file-name">{{ file.name }}</el-link>
+              <div class="empty-text">暂无视频，请上传或从素材库选择</div>
+              <div class="empty-actions">
+                <button class="cover-action-btn" @click="triggerUploadVideo">
+                  <el-icon :size="15"><Upload /></el-icon><span>本地选择</span>
+                </button>
+                <button class="cover-action-btn" @click="selectFromLibrary">
+                  <el-icon :size="15"><Picture /></el-icon><span>素材库</span>
+                </button>
+              </div>
+            </div>
+            <!-- Filled state: video player + actions -->
+            <div v-else class="video-filled">
+              <div class="video-player-wrap">
+                <video
+                  :src="commonConfig.fileList[0].url"
+                  controls
+                  preload="metadata"
+                  class="video-player"
+                ></video>
+              </div>
+              <div class="video-sidebar">
+                <div class="video-file-list">
+                  <div
+                    v-for="(file, idx) in commonConfig.fileList"
+                    :key="idx"
+                    :class="['video-file-item', { active: activeVideoIdx === idx }]"
+                    @click="activeVideoIdx = idx"
+                  >
+                    <span class="file-name">{{ file.name }}</span>
                     <span class="file-size">{{ formatSize(file.size) }}</span>
+                    <el-icon class="remove-icon cursor-pointer" @click.stop="removeVideo(idx)"><Close /></el-icon>
                   </div>
-                  <el-button type="danger" size="small" text @click="commonConfig.fileList.splice(idx, 1)" class="cursor-pointer">删除</el-button>
                 </div>
-                <div class="filled-actions">
-                  <el-button size="small" plain @click="triggerUploadVideo" class="cursor-pointer">继续添加</el-button>
-                  <el-button size="small" plain @click="selectFromLibrary" class="cursor-pointer">素材库</el-button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Cover upload card -->
-            <div class="media-card">
-              <div class="media-label">封面</div>
-              <div v-if="!commonConfig.coverFile" class="media-empty">
-                <div class="empty-icon">
-                  <el-icon :size="32"><Picture /></el-icon>
-                </div>
-                <div class="empty-text">无封面 - 请选择封面</div>
-                <div class="empty-actions">
-                  <el-button size="small" plain @click="triggerUploadCover" class="cursor-pointer">本地上传</el-button>
-                  <el-button size="small" plain @click="captureFromVideo" class="cursor-pointer">从视频截取</el-button>
-                </div>
-              </div>
-              <div v-else class="media-filled">
-                <div class="filled-item">
-                  <div class="filled-info">
-                    <span class="file-name">{{ commonConfig.coverFile.name }}</span>
-                    <span class="file-size">{{ formatSize(commonConfig.coverFile.size) }}</span>
-                  </div>
-                  <el-button type="danger" size="small" text @click="commonConfig.coverFile = null" class="cursor-pointer">删除</el-button>
-                </div>
-                <div class="filled-actions">
-                  <el-button size="small" plain @click="triggerUploadCover" class="cursor-pointer">更换封面</el-button>
+                <div class="video-actions">
+                  <button class="cover-action-btn" @click="triggerUploadVideo">
+                    <el-icon :size="15"><Upload /></el-icon><span>本地选择</span>
+                  </button>
+                  <button class="cover-action-btn" @click="selectFromLibrary">
+                    <el-icon :size="15"><Picture /></el-icon><span>素材库</span>
+                  </button>
+                  <button class="cover-action-btn danger" @click="clearAllVideos">
+                    <el-icon :size="15"><Close /></el-icon><span>移除全部</span>
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Title -->
-          <div class="form-field">
-            <div class="field-head">
-              <span>标题</span>
-              <span class="field-counter">{{ commonConfig.title.length }}/20</span>
+          <!-- Cover Section -->
+          <div class="media-section cover-section">
+            <div class="section-label">封面</div>
+            <div class="cover-grid">
+              <!-- Landscape cover -->
+              <div class="cover-card">
+                <div class="cover-card-label">
+                  <span>横版封面</span>
+                  <span class="cover-ratio">16:9</span>
+                </div>
+                <div v-if="!commonConfig.coverLandscape" class="cover-empty" @click="triggerUploadCover('landscape')">
+                  <el-icon :size="28"><Picture /></el-icon>
+                  <span class="cover-empty-text">上传横版封面</span>
+                </div>
+                <div v-else class="cover-preview-wrap">
+                  <img :src="commonConfig.coverLandscape.url" class="cover-preview" />
+                  <div class="cover-preview-overlay">
+                    <button class="overlay-btn" @click="openCropDialog('landscape')">裁剪</button>
+                    <button class="overlay-btn" @click="triggerUploadCover('landscape')">更换</button>
+                    <button class="overlay-btn danger" @click="commonConfig.coverLandscape = null">删除</button>
+                  </div>
+                </div>
+                <div class="cover-card-actions">
+                  <button class="cover-action-btn" @click="triggerUploadCover('landscape')">
+                    <el-icon :size="14"><Upload /></el-icon><span>上传</span>
+                  </button>
+                  <button class="cover-action-btn" @click="selectFromLibrary('cover', 'landscape')">
+                    <el-icon :size="14"><Picture /></el-icon><span>素材库</span>
+                  </button>
+                </div>
+              </div>
+              <!-- Portrait cover -->
+              <div class="cover-card">
+                <div class="cover-card-label">
+                  <span>竖版封面</span>
+                  <span class="cover-ratio">3:4</span>
+                </div>
+                <div v-if="!commonConfig.coverPortrait" class="cover-empty" @click="triggerUploadCover('portrait')">
+                  <el-icon :size="28"><Picture /></el-icon>
+                  <span class="cover-empty-text">上传竖版封面</span>
+                </div>
+                <div v-else class="cover-preview-wrap">
+                  <img :src="commonConfig.coverPortrait.url" class="cover-preview" />
+                  <div class="cover-preview-overlay">
+                    <button class="overlay-btn" @click="openCropDialog('portrait')">裁剪</button>
+                    <button class="overlay-btn" @click="triggerUploadCover('portrait')">更换</button>
+                    <button class="overlay-btn danger" @click="commonConfig.coverPortrait = null">删除</button>
+                  </div>
+                </div>
+                <div class="cover-card-actions">
+                  <button class="cover-action-btn" @click="triggerUploadCover('portrait')">
+                    <el-icon :size="14"><Upload /></el-icon><span>上传</span>
+                  </button>
+                  <button class="cover-action-btn" @click="selectFromLibrary('cover', 'portrait')">
+                    <el-icon :size="14"><Picture /></el-icon><span>素材库</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <el-input
-              v-model="commonConfig.title"
-              placeholder="请输入标题..."
-              maxlength="20"
-              show-word-limit
-            />
           </div>
 
-          <!-- Description -->
-          <div class="form-field">
-            <div class="field-head">
-              <span>描述</span>
-              <span class="field-counter">{{ commonConfig.description.length }}/1000</span>
+          <!-- Batch title/description sync -->
+          <div class="batch-sync-section">
+            <div class="batch-sync-header" @click="batchSyncExpanded = !batchSyncExpanded">
+              <span>批量设置标题和描述</span>
+              <el-icon class="cursor-pointer">
+                <component :is="batchSyncExpanded ? ArrowDown : ArrowRight" />
+              </el-icon>
             </div>
-            <el-input
-              v-model="commonConfig.description"
-              type="textarea"
-              :rows="4"
-              placeholder="请输入描述..."
-              maxlength="1000"
-              show-word-limit
-            />
+            <div v-show="batchSyncExpanded" class="batch-sync-body">
+              <div class="form-field">
+                <div class="field-head">
+                  <span>公共标题</span>
+                </div>
+                <el-input
+                  v-model="batchTitle"
+                  placeholder="输入标题后点击同步..."
+                  maxlength="100"
+                />
+              </div>
+              <div class="form-field">
+                <div class="field-head">
+                  <span>公共描述</span>
+                </div>
+                <el-input
+                  v-model="batchDescription"
+                  type="textarea"
+                  :rows="5"
+                  placeholder="输入描述后点击同步..."
+                  maxlength="2000"
+                />
+              </div>
+              <button class="cover-action-btn primary" @click="syncBatchToAll">
+                <el-icon :size="15"><Promotion /></el-icon><span>同步到所有平台</span>
+              </button>
+            </div>
           </div>
 
           <!-- Quick tag buttons -->
           <div class="quick-tags">
-            <el-button size="small" plain @click="topicDialogVisible = true" class="cursor-pointer"># 添加话题</el-button>
-            <el-button size="small" plain class="cursor-pointer">$ 参加活动</el-button>
-            <el-button size="small" plain class="cursor-pointer">@ 添加好友</el-button>
+            <button class="cover-action-btn" @click="topicDialogVisible = true">
+              <span># 添加话题</span>
+            </button>
+            <button class="cover-action-btn">
+              <span>$ 参加活动</span>
+            </button>
+            <button class="cover-action-btn">
+              <span>@ 添加好友</span>
+            </button>
           </div>
           <div v-if="commonConfig.topics.length" class="topics-row">
             <el-tag
@@ -199,6 +271,42 @@
             <div class="bar" :style="{ background: currentPlatformConfig.color }"></div>
             <span class="section-label">{{ currentPlatformConfig.name }} 个性化设置</span>
             <span class="hint">仅对该分组账号生效</span>
+          </div>
+
+          <!-- Platform-specific title & description -->
+          <div class="platform-title-desc">
+            <div
+              class="setting-card"
+              :style="{
+                borderColor: currentPlatformConfig.color + '26',
+                background: currentPlatformConfig.color + '0a'
+              }"
+            >
+              <div class="setting-label" :style="{ color: currentPlatformConfig.color }">标题</div>
+              <el-input
+                v-model="currentSettings.title"
+                placeholder="请输入该平台的标题..."
+                maxlength="100"
+                show-word-limit
+              />
+            </div>
+            <div
+              class="setting-card"
+              :style="{
+                borderColor: currentPlatformConfig.color + '26',
+                background: currentPlatformConfig.color + '0a'
+              }"
+            >
+              <div class="setting-label" :style="{ color: currentPlatformConfig.color }">描述</div>
+              <el-input
+                v-model="currentSettings.description"
+                type="textarea"
+                :rows="5"
+                placeholder="请输入该平台的描述..."
+                maxlength="2000"
+                show-word-limit
+              />
+            </div>
           </div>
 
           <div class="settings-grid">
@@ -448,7 +556,7 @@
     <!-- Cover Upload Dialog -->
     <el-dialog
       v-model="coverUploadDialogVisible"
-      title="上传封面"
+      :title="'上传' + (coverUploadTarget === 'portrait' ? '竖版' : '横版') + '封面'"
       width="500px"
       class="cover-upload-dialog"
     >
@@ -467,7 +575,9 @@
           将封面图片拖到此处，或<em>点击上传</em>
         </div>
         <template #tip>
-          <div class="el-upload__tip">支持JPG、PNG等图片格式</div>
+          <div class="el-upload__tip">
+            {{ coverUploadTarget === 'portrait' ? '竖版封面推荐比例 3:4' : '横版封面推荐比例 16:9' }}，支持JPG、PNG格式
+          </div>
         </template>
       </el-upload>
 
@@ -478,10 +588,45 @@
       </template>
     </el-dialog>
 
+    <!-- Cover Crop Dialog -->
+    <el-dialog
+      v-model="cropDialogVisible"
+      :title="'裁剪' + (cropTarget === 'portrait' ? '竖版' : '横版') + '封面'"
+      width="600px"
+      class="crop-dialog"
+    >
+      <div class="crop-container">
+        <div class="crop-canvas-wrap">
+          <canvas ref="cropCanvasRef" class="crop-canvas"></canvas>
+          <div
+            class="crop-selection"
+            :style="cropSelectionStyle"
+            @mousedown="startCropDrag"
+          >
+            <div class="crop-handle top-left" data-handle="tl"></div>
+            <div class="crop-handle top-right" data-handle="tr"></div>
+            <div class="crop-handle bottom-left" data-handle="bl"></div>
+            <div class="crop-handle bottom-right" data-handle="br"></div>
+          </div>
+        </div>
+        <div class="crop-info">
+          <span>{{ cropTarget === 'portrait' ? '3:4' : '16:9' }}</span>
+          <span class="crop-size">{{ Math.round(cropRect.w) }} x {{ Math.round(cropRect.h) }}</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer-right">
+          <el-button @click="cropDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="applyCrop">确认裁剪</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- Material Library Dialog -->
     <el-dialog
       v-model="materialLibraryVisible"
-      title="选择素材"
+      :title="materialLibraryMode === 'cover' ? '选择封面图片' : '选择视频素材'"
       width="800px"
       class="material-library-dialog"
     >
@@ -489,7 +634,7 @@
         <el-checkbox-group v-model="selectedMaterials">
           <div class="material-list">
             <div
-              v-for="material in materials"
+              v-for="material in filteredMaterials"
               :key="material.id"
               class="material-item"
             >
@@ -505,7 +650,7 @@
             </div>
           </div>
         </el-checkbox-group>
-        <div v-if="materials.length === 0" class="dialog-empty">素材库暂无素材</div>
+        <div v-if="filteredMaterials.length === 0" class="dialog-empty">素材库暂无{{ materialLibraryMode === 'cover' ? '图片' : '视频' }}素材</div>
       </div>
 
       <template #footer>
@@ -578,12 +723,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, nextTick } from 'vue'
-import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Check, Close, InfoFilled } from '@element-plus/icons-vue'
+import { ref, reactive, computed, nextTick, watch } from 'vue'
+import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Check, Close, InfoFilled, Promotion } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
 import { materialApi } from '@/api/material'
+import { accountApi } from '@/api/account'
 import { http } from '@/utils/request'
 import { platformList, getPlatformByKey, platformKeyToId } from '@/config/platforms'
 
@@ -624,24 +770,59 @@ const currentPlatformConfig = computed(() =>
 // ========== Public Config (shared across all accounts) ==========
 const commonConfig = reactive({
   fileList: [],
-  coverFile: null,
-  title: '',
-  description: '',
+  coverLandscape: null, // 横版封面 16:9
+  coverPortrait: null,  // 竖版封面 3:4
   topics: [],
 })
 
+// Active video index for player
+const activeVideoIdx = ref(0)
+
+// Cover upload target: 'landscape' or 'portrait'
+const coverUploadTarget = ref('landscape')
+
+// Crop dialog state
+const cropDialogVisible = ref(false)
+const cropTarget = ref('landscape') // 'landscape' or 'portrait'
+const cropCanvasRef = ref(null)
+const cropImage = ref(null) // Image element for cropping
+const cropRect = reactive({ x: 0, y: 0, w: 0, h: 0 })
+const cropDragState = ref(null) // null | { type, startX, startY, origRect }
+const cropDisplayScale = ref(1) // canvas display scale vs actual image
+
+const cropSelectionStyle = computed(() => ({
+  left: cropRect.x * cropDisplayScale.value + 'px',
+  top: cropRect.y * cropDisplayScale.value + 'px',
+  width: cropRect.w * cropDisplayScale.value + 'px',
+  height: cropRect.h * cropDisplayScale.value + 'px',
+}))
+
 // ========== Per-platform Config ==========
 const platformConfigs = reactive({
-  douyin: { productTitle: '', productLink: '', aiContent: false, isOriginal: false, scheduleTime: '', visibility: 'public', allowDownload: true },
-  xiaohongshu: { collection: '', groupChat: '', location: '', isOriginal: false, scheduleTime: '' },
-  kuaishou: { productTitle: '', productLink: '', aiContent: false, isOriginal: false, scheduleTime: '' },
-  bilibili: { zone: '', tags: '', topic: '', isOriginal: false, scheduleTime: '' },
-  channels: { isDraft: false, location: '', isOriginal: false },
+  douyin: { title: '', description: '', productTitle: '', productLink: '', aiContent: false, isOriginal: false, scheduleTime: '', visibility: 'public', allowDownload: true },
+  xiaohongshu: { title: '', description: '', collection: '', groupChat: '', location: '', isOriginal: false, scheduleTime: '' },
+  kuaishou: { title: '', description: '', productTitle: '', productLink: '', aiContent: false, isOriginal: false, scheduleTime: '' },
+  bilibili: { title: '', description: '', zone: '', tags: '', topic: '', isOriginal: false, scheduleTime: '' },
+  channels: { title: '', description: '', isDraft: false, location: '', isOriginal: false },
 })
 
 const currentSettings = computed(() =>
   selectedPlatform.value ? platformConfigs[selectedPlatform.value] || {} : {}
 )
+
+// ========== Batch title/description sync ==========
+const batchTitle = ref('')
+const batchDescription = ref('')
+
+function syncBatchToAll() {
+  for (const key of Object.keys(platformConfigs)) {
+    if (batchTitle.value) platformConfigs[key].title = batchTitle.value
+    if (batchDescription.value) platformConfigs[key].description = batchDescription.value
+  }
+  ElMessage.success('已同步到所有平台')
+}
+
+const batchSyncExpanded = ref(false)
 
 // ========== Init: expand first group with accounts ==========
 const firstGroup = accountGroups.value.find(g => g.accounts.length > 0)
@@ -656,12 +837,28 @@ const topicDialogVisible = ref(false)
 const videoUploadDialogVisible = ref(false)
 const coverUploadDialogVisible = ref(false)
 const materialLibraryVisible = ref(false)
+const materialLibraryMode = ref('video') // 'video' | 'cover'
+const materialLibraryCoverTarget = ref('landscape') // 'landscape' | 'portrait'
 const batchPublishDialogVisible = ref(false)
 
 // Account dialog state
 const accountFilterPlatform = ref('')
 const accountSearchQuery = ref('')
 const tempSelectedAccounts = ref([])
+
+// 弹窗打开时加载账号数据
+watch(accountDialogVisible, async (visible) => {
+  if (visible && accountStore.accounts.length === 0) {
+    try {
+      const res = await accountApi.getAccounts()
+      if (res.code === 200 && res.data) {
+        accountStore.setAccounts(res.data)
+      }
+    } catch (e) {
+      console.error('加载账号失败:', e)
+    }
+  }
+})
 
 // Topic dialog state
 const customTopic = ref('')
@@ -674,6 +871,17 @@ const recommendedTopics = [
 // Material library state
 const selectedMaterials = ref([])
 const materials = computed(() => appStore.materials)
+
+const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+const videoExts = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv']
+
+const filteredMaterials = computed(() => {
+  const list = materials.value
+  if (materialLibraryMode.value === 'cover') {
+    return list.filter(m => imageExts.some(ext => (m.filename || '').toLowerCase().endsWith(ext)))
+  }
+  return list.filter(m => videoExts.some(ext => (m.filename || '').toLowerCase().endsWith(ext)))
+})
 
 // Batch publish state
 const publishing = ref(false)
@@ -698,10 +906,22 @@ function toggleGroup(key) {
   selectedAccountId.value = null
 }
 
+// Selected accounts for publishing (default empty)
+const publishAccountIds = reactive(new Set())
+
+function togglePublishAccount(account, group) {
+  selectedPlatform.value = group.key
+  expandedGroups.value.add(group.key)
+  if (publishAccountIds.has(account.id)) {
+    publishAccountIds.delete(account.id)
+  } else {
+    publishAccountIds.add(account.id)
+  }
+}
+
 function selectAccount(account, group) {
   selectedAccountId.value = account.id
   selectedPlatform.value = group.key
-  // Ensure the group is expanded
   expandedGroups.value.add(group.key)
 }
 
@@ -711,7 +931,8 @@ function triggerUploadVideo() {
   videoUploadDialogVisible.value = true
 }
 
-function triggerUploadCover() {
+function triggerUploadCover(target = 'landscape') {
+  coverUploadTarget.value = target
   coverUploadDialogVisible.value = true
 }
 
@@ -721,6 +942,185 @@ function captureFromVideo() {
     return
   }
   ElMessage.info('视频截取功能开发中')
+}
+
+function removeVideo(idx) {
+  commonConfig.fileList.splice(idx, 1)
+  if (activeVideoIdx.value >= commonConfig.fileList.length) {
+    activeVideoIdx.value = Math.max(0, commonConfig.fileList.length - 1)
+  }
+}
+
+function clearAllVideos() {
+  commonConfig.fileList = []
+  activeVideoIdx.value = 0
+}
+
+function openCropDialog(target) {
+  cropTarget.value = target
+  const coverData = target === 'portrait' ? commonConfig.coverPortrait : commonConfig.coverLandscape
+  if (!coverData) return
+
+  // Load image and init canvas
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.onload = () => {
+    cropImage.value = img
+    nextTick(() => initCropCanvas(img))
+  }
+  img.src = coverData.url
+  cropDialogVisible.value = true
+}
+
+function initCropCanvas(img) {
+  const canvas = cropCanvasRef.value
+  if (!canvas) return
+
+  const maxW = 540
+  const maxH = 400
+  const scale = Math.min(maxW / img.width, maxH / img.height, 1)
+  cropDisplayScale.value = scale
+
+  canvas.width = img.width * scale
+  canvas.height = img.height * scale
+  canvas.style.width = canvas.width + 'px'
+  canvas.style.height = canvas.height + 'px'
+
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+  // Init crop rect: centered with target aspect ratio
+  const ratio = cropTarget.value === 'portrait' ? 3 / 4 : 16 / 9
+  let rw = canvas.width / scale * 0.8
+  let rh = rw / ratio
+  if (rh > img.height * 0.8) {
+    rh = img.height * 0.8
+    rw = rh * ratio
+  }
+  cropRect.x = (img.width - rw) / 2
+  cropRect.y = (img.height - rh) / 2
+  cropRect.w = rw
+  cropRect.h = rh
+}
+
+function startCropDrag(e) {
+  e.preventDefault()
+  const target = e.target.dataset.handle
+  cropDragState.value = {
+    type: target || 'move',
+    startX: e.clientX,
+    startY: e.clientY,
+    origRect: { ...cropRect },
+  }
+
+  const onMove = (ev) => {
+    if (!cropDragState.value) return
+    const dx = (ev.clientX - cropDragState.value.startX) / cropDisplayScale.value
+    const dy = (ev.clientY - cropDragState.value.startY) / cropDisplayScale.value
+    const orig = cropDragState.value.origRect
+    const img = cropImage.value
+    const ratio = cropTarget.value === 'portrait' ? 3 / 4 : 16 / 9
+    const type = cropDragState.value.type
+
+    if (type === 'move') {
+      cropRect.x = Math.max(0, Math.min(img.width - orig.w, orig.x + dx))
+      cropRect.y = Math.max(0, Math.min(img.height - orig.h, orig.y + dy))
+    } else {
+      // Resize from corner, maintaining aspect ratio
+      let newW = orig.w
+      let newH = orig.h
+      if (type === 'br') { newW = orig.w + dx; newH = newW / ratio }
+      else if (type === 'bl') { newW = orig.w - dx; newH = newW / ratio }
+      else if (type === 'tr') { newW = orig.w + dx; newH = newW / ratio }
+      else if (type === 'tl') { newW = orig.w - dx; newH = newW / ratio }
+
+      newW = Math.max(60, newW)
+      newH = newW / ratio
+
+      if (type === 'tl' || type === 'bl') {
+        cropRect.x = orig.x + orig.w - newW
+      }
+      if (type === 'tl' || type === 'tr') {
+        cropRect.y = orig.y + orig.h - newH
+      }
+
+      // Clamp
+      cropRect.x = Math.max(0, cropRect.x)
+      cropRect.y = Math.max(0, cropRect.y)
+      if (cropRect.x + newW > img.width) newW = img.width - cropRect.x
+      if (cropRect.y + newH > img.height) newH = img.height - cropRect.y
+      newH = newW / ratio
+
+      cropRect.w = newW
+      cropRect.h = newH
+    }
+
+    // Redraw canvas
+    redrawCropCanvas()
+  }
+
+  const onUp = () => {
+    cropDragState.value = null
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+  }
+
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
+
+function redrawCropCanvas() {
+  // No need to redraw canvas - CSS box-shadow on .crop-selection handles the dim overlay,
+  // and the crop-selection div position updates via Vue reactivity.
+}
+
+function applyCrop() {
+  const img = cropImage.value
+  if (!img) return
+
+  const offscreen = document.createElement('canvas')
+  offscreen.width = Math.round(cropRect.w)
+  offscreen.height = Math.round(cropRect.h)
+  const ctx = offscreen.getContext('2d')
+  ctx.drawImage(img, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0, 0, offscreen.width, offscreen.height)
+
+  offscreen.toBlob((blob) => {
+    if (!blob) {
+      ElMessage.error('裁剪失败')
+      return
+    }
+
+    // Upload cropped image
+    const formData = new FormData()
+    formData.append('file', blob, `cover_${cropTarget.value}_${Date.now()}.png`)
+
+    http.post('/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((resp) => {
+      if (resp.code === 200) {
+        const filePath = resp.data.path || resp.data
+        const filename = filePath.split('/').pop()
+        const coverData = {
+          name: `裁剪_${cropTarget.value === 'portrait' ? '竖版' : '横版'}_封面.png`,
+          url: materialApi.getMaterialPreviewUrl(filename),
+          path: filePath,
+          size: blob.size,
+          type: 'image/png',
+        }
+        if (cropTarget.value === 'portrait') {
+          commonConfig.coverPortrait = coverData
+        } else {
+          commonConfig.coverLandscape = coverData
+        }
+        cropDialogVisible.value = false
+        ElMessage.success('封面裁剪完成')
+      } else {
+        ElMessage.error(resp.msg || '裁剪上传失败')
+      }
+    }).catch(() => {
+      ElMessage.error('裁剪上传失败')
+    })
+  }, 'image/png')
 }
 
 function handleVideoUploadSuccess(response, file) {
@@ -744,12 +1144,17 @@ function handleCoverUploadSuccess(response, file) {
   if (response.code === 200) {
     const filePath = response.data.path || response.data
     const filename = filePath.split('/').pop()
-    commonConfig.coverFile = {
+    const coverData = {
       name: file.name,
       url: materialApi.getMaterialPreviewUrl(filename),
       path: filePath,
       size: file.size,
       type: file.type,
+    }
+    if (coverUploadTarget.value === 'portrait') {
+      commonConfig.coverPortrait = coverData
+    } else {
+      commonConfig.coverLandscape = coverData
     }
     coverUploadDialogVisible.value = false
     ElMessage.success('封面上传成功')
@@ -772,7 +1177,9 @@ function handleCoverFileChange(e) {
 
 // ========== Material Library ==========
 
-async function selectFromLibrary() {
+async function selectFromLibrary(mode = 'video', coverTarget = 'landscape') {
+  materialLibraryMode.value = mode
+  materialLibraryCoverTarget.value = coverTarget
   if (materials.value.length === 0) {
     try {
       const response = await materialApi.getAllMaterials()
@@ -797,25 +1204,44 @@ function confirmMaterialSelect() {
     ElMessage.warning('请选择至少一个素材')
     return
   }
-  selectedMaterials.value.forEach(materialId => {
-    const material = materials.value.find(m => m.id === materialId)
+  if (materialLibraryMode.value === 'cover') {
+    // 封面模式：只用第一张图片素材
+    const material = materials.value.find(m => m.id === selectedMaterials.value[0])
     if (material) {
-      const exists = commonConfig.fileList.some(f => f.path === material.file_path)
-      if (!exists) {
-        commonConfig.fileList.push({
-          name: material.filename,
-          url: materialApi.getMaterialPreviewUrl(material.file_path.split('/').pop()),
-          path: material.file_path,
-          size: material.filesize * 1024 * 1024,
-          type: 'video/mp4',
-        })
+      const coverData = {
+        name: material.filename,
+        url: materialApi.getMaterialPreviewUrl(material.file_path.split('/').pop()),
+        path: material.file_path,
+        size: material.filesize * 1024 * 1024,
+        type: 'image/jpeg',
       }
+      if (materialLibraryCoverTarget.value === 'portrait') {
+        commonConfig.coverPortrait = coverData
+      } else {
+        commonConfig.coverLandscape = coverData
+      }
+      ElMessage.success('封面已设置')
     }
-  })
-  const count = selectedMaterials.value.length
+  } else {
+    selectedMaterials.value.forEach(materialId => {
+      const material = materials.value.find(m => m.id === materialId)
+      if (material) {
+        const exists = commonConfig.fileList.some(f => f.path === material.file_path)
+        if (!exists) {
+          commonConfig.fileList.push({
+            name: material.filename,
+            url: materialApi.getMaterialPreviewUrl(material.file_path.split('/').pop()),
+            path: material.file_path,
+            size: material.filesize * 1024 * 1024,
+            type: 'video/mp4',
+          })
+        }
+      }
+    })
+    ElMessage.success(`已添加 ${selectedMaterials.value.length} 个素材`)
+  }
   materialLibraryVisible.value = false
   selectedMaterials.value = []
-  ElMessage.success(`已添加 ${count} 个素材`)
 }
 
 // ========== Topic Methods ==========
@@ -859,8 +1285,9 @@ const filteredAccounts = computed(() => {
 })
 
 function confirmAccountSelection() {
-  // In the new design, this adds accounts to the sidebar groups
-  // For now just close the dialog with a message
+  tempSelectedAccounts.value.forEach(id => {
+    publishAccountIds.add(id)
+  })
   accountDialogVisible.value = false
   ElMessage.success(`已选择 ${tempSelectedAccounts.value.length} 个账号`)
   tempSelectedAccounts.value = []
@@ -872,11 +1299,10 @@ function saveDraft() {
   try {
     const draftData = {
       commonConfig: {
-        title: commonConfig.title,
-        description: commonConfig.description,
         topics: [...commonConfig.topics],
         fileList: commonConfig.fileList.map(f => ({ name: f.name, path: f.path, url: f.url, size: f.size, type: f.type })),
-        coverFile: commonConfig.coverFile ? { name: commonConfig.coverFile.name, path: commonConfig.coverFile.path, url: commonConfig.coverFile.url, size: commonConfig.coverFile.size, type: commonConfig.coverFile.type } : null,
+        coverLandscape: commonConfig.coverLandscape ? { name: commonConfig.coverLandscape.name, path: commonConfig.coverLandscape.path, url: commonConfig.coverLandscape.url, size: commonConfig.coverLandscape.size, type: commonConfig.coverLandscape.type } : null,
+        coverPortrait: commonConfig.coverPortrait ? { name: commonConfig.coverPortrait.name, path: commonConfig.coverPortrait.path, url: commonConfig.coverPortrait.url, size: commonConfig.coverPortrait.size, type: commonConfig.coverPortrait.type } : null,
       },
       platformConfigs: JSON.parse(JSON.stringify(platformConfigs)),
       savedAt: new Date().toISOString(),
@@ -894,8 +1320,19 @@ async function publishAll() {
     ElMessage.error('请先上传视频文件')
     return
   }
-  if (!commonConfig.title.trim()) {
-    ElMessage.error('请输入标题')
+
+  // Check each platform with selected accounts has a title
+  const platformsWithoutTitle = []
+  for (const group of accountGroups.value) {
+    if (group.accounts.length === 0) continue
+    if (!group.accounts.some(a => publishAccountIds.has(a.id))) continue
+    const pSettings = platformConfigs[group.key]
+    if (!pSettings || !pSettings.title.trim()) {
+      platformsWithoutTitle.push(group.name)
+    }
+  }
+  if (platformsWithoutTitle.length > 0) {
+    ElMessage.error(`以下平台未设置标题：${platformsWithoutTitle.join('、')}`)
     return
   }
 
@@ -906,12 +1343,13 @@ async function publishAll() {
   currentPublishingAccount.value = ''
   batchPublishDialogVisible.value = true
 
-  // Collect all accounts across all groups
+  // Collect selected accounts only
   const allTasks = []
   for (const group of accountGroups.value) {
     if (group.accounts.length === 0) continue
     const pSettings = platformConfigs[group.key] || {}
     for (const account of group.accounts) {
+      if (!publishAccountIds.has(account.id)) continue
       allTasks.push({ account, group, platformSettings: { ...pSettings } })
     }
   }
@@ -940,10 +1378,13 @@ async function publishAll() {
     try {
       const publishData = {
         type: group.id,
-        title: commonConfig.title,
+        title: platformSettings.title,
+        description: platformSettings.description || '',
         tags: commonConfig.topics,
         fileList: commonConfig.fileList.map(f => f.path),
         accountList: [account.filePath],
+        thumbnailLandscape: commonConfig.coverLandscape ? commonConfig.coverLandscape.path : '',
+        thumbnailPortrait: commonConfig.coverPortrait ? commonConfig.coverPortrait.path : '',
         enableTimer: platformSettings.scheduleTime ? 1 : 0,
         videosPerDay: 1,
         dailyTimes: ['10:00'],
@@ -1211,6 +1652,23 @@ function formatSize(bytes) {
         background: $danger-color;
       }
     }
+
+    .account-remove {
+      font-size: 12px;
+      color: $text-muted;
+      opacity: 0;
+      transition: $transition-fast;
+      flex-shrink: 0;
+      margin-left: 2px;
+
+      &:hover {
+        color: $danger-color;
+      }
+    }
+
+    &:hover .account-remove {
+      opacity: 1;
+    }
   }
 
   .sidebar-footer {
@@ -1287,16 +1745,31 @@ function formatSize(bytes) {
       }
 
       .publish-btn {
-        background: $gradient-brand;
-        border-color: transparent;
-        color: #fff;
-        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
         padding: 8px 24px;
+        border: 1px solid transparent;
+        border-radius: $radius-sm;
+        background: $gradient-brand;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: $transition-base;
+        outline: none;
+        font-family: inherit;
 
-        &:hover,
-        &:focus {
+        &:hover {
           opacity: 0.9;
-          color: #fff;
+        }
+
+        &:active {
+          transform: scale(0.97);
+        }
+
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
       }
     }
@@ -1351,94 +1824,352 @@ function formatSize(bytes) {
   }
 }
 
-// ========== Media Row (Video + Cover) ==========
-.media-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+// ========== Media Section (Video & Cover) ==========
+.media-section {
   margin-bottom: 20px;
-}
-
-.media-card {
-  border: 1px dashed $border;
+  border: 1px solid $border;
   border-radius: $radius-card;
-  padding: 20px;
-  min-height: 180px;
-  display: flex;
-  flex-direction: column;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.02);
   transition: $transition-base;
 
   &:hover {
     border-color: $border-active;
   }
 
-  .media-label {
+  > .section-label {
     font-size: 13px;
     font-weight: 600;
     color: $text-primary;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
+    display: block;
+  }
+}
+
+.btn-icon {
+  margin-right: 4px;
+}
+
+// ----- Video Empty -----
+.video-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 0;
+  gap: 10px;
+
+  .empty-icon {
+    color: $text-muted;
+    opacity: 0.4;
   }
 
-  .media-empty {
+  .empty-text {
+    font-size: 13px;
+    color: $text-muted;
+  }
+
+  .empty-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+}
+
+// ----- Video Filled (player + sidebar) -----
+.video-filled {
+  display: flex;
+  gap: 16px;
+  min-height: 220px;
+
+  .video-player-wrap {
     flex: 1;
+    min-width: 0;
+    border-radius: $radius-base;
+    overflow: hidden;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    .video-player {
+      width: 100%;
+      max-height: 300px;
+      display: block;
+      outline: none;
+    }
+  }
+
+  .video-sidebar {
+    width: 200px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .video-file-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .video-file-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-radius: $radius-sm;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: $transition-base;
+      font-size: 12px;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      &.active {
+        border-color: $brand-start;
+        background: rgba(139, 92, 246, 0.08);
+      }
+
+      .file-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: $text-primary;
+      }
+
+      .file-size {
+        font-size: 10px;
+        color: $text-muted;
+        flex-shrink: 0;
+      }
+
+      .remove-icon {
+        color: $text-muted;
+        opacity: 0;
+        transition: $transition-fast;
+        font-size: 12px;
+
+        &:hover {
+          color: $danger-color;
+        }
+      }
+
+      &:hover .remove-icon {
+        opacity: 1;
+      }
+    }
+
+    .video-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+
+      .cover-action-btn {
+        justify-content: center;
+      }
+    }
+  }
+}
+
+// ----- Cover Section -----
+.cover-section {
+  // overrides if needed
+}
+
+.cover-grid {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.cover-card {
+  flex: 1;
+  border: 1px dashed $border;
+  border-radius: $radius-base;
+  overflow: hidden;
+  transition: $transition-base;
+
+  &:hover {
+    border-color: $border-active;
+  }
+
+  .cover-card-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 12px;
+    font-weight: 500;
+    color: $text-secondary;
+
+    .cover-ratio {
+      font-size: 10px;
+      color: $text-muted;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+  }
+
+  .cover-empty {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
+    padding: 24px 0;
+    color: $text-muted;
+    cursor: pointer;
+    transition: $transition-base;
 
-    .empty-icon {
-      color: $text-muted;
-      opacity: 0.5;
+    &:hover {
+      background: rgba(255, 255, 255, 0.03);
+      color: $brand-start;
+
+      .cover-empty-text {
+        color: $brand-start;
+      }
     }
 
-    .empty-text {
-      font-size: 13px;
-      color: $text-muted;
-    }
-
-    .empty-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 8px;
+    .cover-empty-text {
+      font-size: 12px;
+      transition: $transition-fast;
     }
   }
 
-  .media-filled {
-    .filled-item {
+  .cover-card-actions {
+    display: flex;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+
+    .cover-action-btn {
+      flex: 1;
+    }
+  }
+
+  .cover-preview-wrap {
+    position: relative;
+    display: flex;
+    justify-content: center;
+
+    .cover-preview {
+      display: block;
+      height: 360px;
+      width: auto;
+      max-width: 100%;
+      object-fit: contain;
+    }
+
+    .cover-preview-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 12px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid $border;
-      border-radius: $radius-sm;
-      margin-bottom: 8px;
+      justify-content: center;
+      gap: 12px;
+      padding: 8px 0;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+      opacity: 0;
+      transition: $transition-base;
 
-      .filled-info {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        min-width: 0;
-        flex: 1;
+      .overlay-btn {
+        padding: 3px 10px;
+        border: none;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.15);
+        color: #fff;
+        font-size: 12px;
+        cursor: pointer;
+        transition: $transition-fast;
+        outline: none;
+        font-family: inherit;
 
-        .file-name {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+        &:hover {
+          background: rgba(255, 255, 255, 0.25);
         }
 
-        .file-size {
-          font-size: 11px;
-          color: $text-muted;
-          flex-shrink: 0;
+        &.danger:hover {
+          background: rgba($danger-color, 0.6);
         }
       }
     }
 
-    .filled-actions {
-      display: flex;
-      gap: 8px;
+    &:hover .cover-preview-overlay {
+      opacity: 1;
+    }
+  }
+}
+
+.cover-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: 1px solid $border;
+  border-radius: $radius-sm;
+  background: rgba(255, 255, 255, 0.03);
+  color: $text-secondary;
+  font-size: 12px;
+  cursor: pointer;
+  transition: $transition-base;
+  outline: none;
+  font-family: inherit;
+  line-height: 1;
+
+  .el-icon {
+    flex-shrink: 0;
+    color: $text-muted;
+    transition: $transition-base;
+  }
+
+  &:hover {
+    border-color: rgba($brand-start, 0.35);
+    background: linear-gradient(135deg, rgba($brand-start, 0.08), rgba($brand-end, 0.06));
+    color: $text-primary;
+
+    .el-icon {
+      color: $brand-start;
+    }
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &.primary {
+    border-color: rgba($brand-start, 0.25);
+    background: linear-gradient(135deg, rgba($brand-start, 0.1), rgba($brand-end, 0.08));
+    color: $text-primary;
+
+    .el-icon {
+      color: $brand-start;
+    }
+
+    &:hover {
+      border-color: rgba($brand-start, 0.45);
+      background: linear-gradient(135deg, rgba($brand-start, 0.18), rgba($brand-end, 0.14));
+    }
+  }
+
+  &.danger {
+    &:hover {
+      border-color: rgba($danger-color, 0.35);
+      background: rgba($danger-color, 0.08);
+      color: $danger-color;
+
+      .el-icon {
+        color: $danger-color;
+      }
     }
   }
 }
@@ -1520,6 +2251,47 @@ function formatSize(bytes) {
     transparent 6px,
     transparent 12px
   );
+}
+
+// ========== Batch Sync Section ==========
+.batch-sync-section {
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  overflow: hidden;
+  margin-bottom: 4px;
+
+  .batch-sync-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: $text-secondary;
+    transition: $transition-base;
+
+    &:hover {
+      color: $text-primary;
+      background: rgba(255, 255, 255, 0.02);
+    }
+  }
+
+  .batch-sync-body {
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border-top: 1px solid $border;
+  }
+}
+
+// ========== Platform Title & Description ==========
+.platform-title-desc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 // ========== Settings Grid ==========
@@ -1847,6 +2619,61 @@ function formatSize(bytes) {
       color: $text-muted;
       font-size: 12px;
       margin-top: 8px;
+    }
+  }
+}
+
+// ========== Crop Dialog ==========
+.crop-dialog {
+  .crop-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .crop-canvas-wrap {
+    position: relative;
+    width: fit-content;
+    margin: 0 auto;
+    background: #000;
+    border-radius: $radius-base;
+    overflow: hidden;
+  }
+
+  .crop-canvas {
+    display: block;
+  }
+
+  .crop-selection {
+    position: absolute;
+    border: 2px solid $brand-start;
+    cursor: move;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+  }
+
+  .crop-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: $brand-start;
+    border: 1px solid #fff;
+    border-radius: 2px;
+
+    &.top-left { top: -5px; left: -5px; cursor: nw-resize; }
+    &.top-right { top: -5px; right: -5px; cursor: ne-resize; }
+    &.bottom-left { bottom: -5px; left: -5px; cursor: sw-resize; }
+    &.bottom-right { bottom: -5px; right: -5px; cursor: se-resize; }
+  }
+
+  .crop-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: $text-muted;
+
+    .crop-size {
+      color: $text-secondary;
     }
   }
 }

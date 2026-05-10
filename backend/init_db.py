@@ -81,5 +81,22 @@ def init_database():
     print(f"Database initialized at {DB_PATH}")
 
 
+def migrate_database():
+    """增量迁移 — 添加新列（幂等）"""
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+
+    # publish_tasks 添加 thumbnail_path 列
+    try:
+        cursor.execute('ALTER TABLE publish_tasks ADD COLUMN thumbnail_path TEXT DEFAULT ""')
+        print("已添加 thumbnail_path 列")
+    except sqlite3.OperationalError:
+        pass  # 列已存在
+
+    conn.commit()
+    conn.close()
+
+
 if __name__ == "__main__":
     init_database()
+    migrate_database()

@@ -10,10 +10,12 @@ from utils.constant import TencentZoneTypes
 from utils.files_times import generate_schedule_time_next_day
 
 
-def post_video_tencent(title,files,tags,account_file,category=TencentZoneTypes.LIFESTYLE.value,enableTimer=False,videos_per_day = 1, daily_times=None,start_days = 0, is_draft=False):
+def post_video_tencent(title,files,tags,account_file,category=TencentZoneTypes.LIFESTYLE.value,enableTimer=False,videos_per_day = 1, daily_times=None,start_days = 0, is_draft=False, thumbnail_path=None, desc=''):
     # 生成文件的完整路径
     account_file = [Path(BASE_DIR / "cookiesFile" / file) for file in account_file]
     files = [Path(BASE_DIR / "videoFile" / file) for file in files]
+    if thumbnail_path:
+        thumbnail_path = str(Path(BASE_DIR / "videoFile" / thumbnail_path))
     if enableTimer:
         publish_datetimes = generate_schedule_time_next_day(len(files), videos_per_day, daily_times,start_days)
     else:
@@ -21,20 +23,24 @@ def post_video_tencent(title,files,tags,account_file,category=TencentZoneTypes.L
     for index, file in enumerate(files):
         for cookie in account_file:
             print(f"文件路径{str(file)}")
-            # 打印视频文件名、标题和 hashtag
             print(f"视频文件名：{file}")
             print(f"标题：{title}")
+            print(f"描述：{desc}")
             print(f"Hashtag：{tags}")
-            app = TencentVideo(title, str(file), tags, publish_datetimes[index], cookie, category, is_draft)
+            app = TencentVideo(title, str(file), tags, publish_datetimes[index], cookie, category, is_draft, desc=desc or None, thumbnail_path=thumbnail_path, headless=False)
             asyncio.run(app.main(), debug=False)
 
 
 def post_video_DouYin(title,files,tags,account_file,category=TencentZoneTypes.LIFESTYLE.value,enableTimer=False,videos_per_day = 1, daily_times=None,start_days = 0,
-                      thumbnail_path = '',
-                      productLink = '', productTitle = ''):
+                      thumbnail_landscape_path = '', thumbnail_portrait_path = '',
+                      productLink = '', productTitle = '', desc=''):
     # 生成文件的完整路径
     account_file = [Path(BASE_DIR / "cookiesFile" / file) for file in account_file]
     files = [Path(BASE_DIR / "videoFile" / file) for file in files]
+    if thumbnail_landscape_path:
+        thumbnail_landscape_path = str(Path(BASE_DIR / "videoFile" / thumbnail_landscape_path))
+    if thumbnail_portrait_path:
+        thumbnail_portrait_path = str(Path(BASE_DIR / "videoFile" / thumbnail_portrait_path))
     if enableTimer:
         publish_datetimes = generate_schedule_time_next_day(len(files), videos_per_day, daily_times,start_days)
     else:
@@ -42,18 +48,25 @@ def post_video_DouYin(title,files,tags,account_file,category=TencentZoneTypes.LI
     for index, file in enumerate(files):
         for cookie in account_file:
             print(f"文件路径{str(file)}")
-            # 打印视频文件名、标题和 hashtag
             print(f"视频文件名：{file}")
             print(f"标题：{title}")
+            print(f"描述：{desc}")
             print(f"Hashtag：{tags}")
-            app = DouYinVideo(title, str(file), tags, publish_datetimes[index], cookie, thumbnail_path, productLink, productTitle)
+            app = DouYinVideo(title, str(file), tags, publish_datetimes[index], cookie,
+                              thumbnail_landscape_path=thumbnail_landscape_path or None,
+                              thumbnail_portrait_path=thumbnail_portrait_path or None,
+                              productLink=productLink, productTitle=productTitle,
+                              desc=desc or None,
+                              headless=False)
             asyncio.run(app.douyin_upload_video(), debug=False)
 
 
-def post_video_ks(title,files,tags,account_file,category=TencentZoneTypes.LIFESTYLE.value,enableTimer=False,videos_per_day = 1, daily_times=None,start_days = 0):
+def post_video_ks(title,files,tags,account_file,category=TencentZoneTypes.LIFESTYLE.value,enableTimer=False,videos_per_day = 1, daily_times=None,start_days = 0, thumbnail_path=None, desc=''):
     # 生成文件的完整路径
     account_file = [Path(BASE_DIR / "cookiesFile" / file) for file in account_file]
     files = [Path(BASE_DIR / "videoFile" / file) for file in files]
+    if thumbnail_path:
+        thumbnail_path = str(Path(BASE_DIR / "videoFile" / thumbnail_path))
     if enableTimer:
         publish_datetimes = generate_schedule_time_next_day(len(files), videos_per_day, daily_times,start_days)
     else:
@@ -61,17 +74,19 @@ def post_video_ks(title,files,tags,account_file,category=TencentZoneTypes.LIFEST
     for index, file in enumerate(files):
         for cookie in account_file:
             print(f"文件路径{str(file)}")
-            # 打印视频文件名、标题和 hashtag
             print(f"视频文件名：{file}")
             print(f"标题：{title}")
+            print(f"描述：{desc}")
             print(f"Hashtag：{tags}")
-            app = KSVideo(title, str(file), tags, publish_datetimes[index], cookie)
+            app = KSVideo(title, str(file), tags, publish_datetimes[index], cookie, thumbnail_path=thumbnail_path, desc=desc or None, headless=False)
             asyncio.run(app.main(), debug=False)
 
-def post_video_xhs(title,files,tags,account_file,category=TencentZoneTypes.LIFESTYLE.value,enableTimer=False,videos_per_day = 1, daily_times=None,start_days = 0):
+def post_video_xhs(title,files,tags,account_file,category=TencentZoneTypes.LIFESTYLE.value,enableTimer=False,videos_per_day = 1, daily_times=None,start_days = 0, thumbnail_path=None, desc=''):
     # 生成文件的完整路径
     account_file = [Path(BASE_DIR / "cookiesFile" / file) for file in account_file]
     files = [Path(BASE_DIR / "videoFile" / file) for file in files]
+    if thumbnail_path:
+        thumbnail_path = str(Path(BASE_DIR / "videoFile" / thumbnail_path))
     file_num = len(files)
     if enableTimer:
         publish_datetimes = generate_schedule_time_next_day(file_num, videos_per_day, daily_times,start_days)
@@ -79,17 +94,17 @@ def post_video_xhs(title,files,tags,account_file,category=TencentZoneTypes.LIFES
         publish_datetimes = 0
     for index, file in enumerate(files):
         for cookie in account_file:
-            # 打印视频文件名、标题和 hashtag
             print(f"视频文件名：{file}")
             print(f"标题：{title}")
+            print(f"描述：{desc}")
             print(f"Hashtag：{tags}")
-            app = XiaoHongShuVideo(title, file, tags, publish_datetimes, cookie)
+            app = XiaoHongShuVideo(title, file, tags, publish_datetimes, cookie, thumbnail_path=thumbnail_path, desc=desc or None, headless=False)
             asyncio.run(app.main(), debug=False)
 
 
 def post_video_bilibili(title, files, tags, account_file, category=None,
                         enableTimer=False, videos_per_day=1, daily_times=None,
-                        start_days=0):
+                        start_days=0, desc=''):
     """B站视频上传 — 使用 biliup CLI 工具"""
     from uploader.bilibili_uploader.runtime import ensure_biliup_binary, run_biliup_command
 
@@ -108,6 +123,7 @@ def post_video_bilibili(title, files, tags, account_file, category=None,
         for cookie in account_file:
             print(f"视频文件名：{file}")
             print(f"标题：{title}")
+            print(f"描述：{desc}")
             print(f"Hashtag：{tags}")
 
             arguments = [
@@ -116,13 +132,12 @@ def post_video_bilibili(title, files, tags, account_file, category=None,
                 "--title", title,
             ]
 
+            if desc:
+                arguments.extend(["--desc", desc])
+
             if tags:
                 arguments.extend(["--tag", ",".join(str(t) for t in tags)])
 
             result = run_biliup_command(arguments)
             if result.returncode != 0:
                 raise RuntimeError(f"B站上传失败: {result.stderr or result.stdout}")
-
-
-# post_video("333",["demo.mp4"],"d","d")
-# post_video_DouYin("333",["demo.mp4"],"d","d")

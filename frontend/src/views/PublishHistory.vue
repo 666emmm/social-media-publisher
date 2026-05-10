@@ -227,7 +227,8 @@ const fetchHistory = async () => {
     if (statusFilter.value !== 'all') params.status = statusFilter.value
     const res = await historyApi.getHistory(params)
     if (res.code === 200) {
-      history.value = res.data?.items || res.data || []
+      const items = res.data?.items || res.data?.list
+      history.value = Array.isArray(items) ? items : []
       total.value = res.data?.total || 0
     }
   } catch (e) {
@@ -241,8 +242,13 @@ const fetchHistory = async () => {
 const fetchStats = async () => {
   try {
     const res = await statsApi.getStats()
-    if (res.code === 200) {
-      stats.value = res.data
+    if (res.code === 200 && res.data) {
+      const d = res.data
+      stats.value = {
+        total: d.total ?? d.tasks?.total ?? 0,
+        successRate: d.successRate ?? d.tasks?.successRate ?? 0,
+        monthlyTotal: d.monthlyTotal ?? 0,
+      }
     }
   } catch (e) {
     console.error('Failed to fetch stats:', e)

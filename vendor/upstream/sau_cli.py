@@ -47,6 +47,7 @@ class DouyinVideoUploadRequest:
     tags: list[str]
     publish_date: datetime | int
     thumbnail_file: Path | None = None
+    thumbnail_landscape_file: Path | None = None
     product_link: str = ""
     product_title: str = ""
     publish_strategy: str = DOUYIN_PUBLISH_STRATEGY_IMMEDIATE
@@ -250,6 +251,7 @@ async def upload_video(request: DouyinVideoUploadRequest) -> Path:
         str(account_file),
         desc=request.description,
         thumbnail_portrait_path=str(request.thumbnail_file) if request.thumbnail_file else None,
+        thumbnail_landscape_path=str(request.thumbnail_landscape_file) if request.thumbnail_landscape_file else None,
         productLink=request.product_link,
         productTitle=request.product_title,
         publish_strategy=request.publish_strategy,

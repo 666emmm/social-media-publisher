@@ -95,6 +95,7 @@ def create_task():
         video_path=data['videoPath'],
         title=data['title'],
         description=data.get('description', ''),
+        thumbnail_path=data.get('thumbnailPath', ''),
         tags=data.get('tags', []),
     )
 
@@ -202,13 +203,34 @@ def queue_status():
 @ext_api.route('/history', methods=['GET'])
 def get_history():
     """发布历史记录（支持日期范围、平台、状态过滤）"""
+    # 平台 key → 中文名映射
+    platform_key_map = {
+        'xiaohongshu': '小红书', 'channels': '视频号', 'douyin': '抖音',
+        'kuaishou': '快手', 'bilibili': 'B站',
+    }
+
     platform = request.args.get('platform')
     status = request.args.get('status')
+    time_range = request.args.get('timeRange')
     start_date = request.args.get('startDate')
     end_date = request.args.get('endDate')
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('pageSize', 20))
     offset = (page - 1) * page_size
+
+    # 将 timeRange 转换为实际日期范围
+    if time_range and not start_date:
+        now = datetime.now()
+        if time_range == 'today':
+            start_date = now.strftime('%Y-%m-%d')
+        elif time_range == '7days':
+            start_date = (now - timedelta(days=7)).strftime('%Y-%m-%d')
+        elif time_range == '30days':
+            start_date = (now - timedelta(days=30)).strftime('%Y-%m-%d')
+
+    # 将平台 key 转换为中文名
+    if platform and platform in platform_key_map:
+        platform = platform_key_map[platform]
 
     conditions = []
     params = []
@@ -243,9 +265,19 @@ def get_history():
                 r['tags'] = json.loads(r.get('tags', '[]'))
             except json.JSONDecodeError:
                 r['tags'] = []
+            # 为前端补充 duration 字段（秒数）
+            if r.get('started_at') and r.get('finished_at'):
+                try:
+                    started = datetime.fromisoformat(r['started_at'])
+                    finished = datetime.fromisoformat(r['finished_at'])
+                    r['duration'] = int((finished - started).total_seconds())
+                except (ValueError, TypeError):
+                    r['duration'] = None
+            else:
+                r['duration'] = None
 
         conn.close()
-        return jsonify({"code": 200, "data": {"list": records, "total": total, "page": page, "pageSize": page_size}})
+        return jsonify({"code": 200, "data": {"items": records, "total": total, "page": page, "pageSize": page_size}})
     except Exception as e:
         return jsonify({"code": 500, "msg": str(e)}), 500
 
@@ -281,6 +313,12 @@ def get_stats():
             ).fetchone()[0]
             trend.append({"date": date, "count": count})
 
+        # 本月发布数
+        month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime('%Y-%m-%d')
+        monthly_total = conn.execute(
+            "SELECT COUNT(*) FROM publish_tasks WHERE created_at >= ?", (month_start,)
+        ).fetchone()[0]
+
         # 账号统计
         account_count = conn.execute("SELECT COUNT(*) FROM user_info").fetchone()[0]
         account_normal = conn.execute("SELECT COUNT(*) FROM user_info WHERE status=1").fetchone()[0]
@@ -293,6 +331,11 @@ def get_stats():
         success_rate = round(success / total * 100, 1) if total > 0 else 0
 
         return jsonify({"code": 200, "data": {
+            # 发布历史页面直接使用的字段
+            "total": total,
+            "successRate": success_rate,
+            "monthlyTotal": monthly_total,
+            # 详细任务统计
             "tasks": {"total": total, "success": success, "failed": failed, "running": running, "successRate": success_rate},
             "byPlatform": by_platform,
             "trend": trend,

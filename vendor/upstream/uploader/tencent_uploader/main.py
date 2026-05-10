@@ -678,11 +678,14 @@ class TencentVideo(TencentBaseUploader):
 
         tencent_logger.info(_msg("🖼️", "小人准备设置封面"))
 
+        # 步骤1: 点击封面入口
         cover_entry_selectors = [
             'div.vertical-cover-wrap:has-text("个人主页卡片"):has-text("3:4")',
             'div.vertical-cover-wrap:has-text("3:4")',
             'div.vertical-cover-wrap:has-text("个人主页卡片")',
+            'div.vertical-cover-wrap',
         ]
+        entry_clicked = False
         for selector in cover_entry_selectors:
             cover_entry = page.locator(selector).first
             try:
@@ -691,45 +694,153 @@ class TencentVideo(TencentBaseUploader):
                 await cover_entry.wait_for(state="visible", timeout=3000)
                 await cover_entry.click()
                 await page.wait_for_timeout(500)
+                tencent_logger.info(_msg("🖼️", f"点击封面入口成功: {selector}"))
+                entry_clicked = True
                 break
             except Exception:
                 continue
 
-        cover_dialog = page.locator("div.weui-desktop-dialog").filter(has_text="编辑个人主页卡片").first
-        if not await cover_dialog.count():
-            tencent_logger.info(_msg("🧍", "当前页面没有出现封面编辑弹窗，小人先跳过自定义封面"))
+        if not entry_clicked:
+            tencent_logger.warning(_msg("😵", "没有找到可点击的封面入口，尝试截图"))
+            try:
+                await page.screenshot(path="debug_cover_entry.png")
+                tencent_logger.info(_msg("📸", "调试截图已保存: debug_cover_entry.png"))
+            except Exception:
+                pass
             return
 
-        try:
-            await cover_dialog.wait_for(state="visible", timeout=5000)
-        except Exception:
-            tencent_logger.warning(_msg("😵", "封面编辑弹窗暂时不可见，这次先跳过自定义封面"))
+        # 步骤2: 等待封面编辑弹窗
+        await page.wait_for_timeout(1500)
+        # 先尝试精确匹配，再放宽到任何 weui-desktop-dialog
+        cover_dialog_selectors = [
+            ('div.weui-desktop-dialog', '编辑个人主页卡片'),
+            ('div.weui-desktop-dialog', '封面'),
+            ('div.weui-desktop-dialog', '上传'),
+            ('div.weui-desktop-dialog', '卡片'),
+        ]
+        cover_dialog = None
+        for selector, text_hint in cover_dialog_selectors:
+            try:
+                dialog = page.locator(selector).filter(has_text=text_hint).first
+                if await dialog.count() and await dialog.is_visible():
+                    cover_dialog = dialog
+                    tencent_logger.info(_msg("🖼️", f"找到封面弹窗（匹配文本: {text_hint}）"))
+                    break
+            except Exception:
+                continue
+
+        if not cover_dialog:
+            # 最终回退：直接找任意 weui-desktop-dialog
+            try:
+                fallback = page.locator("div.weui-desktop-dialog").first
+                if await fallback.count() and await fallback.is_visible():
+                    cover_dialog = fallback
+                    tencent_logger.info(_msg("🖼️", "使用回退匹配找到弹窗"))
+            except Exception:
+                pass
+
+        if not cover_dialog:
+            tencent_logger.warning(_msg("😵", "未找到封面编辑弹窗，尝试截图"))
+            try:
+                await page.screenshot(path="debug_cover_dialog.png")
+                tencent_logger.info(_msg("📸", "调试截图已保存: debug_cover_dialog.png"))
+            except Exception:
+                pass
             return
 
-        file_input = cover_dialog.locator('.single-cover-uploader-wrap input[type="file"]').first
+        # 步骤3: 上传封面文件
+        file_input_selectors = [
+            '.single-cover-uploader-wrap input[type="file"]',
+            'input[type="file"][accept*="image"]',
+            '.cover-uploader-wrap input[type="file"]',
+            'input[type="file"]',
+        ]
+        file_input = None
+        for selector in file_input_selectors:
+            try:
+                locator = cover_dialog.locator(selector).first
+                if await locator.count():
+                    file_input = locator
+                    tencent_logger.info(_msg("🖼️", f"找到文件输入框: {selector}"))
+                    break
+            except Exception:
+                continue
+
+        if not file_input:
+            # 在整个弹窗区域查找 file input
+            tencent_logger.warning(_msg("😵", "弹窗内未找到文件输入框，尝试全局搜索"))
+            try:
+                file_input = page.locator('div.weui-desktop-dialog input[type="file"]').first
+                if not await file_input.count():
+                    tencent_logger.error(_msg("😵", "全局也未找到文件输入框，跳过封面设置"))
+                    try:
+                        await page.screenshot(path="debug_cover_dialog.png")
+                        tencent_logger.info(_msg("📸", "调试截图已保存: debug_cover_dialog.png"))
+                    except Exception:
+                        pass
+                    return
+            except Exception:
+                return
+
         await file_input.wait_for(state="attached", timeout=10000)
+        tencent_logger.info(_msg("🖼️", f"开始上传封面文件: {self.thumbnail_path}"))
         await file_input.set_input_files(self.thumbnail_path)
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(2000)
 
+        # 步骤4: 处理裁剪弹窗
         crop_dialog = page.locator("div.weui-desktop-dialog").filter(has_text="裁剪封面图").first
         if await crop_dialog.count():
             try:
                 await crop_dialog.wait_for(state="visible", timeout=10000)
-                crop_confirm_button = crop_dialog.locator(
-                    'div.weui-desktop-dialog__ft button.weui-desktop-btn_primary:has-text("确定")'
-                ).first
-                if await crop_confirm_button.count():
-                    await crop_confirm_button.wait_for(state="visible", timeout=5000)
-                    await crop_confirm_button.click()
-                    await page.wait_for_timeout(1000)
+                tencent_logger.info(_msg("🖼️", "裁剪弹窗已出现"))
+                crop_confirm_selectors = [
+                    'div.weui-desktop-dialog__ft button.weui-desktop-btn_primary:has-text("确定")',
+                    'button:has-text("确定")',
+                    'button.weui-desktop-btn_primary',
+                ]
+                for selector in crop_confirm_selectors:
+                    try:
+                        btn = crop_dialog.locator(selector).first
+                        if await btn.count() and await btn.is_visible():
+                            await btn.click()
+                            tencent_logger.info(_msg("🖼️", f"裁剪确认按钮已点击: {selector}"))
+                            await page.wait_for_timeout(1000)
+                            break
+                    except Exception:
+                        continue
             except Exception as exc:
                 tencent_logger.warning(_msg("😵", f"封面裁剪确认时出错，小人继续尝试保存主弹窗: {exc}"))
 
-        confirm_button = cover_dialog.locator(
-            'div.weui-desktop-dialog__ft button.weui-desktop-btn_primary:has-text("确认")'
-        ).first
-        await confirm_button.wait_for(state="visible", timeout=10000)
-        await confirm_button.click()
+        # 步骤5: 点击确认按钮
+        confirm_selectors = [
+            'div.weui-desktop-dialog__ft button.weui-desktop-btn_primary:has-text("确认")',
+            'div.weui-desktop-dialog__ft button:has-text("确认")',
+            'div.weui-desktop-dialog__ft button.weui-desktop-btn_primary:has-text("确定")',
+            'div.weui-desktop-dialog__ft button.weui-desktop-btn_primary',
+            'button:has-text("确认")',
+        ]
+        confirmed = False
+        for selector in confirm_selectors:
+            try:
+                btn = cover_dialog.locator(selector).first
+                if await btn.count() and await btn.is_visible():
+                    await btn.click()
+                    tencent_logger.info(_msg("🥳", f"封面确认按钮已点击: {selector}"))
+                    confirmed = True
+                    await page.wait_for_timeout(1000)
+                    break
+            except Exception:
+                continue
+
+        if not confirmed:
+            tencent_logger.warning(_msg("😵", "未找到封面确认按钮，尝试截图"))
+            try:
+                await page.screenshot(path="debug_cover_confirm.png")
+                tencent_logger.info(_msg("📸", "调试截图已保存: debug_cover_confirm.png"))
+            except Exception:
+                pass
+            return
+
         tencent_logger.success(_msg("🥳", "封面已经设置完成"))
 
     async def prepare_video_for_publish(self, page: Page) -> None:

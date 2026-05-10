@@ -40,6 +40,7 @@ class PublishTask:
     video_path: str = ""
     title: str = ""
     description: str = ""
+    thumbnail_path: str = ""
     tags: list = field(default_factory=list)
     status: TaskStatus = TaskStatus.PENDING
     retry_count: int = 0
@@ -73,6 +74,7 @@ class PublishTask:
             video_path=row_dict['video_path'],
             title=row_dict['title'],
             description=row_dict.get('description', ''),
+            thumbnail_path=row_dict.get('thumbnail_path', ''),
             tags=tags,
             status=row_dict['status'],
             retry_count=row_dict.get('retry_count', 0),
@@ -167,6 +169,8 @@ class TaskQueue:
         account_list = [task.account_cookie_path]
         tags = task.tags
         title = task.title
+        thumbnail_path = task.thumbnail_path
+        desc = task.description
 
         # 在 executor 中运行同步的上传函数
         loop = asyncio.get_event_loop()
@@ -174,31 +178,37 @@ class TaskQueue:
             case 1:
                 await loop.run_in_executor(
                     None, lambda: post_video_xhs(
-                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0
+                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0,
+                        thumbnail_path=thumbnail_path, desc=desc
                     )
                 )
             case 2:
                 await loop.run_in_executor(
                     None, lambda: post_video_tencent(
-                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0, False
+                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0, False,
+                        thumbnail_path=thumbnail_path, desc=desc
                     )
                 )
             case 3:
                 await loop.run_in_executor(
                     None, lambda: post_video_DouYin(
-                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0, '', '', ''
+                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0,
+                        thumbnail_landscape_path='', thumbnail_portrait_path=thumbnail_path,
+                        productLink='', productTitle='', desc=desc
                     )
                 )
             case 4:
                 await loop.run_in_executor(
                     None, lambda: post_video_ks(
-                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0
+                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0,
+                        thumbnail_path=thumbnail_path, desc=desc
                     )
                 )
             case 5:
                 await loop.run_in_executor(
                     None, lambda: post_video_bilibili(
-                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0
+                        title, file_list, tags, account_list, None, 0, 1, ['10:00'], 0,
+                        desc=desc
                     )
                 )
             case _:
@@ -273,11 +283,12 @@ class TaskQueue:
                 conn.execute(
                     """INSERT OR REPLACE INTO publish_tasks
                        (id, platform, account_name, video_path, title, description,
-                        tags, status, retry_count, max_retries, error_message,
+                        thumbnail_path, tags, status, retry_count, max_retries, error_message,
                         publish_url, created_at, started_at, finished_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (task.id, task.platform, task.account_name, task.video_path,
-                     task.title, task.description, json.dumps(task.tags, ensure_ascii=False),
+                     task.title, task.description, task.thumbnail_path,
+                     json.dumps(task.tags, ensure_ascii=False),
                      task.status, task.retry_count, task.max_retries, task.error_message,
                      task.publish_url, task.created_at, task.started_at, task.finished_at)
                 )

@@ -1,5 +1,11 @@
+import json
+import sqlite3
+import uuid
 import sys
+from datetime import datetime
 from pathlib import Path
+
+from flask import g, request
 
 UPSTREAM_DIR = Path(__file__).parent.parent / "vendor" / "upstream"
 sys.path.insert(1, str(UPSTREAM_DIR))
@@ -9,6 +15,101 @@ from sau_backend import app  # noqa: E402
 # 注册阶段二扩展 API Blueprint
 from ext_api import ext_api  # noqa: E402
 app.register_blueprint(ext_api)
+
+DB_PATH = Path(__file__).parent.parent / "data" / "db" / "database.db"
+PLATFORM_MAP = {1: "小红书", 2: "视频号", 3: "抖音", 4: "快手", 5: "B站"}
+
+
+def _record_publish(task_id, platform, account_name, video_path, title, description, tags, status, started_at, finished_at=None, error_message=""):
+    """记录发布历史到 publish_tasks 表"""
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            conn.execute(
+                """INSERT INTO publish_tasks
+                   (id, platform, account_name, video_path, title, description,
+                    tags, status, retry_count, max_retries, error_message,
+                    publish_url, created_at, started_at, finished_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 3, ?, '', ?, ?, ?)""",
+                (task_id, platform, account_name, video_path, title, description,
+                 json.dumps(tags, ensure_ascii=False), status, error_message,
+                 started_at, started_at, finished_at)
+            )
+    except Exception as e:
+        print(f"[History] 记录发布失败: {e}")
+
+
+def _update_publish_result(task_id, status, finished_at, error_message=""):
+    """更新发布结果"""
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            conn.execute(
+                """UPDATE publish_tasks
+                   SET status=?, finished_at=?, error_message=?
+                   WHERE id=?""",
+                (status, finished_at, error_message, task_id)
+            )
+    except Exception as e:
+        print(f"[History] 更新发布结果失败: {e}")
+
+
+@app.before_request
+def _before_publish():
+    """在 /postVideo 请求前记录发布开始"""
+    if request.path == '/postVideo' and request.method == 'POST':
+        data = request.get_json(silent=True)
+        if not data:
+            return
+        now = datetime.now().isoformat()
+        task_id = str(uuid.uuid4())
+        platform_type = data.get('type', 0)
+        account_list = data.get('accountList', [])
+        file_list = data.get('fileList', [])
+
+        # 从 cookie 文件路径提取账号名
+        account_name = ''
+        if account_list:
+            account_path = account_list[0]
+            account_name = Path(account_path).stem or account_path
+
+        _record_publish(
+            task_id=task_id,
+            platform=PLATFORM_MAP.get(platform_type, '未知'),
+            account_name=account_name,
+            video_path=file_list[0] if file_list else '',
+            title=data.get('title', ''),
+            description=data.get('description', ''),
+            tags=data.get('tags', []),
+            status='running',
+            started_at=now,
+        )
+        g.publish_task_id = task_id
+        g.publish_start_time = now
+
+
+@app.after_request
+def _after_publish(response):
+    """在 /postVideo 请求后更新发布结果"""
+    if request.path == '/postVideo' and hasattr(g, 'publish_task_id'):
+        now = datetime.now().isoformat()
+        if response.status_code == 200:
+            try:
+                resp_data = json.loads(response.get_data(as_text=True))
+                if resp_data.get('code') == 200:
+                    _update_publish_result(g.publish_task_id, 'success', now)
+                else:
+                    _update_publish_result(g.publish_task_id, 'failed', now, resp_data.get('msg', ''))
+            except (json.JSONDecodeError, ValueError):
+                _update_publish_result(g.publish_task_id, 'success', now)
+        else:
+            error_msg = ''
+            try:
+                resp_data = json.loads(response.get_data(as_text=True))
+                error_msg = resp_data.get('msg', '')
+            except (json.JSONDecodeError, ValueError):
+                error_msg = f'HTTP {response.status_code}'
+            _update_publish_result(g.publish_task_id, 'failed', now, error_msg)
+    return response
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5409)

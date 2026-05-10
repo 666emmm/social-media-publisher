@@ -533,7 +533,10 @@ def postVideo():
     productLink = data.get('productLink', '')
     productTitle = data.get('productTitle', '')
     thumbnail_path = data.get('thumbnail', '')
+    thumbnail_landscape_path = data.get('thumbnailLandscape', '')
+    thumbnail_portrait_path = data.get('thumbnailPortrait', '')
     is_draft = data.get('isDraft', False)  # 新增参数：是否保存为草稿
+    desc = data.get('description', '')  # 视频描述
 
     videos_per_day = data.get('videosPerDay')
     daily_times = data.get('dailyTimes')
@@ -557,19 +560,19 @@ def postVideo():
         match type:
             case 1:
                 post_video_xhs(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                                   start_days)
+                                   start_days, thumbnail_path=thumbnail_portrait_path or thumbnail_path, desc=desc)
             case 2:
                 post_video_tencent(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                                   start_days, is_draft)
+                                   start_days, is_draft, thumbnail_path=thumbnail_portrait_path or thumbnail_path, desc=desc)
             case 3:
                 post_video_DouYin(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                          start_days, thumbnail_path, productLink, productTitle)
+                          start_days, thumbnail_landscape_path=thumbnail_landscape_path, thumbnail_portrait_path=thumbnail_portrait_path, productLink=productLink, productTitle=productTitle, desc=desc)
             case 4:
                 post_video_ks(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                          start_days)
+                          start_days, thumbnail_path=thumbnail_portrait_path or thumbnail_path, desc=desc)
             case 5:
                 post_video_bilibili(title, file_list, tags, account_list, category, enableTimer, videos_per_day, daily_times,
-                          start_days)
+                          start_days, desc=desc)
             case _:
                 return jsonify({"code": 400, "msg": f"不支持的平台类型: {type}", "data": None}), 400
 

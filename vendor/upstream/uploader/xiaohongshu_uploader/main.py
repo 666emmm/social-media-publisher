@@ -457,32 +457,112 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
 
     async def set_thumbnail(self, page: Page, thumbnail_path: str):
         if not thumbnail_path:
+            xiaohongshu_logger.warning(_msg("😵", "没有封面路径，小人跳过封面设置"))
+            return
+
+        import os
+        if not os.path.exists(thumbnail_path):
+            xiaohongshu_logger.error(_msg("😵", f"封面文件不存在: {thumbnail_path}，小人跳过封面设置"))
             return
 
         xiaohongshu_logger.info(_msg("🖼️", "小人准备设置封面"))
 
-        cover_plugin_title = page.locator("div.cover-plugin-title").filter(has_text="设置封面")
-        cover_upload_dialog = cover_plugin_title.locator(
-            "xpath=ancestor::div[contains(@class, 'cover-plugin-preview')]"
-        ).locator("div.cover > div.default:visible")
-        await cover_upload_dialog.wait_for(state="visible", timeout=30000)
+        try:
+            cover_plugin_title = page.locator("div.cover-plugin-title").filter(has_text="设置封面")
+            cover_upload_dialog = cover_plugin_title.locator(
+                "xpath=ancestor::div[contains(@class, 'cover-plugin-preview')]"
+            ).locator("div.cover > div.default:visible")
+            await cover_upload_dialog.wait_for(state="visible", timeout=30000)
+            xiaohongshu_logger.info(_msg("🧭", "找到封面上传区域，小人点击它"))
 
-        await cover_upload_dialog.click(force=True)
+            await cover_upload_dialog.click(force=True)
+            xiaohongshu_logger.info(_msg("🖱", "已点击封面上传区域，等待弹窗..."))
+            await page.wait_for_timeout(2000)
+            await page.screenshot(path="debug_cover_after_click.png")
+            xiaohongshu_logger.info(_msg("📸", "点击后截图已保存: debug_cover_after_click.png"))
 
-        modal = page.locator("div.d-modal.cover-modal")
-        await modal.wait_for(state="visible", timeout=30000)
+            # 尝试多个可能的 modal 选择器
+            modal_selectors = [
+                "div.d-modal.cover-modal",
+                "div.cover-modal",
+                "div[class*='cover-modal']",
+                "div[class*='cover-plugin-modal']",
+                "div.d-modal",
+            ]
+            modal = None
+            for sel in modal_selectors:
+                if await page.locator(sel).count() > 0:
+                    modal = page.locator(sel).first
+                    xiaohongshu_logger.info(_msg("🪟", f"找到弹窗使用选择器: {sel}"))
+                    break
 
-        file_input = modal.locator('input[type="file"][accept*="image"]').first
-        await file_input.wait_for(state="attached", timeout=10000)
-        await file_input.set_input_files(thumbnail_path)
-        await page.wait_for_timeout(2000)
+            if not modal:
+                xiaohongshu_logger.error(_msg("😵", f"未找到封面编辑弹窗，可用选择器: {modal_selectors}"))
+                return
 
-        confirm_button = modal.locator("button.mojito-button").filter(has_text="确定").first
-        await confirm_button.wait_for(state="visible", timeout=10000)
-        await confirm_button.click()
+            # 点击"上传封面"选项卡（默认是"截取封面"，需要切换）
+            tab_selectors = [
+                "div.d-tabs-header:has-text('上传封面')",
+                ".d-tabs-header-label:has-text('上传封面')",
+                "h6:has-text('上传封面')",
+                "text=上传封面",
+            ]
+            upload_cover_tab = None
+            for sel in tab_selectors:
+                count = await modal.locator(sel).count()
+                xiaohongshu_logger.info(_msg("🔍", f"查找上传封面选项卡，使用选择器 '{sel}'，数量: {count}"))
+                if count > 0:
+                    upload_cover_tab = modal.locator(sel).first
+                    break
 
-        await modal.wait_for(state="hidden", timeout=30000)
-        xiaohongshu_logger.success(_msg("🥳", "封面已经设置完成"))
+            if upload_cover_tab:
+                try:
+                    await upload_cover_tab.click(timeout=3000)
+                    xiaohongshu_logger.info(_msg("🔄", "切换到上传封面选项卡"))
+                    await page.wait_for_timeout(1000)
+                except Exception as e:
+                    xiaohongshu_logger.warning(_msg("😵", f"切换选项卡失败: {e}"))
+            else:
+                xiaohongshu_logger.warning(_msg("😵", "找不到上传封面选项卡"))
+
+            file_input = modal.locator('input[type="file"][accept*="image"]').first
+            await file_input.wait_for(state="attached", timeout=10000)
+            xiaohongshu_logger.info(_msg("📤", f"小人正在上传封面: {os.path.basename(thumbnail_path)}"))
+            await file_input.set_input_files(thumbnail_path)
+            xiaohongshu_logger.info(_msg("⏳", "封面上传中，等待文件处理..."))
+            await page.wait_for_timeout(3000)
+
+            # 尝试多种确定按钮的选择器
+            confirm_selectors = [
+                "button.mojito-button:has-text('确定')",
+                "button:has-text('确定')",
+                "div:has-text('确定'):not([class*='disabled'])",
+                ".d-modal-footer button:has-text('确定')",
+            ]
+            confirm_button = None
+            for sel in confirm_selectors:
+                if await modal.locator(sel).count() > 0:
+                    confirm_button = modal.locator(sel).first
+                    xiaohongshu_logger.info(_msg("🔘", f"找到确定按钮使用: {sel}"))
+                    break
+
+            if not confirm_button:
+                xiaohongshu_logger.error(_msg("😵", "未找到确定按钮"))
+                return
+
+            xiaohongshu_logger.info(_msg("✅", "小人准备点击确定"))
+            await confirm_button.click()
+
+            try:
+                await modal.wait_for(state="hidden", timeout=15000)
+                xiaohongshu_logger.success(_msg("🥳", "封面已经设置完成"))
+            except Exception:
+                xiaohongshu_logger.warning(_msg("😵", "封面弹窗未关闭，小人继续尝试发布"))
+        except Exception as e:
+            xiaohongshu_logger.error(_msg("😢", f"封面设置失败: {e}"))
+            if self.debug:
+                await page.screenshot(full_page=True, path="screenshot_cover_error.png")
+                xiaohongshu_logger.debug(_msg("📸", "已保存封面错误截图: screenshot_cover_error.png"))
 
     async def upload_video_content(self, page: Page) -> None:
         xiaohongshu_logger.info(_msg("🏃", f"小人开始搬运视频: {self.title}.mp4"))

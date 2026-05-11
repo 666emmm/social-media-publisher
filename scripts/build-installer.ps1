@@ -28,8 +28,8 @@ python -m venv $VENV_DIR
 
 # Step 2: 安装依赖
 Write-Step "Installing Python dependencies..."
-& "$VENV_PYTHON" install --upgrade pip
-& "$VENV_PYTHON" install -r "$BACKEND_DIR\requirements.txt"
+& "$VENV_PYTHON" -m pip install --upgrade pip
+& "$VENV_PYTHON" -m pip install -r "$BACKEND_DIR\requirements.txt"
 
 # Step 3: 复制 venv 到 src-tauri/python
 Write-Step "Copying venv to src-tauri/python..."

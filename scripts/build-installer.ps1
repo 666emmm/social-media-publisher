@@ -7,6 +7,9 @@ $BACKEND_DIR = Join-Path $PROJECT_ROOT "backend"
 $FRONTEND_DIR = Join-Path $PROJECT_ROOT "frontend"
 $TAURI_DIR = Join-Path $PROJECT_ROOT "src-tauri"
 $PYTHON_DIR = Join-Path $TAURI_DIR "python"
+$VENV_DIR = Join-Path $BACKEND_DIR "venv"
+$VENV_SCRIPTS = Join-Path $VENV_DIR "Scripts"
+$VENV_PYTHON = Join-Path $VENV_SCRIPTS "python.exe"
 
 function Write-Step {
     param($msg)
@@ -16,10 +19,6 @@ function Write-Step {
 Write-Step "Starting installer build..."
 
 # Step 1: 创建或更新 backend/venv
-$VENV_DIR = Join-Path $BACKEND_DIR "venv"
-$VENV_SCRIPTS = Join-Path $VENV_DIR "Scripts"
-$VENV_PYTHON = Join-Path $VENV_SCRIPTS "python.exe"
-
 Write-Step "Creating/updating Python venv..."
 if (Test-Path $VENV_DIR) {
     Remove-Item $VENV_DIR -Recurse -Force

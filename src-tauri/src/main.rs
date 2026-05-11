@@ -1,6 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use ai_social_auto_upload_lib::{check_webview2, create_data_dirs, get_data_dir};
@@ -103,7 +102,7 @@ fn main() {
             )).unwrap();
             Ok(())
         })
-        .on_window_event(|_window, event| {
+        .on_window_event(move |_window, event| {
             if let WindowEvent::CloseRequested { .. } = event {
                 log::info!("Window closed, shutting down");
                 child.kill().ok();

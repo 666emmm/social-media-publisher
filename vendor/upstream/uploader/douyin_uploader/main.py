@@ -467,13 +467,6 @@ class DouYinVideo(DouYinBaseUploader):
             await asyncio.sleep(1)
         except Exception as exc:
             douyin_logger.warning(_msg("⚠️", f"设置自主声明失败（不影响上传）: {exc}"))
-                close_btn = page.locator('.semi-modal-close')
-                if await close_btn.count() > 0:
-                    await close_btn.first.click()
-
-            await asyncio.sleep(1)
-        except Exception as exc:
-            douyin_logger.warning(_msg("⚠️", f"设置自主声明失败（不影响上传）: {exc}"))
 
     async def handle_upload_error(self, page):
         douyin_logger.warning(_msg("😵", "视频上传摔了一跤，小人马上重新上传"))

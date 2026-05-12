@@ -85,6 +85,7 @@ fn main() {
 
     // Wait for backend to be ready
     let backend_url = format!("http://localhost:{}", port);
+    let health_check_addr = format!("localhost:{}", port);
     let mut log_file = std::fs::OpenOptions::new().create(true).append(true).open(&log_path).unwrap();
     writeln!(log_file, "[{}] INFO: Waiting for backend at {}", unix_ts(), backend_url).unwrap();
     drop(log_file);
@@ -111,7 +112,8 @@ fn main() {
                 }
             }
         }
-        if std::net::TcpStream::connect(&backend_url[..]).is_ok() {
+        // NOTE: TcpStream::connect expects "host:port" format, NOT "http://host:port"
+        if std::net::TcpStream::connect(&health_check_addr[..]).is_ok() {
             let mut log_file = std::fs::OpenOptions::new().create(true).append(true).open(&log_path).unwrap();
             writeln!(log_file, "[{}] INFO: Backend ready after {} seconds", unix_ts(), i).unwrap();
             break;

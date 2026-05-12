@@ -425,6 +425,7 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
         account_file,
         thumbnail_path=None,
         desc: str | None = None,
+        ai_content: str | None = None,
         publish_strategy: str = XIAOHONGSHU_PUBLISH_STRATEGY_IMMEDIATE,
         debug: bool = DEBUG_MODE,
         headless: bool = LOCAL_CHROME_HEADLESS,
@@ -441,6 +442,7 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
         self.tags = tags or []
         self.thumbnail_path = thumbnail_path
         self.desc = desc or ""
+        self.ai_content = ai_content or ""
 
     async def validate_upload_args(self):
         await self.validate_base_args()
@@ -450,6 +452,33 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
         self.file_path = str(self.validate_video_file(self.file_path))
         if self.thumbnail_path:
             self.thumbnail_path = str(self.validate_image_file(self.thumbnail_path))
+
+    async def _set_content_declaration(self, page: Page):
+        """设置内容类型声明（虚构演绎/AI合成/营销广告/内容来源）"""
+        if not self.ai_content:
+            return
+
+        xiaohongshu_logger.info(_msg("📋", f"设置内容类型声明: {self.ai_content}"))
+        try:
+            # Step 1: 点击声明下拉框触发器
+            select_wrapper = page.locator('.custom-select-44 .d-select-wrapper').first
+            await select_wrapper.wait_for(state="visible", timeout=10000)
+            await select_wrapper.click()
+            xiaohongshu_logger.info(_msg("📋", "已点击声明下拉框"))
+            await asyncio.sleep(1)
+
+            # Step 2: 在弹出的下拉列表中点击目标选项
+            # 选项格式: <span class="d-text">虚构演绎，仅供娱乐</span>
+            target_option = page.locator(f'.d-option-name:has-text("{self.ai_content}")')
+            if await target_option.count() > 0:
+                await target_option.first.click()
+                xiaohongshu_logger.success(_msg("✅", f"已选择内容类型声明: {self.ai_content}"))
+            else:
+                xiaohongshu_logger.warning(_msg("⚠️", f"未找到声明选项: {self.ai_content}"))
+
+            await asyncio.sleep(1)
+        except Exception as exc:
+            xiaohongshu_logger.warning(_msg("⚠️", f"设置内容类型声明失败（不影响上传）: {exc}"))
 
     async def handle_upload_error(self, page: Page):
         xiaohongshu_logger.warning(_msg("😵", "视频上传摔了一跤，小人马上重新上传"))
@@ -618,6 +647,9 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
 
         if self.publish_strategy == XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED and self.publish_date != 0:
             await self.set_schedule_time_xiaohongshu(page, self.publish_date)
+
+        # 设置内容类型声明
+        await self._set_content_declaration(page)
 
         while True:
             try:

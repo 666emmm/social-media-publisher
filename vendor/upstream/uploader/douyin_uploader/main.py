@@ -381,6 +381,7 @@ class DouYinVideo(DouYinBaseUploader):
         productTitle="",
         thumbnail_portrait_path=None,
         desc: str | None = None,
+        ai_content: str | None = None,
         publish_strategy: str = DOUYIN_PUBLISH_STRATEGY_IMMEDIATE,
         debug: bool = DEBUG_MODE,
         headless: bool = LOCAL_CHROME_HEADLESS,
@@ -400,6 +401,7 @@ class DouYinVideo(DouYinBaseUploader):
         self.productLink = productLink
         self.productTitle = productTitle
         self.desc = desc or ""
+        self.ai_content = ai_content or ""
 
     async def validate_upload_args(self):
         await self.validate_base_args()
@@ -411,6 +413,46 @@ class DouYinVideo(DouYinBaseUploader):
             self.thumbnail_landscape_path = str(self.validate_image_file(self.thumbnail_landscape_path))
         if self.thumbnail_portrait_path:
             self.thumbnail_portrait_path = str(self.validate_image_file(self.thumbnail_portrait_path))
+
+    async def _set_declaration(self, page: Page):
+        """设置自主声明（AI生成/个人观点/转载/营销/虚构演绎）"""
+        if not self.ai_content:
+            return
+
+        douyin_logger.info(_msg("📋", f"设置自主声明: {self.ai_content}"))
+        try:
+            # Step 1: 点击声明选择框触发器
+            select_box = page.locator('.selectBox-buZRzi').first
+            await select_box.wait_for(state="visible", timeout=10000)
+            await select_box.click()
+            douyin_logger.info(_msg("📋", "已点击自主声明选择框，等待弹窗"))
+            await asyncio.sleep(2)
+
+            # Step 2: 在弹窗中选择对应的 radio 选项
+            # radio 选项格式: <span class="semi-radio-addon">内容由AI生成</span>
+            target_radio = page.locator(f'.semi-radio-addon:has-text("{self.ai_content}")')
+            if await target_radio.count() > 0:
+                await target_radio.first.click()
+                douyin_logger.info(_msg("📋", f"已选择声明选项: {self.ai_content}"))
+                await asyncio.sleep(1)
+
+                # Step 3: 点击确定按钮
+                confirm_btn = page.locator('.semi-modal-footer button.semi-button-primary, .btnWrapper-LtGF4z button:not(.semi-button-disabled)').last
+                if await confirm_btn.count() > 0:
+                    await confirm_btn.click()
+                    douyin_logger.success(_msg("✅", "已确认自主声明"))
+                else:
+                    douyin_logger.warning(_msg("⚠️", "确定按钮不可用"))
+            else:
+                douyin_logger.warning(_msg("⚠️", f"未找到声明选项: {self.ai_content}"))
+                # 关闭弹窗
+                close_btn = page.locator('.semi-modal-close')
+                if await close_btn.count() > 0:
+                    await close_btn.first.click()
+
+            await asyncio.sleep(1)
+        except Exception as exc:
+            douyin_logger.warning(_msg("⚠️", f"设置自主声明失败（不影响上传）: {exc}"))
 
     async def handle_upload_error(self, page):
         douyin_logger.warning(_msg("😵", "视频上传摔了一跤，小人马上重新上传"))
@@ -539,6 +581,9 @@ class DouYinVideo(DouYinBaseUploader):
 
         if self.publish_strategy == DOUYIN_PUBLISH_STRATEGY_SCHEDULED and self.publish_date != 0:
             await self.set_schedule_time_douyin(page, self.publish_date)
+
+        # 设置自主声明
+        await self._set_declaration(page)
 
         while True:
             try:

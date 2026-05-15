@@ -27,3 +27,6 @@ src-tauri/src-tauri/
 
 # Build outputs
 frontend-dist/
+
+# Embedded Python
+python/

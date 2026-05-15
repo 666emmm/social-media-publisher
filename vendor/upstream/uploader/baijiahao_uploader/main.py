@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
+import json
 import random
+import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 from playwright.async_api import Playwright, async_playwright, Page
 import os
@@ -13,28 +16,77 @@ from utils.log import baijiahao_logger
 from utils.network import async_retry
 
 
+async def baijiahao_cookie_gen_wrapper(id, status_queue):
+    """百家号登录包装函数 — 适配 sau_backend.run_async_function 接口"""
+    print(f"[BAIJIAHAO DEBUG] wrapper called with id={id}, status_queue={status_queue}")
+    baijiahao_logger.info(f"百家号登录开始... id={id}")
+    from conf import BASE_DIR
+    import uuid
+
+    uuid_v1 = str(uuid.uuid1())
+    cookies_dir = Path(BASE_DIR / "cookiesFile")
+    cookies_dir.mkdir(exist_ok=True)
+    account_file = str(cookies_dir / f"{uuid_v1}.json")
+    print(f"[BAIJIAHAO DEBUG] account_file={account_file}")
+
+    print(f"[BAIJIAHAO DEBUG] 调用 baijiahao_cookie_gen...")
+    await baijiahao_cookie_gen(account_file)
+    print(f"[BAIJIAHAO DEBUG] baijiahao_cookie_gen 返回")
+
+    # 登录成功后保存到数据库
+    with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+                       INSERT INTO user_info (type, filePath, userName, status, avatar)
+                       VALUES (?, ?, ?, ?, ?)
+                       ''', (6, f"{uuid_v1}.json", f"百家号用户", 1, ""))
+        conn.commit()
+    print(f"[BAIJIAHAO DEBUG] 数据库插入完成")
+
+    # 发送成功消息
+    status_queue.put(json.dumps({"status": "200", "name": "百家号用户", "avatar": ""}))
+
+
 async def baijiahao_cookie_gen(account_file):
+    """百家号登录 - 检测登录完成并自动保存 cookie"""
+    import asyncio
+    print(f"[BAIJIAHAO DEBUG] baijiahao_cookie_gen ENTRY, account_file={account_file}")
+    from conf import LOCAL_CHROME_PATH
+    print(f"[BAIJIAHAO DEBUG] LOCAL_CHROME_PATH={LOCAL_CHROME_PATH}")
+
     async with async_playwright() as playwright:
+        # Use B站's login options for consistency
         _opts = {
             'args': [
-                '--lang en-GB'
+                '--disable-blink-features=AutomationControlled',
+                '--lang=zh-CN',
+                '--disable-infobars',
+                '--start-maximized'
             ],
-            'headless': LOCAL_CHROME_HEADLESS,  # Set headless option here
+            'headless': False,
         }
         if LOCAL_CHROME_PATH:
             _opts['executable_path'] = LOCAL_CHROME_PATH
-        # Make sure to run headed.
+        print(f"[BAIJIAHAO DEBUG] launching browser, opts={_opts}")
         browser = await playwright.chromium.launch(**_opts)
-        # Setup context however you like.
-        context = await browser.new_context()  # Pass any options
+        context = await browser.new_context()
         context = await set_init_script(context)
-        # Pause the page, and start recording manually.
         page = await context.new_page()
-        await page.goto("https://baijiahao.baidu.com/builder/theme/bjh/login")
-        await page.pause()
-        # 点击调试器的继续，保存cookie
+        print(f"[BAIJIAHAO DEBUG] navigating to login page...")
+        await page.goto("https://baijiahao.baidu.com/builder/theme/bjh/login", timeout=45000)
+        print(f"[BAIJIAHAO DEBUG] page loaded, url={page.url}")
+        baijiahao_logger.info("百家号登录页面已打开，请完成扫码登录...")
+
+        # 等待登录完成 - 百家号登录后通常会跳转到 home 页面
+        try:
+            await page.wait_for_url("**/builder/rc/home**", timeout=120000)
+            baijiahao_logger.info("检测到登录成功，正在保存 cookie...")
+        except Exception:
+            baijiahao_logger.warning("未检测到登录完成，将在 120 秒后保存当前状态")
+            await asyncio.sleep(120)
+
         await context.storage_state(path=account_file)
-        baijiahao_logger.success("cookie saved")
+        baijiahao_logger.success("百家号 cookie 已保存")
 
 
 async def cookie_auth(account_file):

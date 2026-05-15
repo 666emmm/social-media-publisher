@@ -12,6 +12,9 @@ from flask import Flask, request, jsonify, Response, render_template, send_from_
 from conf import BASE_DIR
 from myUtils.login import get_tencent_cookie, douyin_cookie_gen, get_ks_cookie, xiaohongshu_cookie_gen, sync_account_profile, bilibili_cookie_gen
 from myUtils.postVideo import post_video_tencent, post_video_DouYin, post_video_ks, post_video_xhs, post_video_bilibili, post_video_baijiahao, post_video_tiktok, post_video_youtube
+from uploader.baijiahao_uploader.main import baijiahao_cookie_gen_wrapper as baijiahao_cookie_gen
+from uploader.tk_uploader.main_chrome import get_tiktok_cookie_wrapper as get_tiktok_cookie
+from uploader.youtube_uploader.main import youtube_cookie_gen
 
 active_queues = {}
 app = Flask(__name__)
@@ -835,32 +838,37 @@ def download_cookie():
 
 # 包装函数：在线程中运行异步函数
 def run_async_function(type,id,status_queue):
+    import json
     match type:
         case '1':
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(xiaohongshu_cookie_gen(id, status_queue))
-            loop.close()
+            fn = xiaohongshu_cookie_gen
         case '2':
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(get_tencent_cookie(id,status_queue))
-            loop.close()
+            fn = get_tencent_cookie
         case '3':
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(douyin_cookie_gen(id,status_queue))
-            loop.close()
+            fn = douyin_cookie_gen
         case '4':
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(get_ks_cookie(id,status_queue))
-            loop.close()
+            fn = get_ks_cookie
         case '5':
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(bilibili_cookie_gen(id,status_queue))
-            loop.close()
+            fn = bilibili_cookie_gen
+        case '6':
+            fn = baijiahao_cookie_gen
+        case '7':
+            fn = get_tiktok_cookie
+        case '8':
+            fn = youtube_cookie_gen
+        case _:
+            status_queue.put(json.dumps({"status": "500", "msg": f"不支持的平台类型: {type}"}))
+            return
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(fn(id, status_queue))
+    except Exception as e:
+        print(f"[LOGIN ERROR] type={type} id={id}: {type(e).__name__}: {e}")
+        status_queue.put(json.dumps({"status": "500", "msg": f"登录失败: {e}"}))
+    finally:
+        loop.close()
 
 # SSE 流生成器函数
 def sse_stream(status_queue):

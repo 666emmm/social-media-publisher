@@ -438,7 +438,7 @@ const connectSSE = (platform) => {
   eventSource.onmessage = (event) => {
     const data = event.data
 
-    // 先尝试解析 JSON（登录成功响应）
+    // 先尝试解析 JSON（登录响应）
     try {
       const result = JSON.parse(data)
       if (result.status === '200') {
@@ -453,6 +453,15 @@ const connectSSE = (platform) => {
             fetchAccounts().then(() => { ElMessage.closeAll(); ElMessage.success('账号信息已更新') })
           }, 1000)
         }, 1000)
+        return
+      }
+      if (result.status === '500') {
+        loginStatus.value = '500'
+        closeSSEConnection()
+        sseConnecting.value = false
+        qrCodeData.value = ''
+        ElMessage.error(result.msg || '登录失败，请稍后再试')
+        setTimeout(() => { loginStatus.value = '' }, 2000)
         return
       }
     } catch (e) {}

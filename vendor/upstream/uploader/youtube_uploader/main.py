@@ -55,6 +55,99 @@ async def cookie_auth(account_file: str) -> bool:
             await browser.close()
 
 
+async def youtube_cookie_gen(id, status_queue):
+    """生成 YouTube cookie（供 sau_backend login 接口调用）
+    使用 patchright（反检测）+ launch_persistent_context（代理在有头模式下生效）
+    """
+    import json
+    import uuid
+    import os
+    import tempfile
+    from conf import BASE_DIR
+
+    _args = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+    ]
+    if LOCAL_CHROME_PATH:
+        _args.append(f'--executable-path={LOCAL_CHROME_PATH}')
+
+    # 代理
+    proxy_url = os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY') or 'http://127.0.0.1:7897'
+
+    print(f"[YOUTUBE DEBUG] Launching browser... proxy={proxy_url}")
+
+    context = None
+    try:
+        async with async_playwright() as playwright:
+            # launch_persistent_context：patchright 有头模式下代理的唯一可靠方式
+            # 注意：不加载 stealth.js，patchright 自身已有反检测能力
+            tmp_dir = tempfile.mkdtemp(prefix="yt-login-")
+            context = await playwright.chromium.launch_persistent_context(
+                user_data_dir=tmp_dir,
+                headless=False,
+                proxy={"server": proxy_url},
+                args=_args,
+            )
+            page = context.pages[0] if context.pages else await context.new_page()
+            print(f"[YOUTUBE DEBUG] Navigating to accounts.google.com...")
+            await page.goto("https://accounts.google.com/", timeout=30000)
+            print(f"[YOUTUBE DEBUG] Page loaded, title: {await page.title()}")
+            youtube_logger.info("YouTube登录页面已打开，请完成扫码登录...")
+
+            # 等待登录完成 - 检测 URL 离开登录页即可
+            try:
+                while True:
+                    current_url = page.url
+                    # 还在登录页面，继续等
+                    if "accounts.google.com" in current_url and ("signin" in current_url or current_url.endswith("accounts.google.com/")):
+                        await asyncio.sleep(1)
+                        continue
+                    # 已经离开登录页，说明登录成功
+                    youtube_logger.info(f"检测到登录成功，当前页面: {current_url}")
+                    break
+                # 尝试导航到 YouTube Studio 确认 cookie 有效
+                try:
+                    await page.goto("https://studio.youtube.com", timeout=15000)
+                    youtube_logger.info("YouTube Studio 页面已打开")
+                except Exception:
+                    youtube_logger.warning("导航到 YouTube Studio 失败，但 cookie 可能已保存")
+            except Exception:
+                youtube_logger.warning("登录检测异常")
+
+            # 保存 cookie
+            uuid_v1 = str(uuid.uuid1())
+            cookies_dir = Path(BASE_DIR / "cookiesFile")
+            cookies_dir.mkdir(exist_ok=True)
+            await context.storage_state(path=cookies_dir / f"{uuid_v1}.json")
+            youtube_logger.success("YouTube cookie saved")
+            await context.close()
+            context = None
+
+            # 保存到数据库
+            import sqlite3
+            with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                               INSERT INTO user_info (type, filePath, userName, status, avatar)
+                               VALUES (?, ?, ?, ?, ?)
+                               ''', (8, f"{uuid_v1}.json", "YouTube用户", 1, ""))
+                conn.commit()
+
+            # 发送成功消息
+            status_queue.put(json.dumps({"status": "200", "name": "YouTube用户", "avatar": ""}))
+    except Exception as e:
+        print(f"[YOUTUBE ERROR] {type(e).__name__}: {e}")
+        youtube_logger.error(f"YouTube 登录失败: {e}")
+        status_queue.put(json.dumps({"status": "500", "msg": f"YouTube 登录失败: {e}"}))
+        if context:
+            try:
+                await context.close()
+            except Exception:
+                pass
+
+
 async def youtube_setup(account_file: str, handle=False, return_detail=False, headless=True) -> bool:
     """检查 YouTube cookie 是否就绪"""
     return await cookie_auth(account_file)

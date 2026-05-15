@@ -1,16 +1,44 @@
 # -*- coding: utf-8 -*-
+import json
 import re
+import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 from playwright.async_api import Playwright, async_playwright
 import os
 import asyncio
 
-from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
+from conf import BASE_DIR, LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
 from uploader.tk_uploader.tk_config import Tk_Locator
 from utils.base_social_media import set_init_script
 from utils.files_times import get_absolute_path
 from utils.log import tiktok_logger
+
+
+async def get_tiktok_cookie_wrapper(id, status_queue):
+    """TikTok登录包装函数 — 适配 sau_backend.run_async_function 接口"""
+    import uuid
+
+    uuid_v1 = str(uuid.uuid1())
+    cookies_dir = Path(BASE_DIR / "cookiesFile")
+    cookies_dir.mkdir(exist_ok=True)
+    account_file = str(cookies_dir / f"{uuid_v1}.json")
+
+    # page.pause() 等待用户手动登录
+    await get_tiktok_cookie(account_file)
+
+    # 登录成功后保存到数据库
+    with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+                       INSERT INTO user_info (type, filePath, userName, status, avatar)
+                       VALUES (?, ?, ?, ?, ?)
+                       ''', (7, f"{uuid_v1}.json", "TikTok用户", 1, ""))
+        conn.commit()
+
+    # 发送成功消息
+    status_queue.put(json.dumps({"status": "200", "name": "TikTok用户", "avatar": ""}))
 
 
 async def cookie_auth(account_file):
@@ -53,26 +81,37 @@ async def tiktok_setup(account_file, handle=False):
 
 
 async def get_tiktok_cookie(account_file):
+    """TikTok登录 - 检测登录完成并自动保存 cookie"""
     async with async_playwright() as playwright:
         _opts = {
             'args': [
                 '--lang en-GB',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--proxy-server=http://127.0.0.1:7897',
             ],
-            'headless': LOCAL_CHROME_HEADLESS,  # Set headless option here
+            'headless': False,
         }
         if LOCAL_CHROME_PATH:
             _opts['executable_path'] = LOCAL_CHROME_PATH
-        # Make sure to run headed.
         browser = await playwright.chromium.launch(**_opts)
-        # Setup context however you like.
-        context = await browser.new_context()  # Pass any options
+        context = await browser.new_context()
         context = await set_init_script(context)
-        # Pause the page, and start recording manually.
         page = await context.new_page()
         await page.goto("https://www.tiktok.com/login?lang=en")
-        await page.pause()
-        # 点击调试器的继续，保存cookie
+        tiktok_logger.info("TikTok登录页面已打开，请完成扫码登录...")
+
+        # 等待登录完成
+        try:
+            await page.wait_for_url("**/upload**", timeout=120000)
+            tiktok_logger.info("检测到登录成功，正在保存 cookie...")
+        except Exception:
+            tiktok_logger.warning("未检测到登录完成，将在 120 秒后保存当前状态")
+            await asyncio.sleep(120)
+
         await context.storage_state(path=account_file)
+        tiktok_logger.success("TikTok cookie 已保存")
 
 
 class TiktokVideo(object):

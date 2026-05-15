@@ -17,6 +17,7 @@ from patchright.async_api import Playwright
 from patchright.async_api import async_playwright
 
 from conf import DEBUG_MODE, LOCAL_CHROME_HEADLESS, LOCAL_CHROME_PATH
+from myUtils.browser import create_browser, create_context
 from uploader.base_video import BaseVideoUploader
 from utils.constant import VideoZoneTypes
 from utils.log import bilibili_logger
@@ -36,12 +37,9 @@ async def cookie_auth(account_file: str) -> bool:
     """校验 B站 cookie 是否有效"""
     from conf import LOGIN_HEADLESS
     async with async_playwright() as playwright:
-        _opts = {'headless': LOGIN_HEADLESS}
-        if LOCAL_CHROME_PATH:
-            _opts['executable_path'] = LOCAL_CHROME_PATH
-        browser = await playwright.chromium.launch(**_opts)
+        browser = await create_browser(playwright, headless=LOGIN_HEADLESS)
         try:
-            context = await browser.new_context(storage_state=account_file)
+            context = await create_context(browser, storage_state=account_file)
             page = await context.new_page()
             await page.goto(BILIBILI_UPLOAD_URL)
             if "passport.bilibili.com" in page.url:
@@ -75,7 +73,6 @@ class BilibiliBaseUploader(BaseVideoUploader):
         self.publish_strategy = publish_strategy
         self.debug = debug
         self.headless = headless
-        self.local_executable_path = LOCAL_CHROME_PATH
 
     async def validate_base_args(self):
         if not os.path.exists(self.account_file):
@@ -592,11 +589,8 @@ class BilibiliVideo(BilibiliBaseUploader):
         log_dir = Path(__file__).parent.parent.parent.parent / "data" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        _opts = {'headless': self.headless}
-        if self.local_executable_path:
-            _opts['executable_path'] = self.local_executable_path
-        browser = await playwright.chromium.launch(**_opts)
-        context = await browser.new_context(storage_state=self.account_file)
+        browser = await create_browser(playwright, headless=self.headless)
+        context = await create_context(browser, storage_state=self.account_file)
 
         upload_success = False
         try:

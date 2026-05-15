@@ -11,6 +11,7 @@ from patchright.async_api import Playwright
 from patchright.async_api import async_playwright
 
 from conf import DEBUG_MODE, LOCAL_CHROME_HEADLESS, LOCAL_CHROME_PATH
+from myUtils.browser import create_browser, create_context
 from uploader.base_video import BaseVideoUploader
 from utils.login_qrcode import build_login_qrcode_path
 from utils.login_qrcode import decode_qrcode_from_path
@@ -49,10 +50,7 @@ def _build_login_result(success: bool, status: str, message: str, account_file: 
 
 async def cookie_auth(account_file):
     async with async_playwright() as playwright:
-        _opts = {'headless': True}
-        if LOCAL_CHROME_PATH:
-            _opts['executable_path'] = LOCAL_CHROME_PATH
-        browser = await playwright.chromium.launch(**_opts)
+        browser = await create_browser(playwright, headless=True)
         try:
             context = await browser.new_context(storage_state=account_file)
             page = await context.new_page()
@@ -177,11 +175,8 @@ async def douyin_cookie_gen(
     headless: bool = LOCAL_CHROME_HEADLESS,
 ):
     async with async_playwright() as playwright:
-        _opts = {'headless': headless}
-        if LOCAL_CHROME_PATH:
-            _opts['executable_path'] = LOCAL_CHROME_PATH
-        browser = await playwright.chromium.launch(**_opts)
-        context = await browser.new_context()
+        browser = await create_browser(playwright, headless=headless)
+        context = await create_context(browser)
         qrcode_path = None
         result = _build_login_result(False, "failed", "抖音登录失败", account_file)
         try:
@@ -236,7 +231,6 @@ class DouYinBaseUploader(BaseVideoUploader):
         self.publish_strategy = publish_strategy
         self.debug = debug
         self.date_format = "%Y年%m月%d日 %H:%M"
-        self.local_executable_path = LOCAL_CHROME_PATH
         self.headless = headless
 
     async def validate_base_args(self):
@@ -530,11 +524,9 @@ class DouYinVideo(DouYinBaseUploader):
         await self.validate_upload_args()
         douyin_logger.info(_msg("🥳", "上传前检查通过"))
 
-        _opts = {'headless': self.headless}
-        if LOCAL_CHROME_PATH:
-            _opts['executable_path'] = LOCAL_CHROME_PATH
-        browser = await playwright.chromium.launch(**_opts)
-        context = await browser.new_context(
+        browser = await create_browser(playwright, headless=self.headless)
+        context = await create_context(
+            browser,
             storage_state=f"{self.account_file}",
             permissions=["geolocation"],
         )
@@ -728,11 +720,9 @@ class DouYinNote(DouYinBaseUploader):
         await self.validate_upload_args()
         douyin_logger.info(_msg("🥳", "图文上传前检查通过"))
 
-        _opts = {'headless': self.headless}
-        if LOCAL_CHROME_PATH:
-            _opts['executable_path'] = LOCAL_CHROME_PATH
-        browser = await playwright.chromium.launch(**_opts)
-        context = await browser.new_context(
+        browser = await create_browser(playwright, headless=self.headless)
+        context = await create_context(
+            browser,
             storage_state=f"{self.account_file}",
             permissions=["geolocation"],
         )

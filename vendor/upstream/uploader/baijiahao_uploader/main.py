@@ -5,13 +5,13 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from playwright.async_api import Playwright, async_playwright, Page
+from patchright.async_api import Playwright, async_playwright, Page
 import os
 import time
 import asyncio
 
-from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
-from utils.base_social_media import set_init_script
+from conf import LOCAL_CHROME_HEADLESS
+from myUtils.browser import create_browser, create_context
 from utils.log import baijiahao_logger
 from utils.network import async_retry
 
@@ -51,26 +51,11 @@ async def baijiahao_cookie_gen(account_file):
     """百家号登录 - 检测登录完成并自动保存 cookie"""
     import asyncio
     print(f"[BAIJIAHAO DEBUG] baijiahao_cookie_gen ENTRY, account_file={account_file}")
-    from conf import LOCAL_CHROME_PATH
-    print(f"[BAIJIAHAO DEBUG] LOCAL_CHROME_PATH={LOCAL_CHROME_PATH}")
-
+        
     async with async_playwright() as playwright:
-        # Use B站's login options for consistency
-        _opts = {
-            'args': [
-                '--disable-blink-features=AutomationControlled',
-                '--lang=zh-CN',
-                '--disable-infobars',
-                '--start-maximized'
-            ],
-            'headless': False,
-        }
-        if LOCAL_CHROME_PATH:
-            _opts['executable_path'] = LOCAL_CHROME_PATH
-        print(f"[BAIJIAHAO DEBUG] launching browser, opts={_opts}")
-        browser = await playwright.chromium.launch(**_opts)
-        context = await browser.new_context()
-        context = await set_init_script(context)
+        print(f"[BAIJIAHAO DEBUG] launching browser (patchright)")
+        browser = await create_browser(playwright, headless=False, login_mode=True)
+        context = await create_context(browser)
         page = await context.new_page()
         print(f"[BAIJIAHAO DEBUG] navigating to login page...")
         await page.goto("https://baijiahao.baidu.com/builder/theme/bjh/login", timeout=45000)
@@ -91,12 +76,8 @@ async def baijiahao_cookie_gen(account_file):
 
 async def cookie_auth(account_file):
     async with async_playwright() as playwright:
-        _opts = {'headless': LOCAL_CHROME_HEADLESS}
-        if LOCAL_CHROME_PATH:
-            _opts['executable_path'] = LOCAL_CHROME_PATH
-        browser = await playwright.chromium.launch(**_opts)
-        context = await browser.new_context(storage_state=account_file)
-        context = await set_init_script(context)
+        browser = await create_browser(playwright)
+        context = await create_context(browser, storage_state=account_file)
         # 创建一个新的页面
         page = await context.new_page()
         # 访问指定的 URL
@@ -127,7 +108,6 @@ class BaiJiaHaoVideo(object):
         self.publish_date = publish_date
         self.account_file = account_file
         self.date_format = '%Y年%m月%d日 %H:%M'
-        self.local_executable_path = LOCAL_CHROME_PATH
         self.headless = LOCAL_CHROME_HEADLESS
         self.proxy_setting = proxy_setting
 
@@ -177,10 +157,13 @@ class BaiJiaHaoVideo(object):
 
     async def upload(self, playwright: Playwright) -> None:
         # 使用 Chromium 浏览器启动一个浏览器实例
-        browser = await playwright.chromium.launch(headless=self.headless, executable_path=self.local_executable_path, proxy=self.proxy_setting)
+        browser = await create_browser(playwright, headless=self.headless, proxy=self.proxy_setting)
         # 创建一个浏览器上下文，使用指定的 cookie 文件
-        context = await browser.new_context(storage_state=f"{self.account_file}", user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.4324.150 Safari/537.36')
-        # context = await set_init_script(context)
+        context = await create_context(
+            browser,
+            storage_state=f"{self.account_file}",
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.4324.150 Safari/537.36',
+        )
         await context.grant_permissions(['geolocation'])
 
         # 创建一个新的页面
@@ -310,14 +293,14 @@ class BaiJiaHaoVideo(object):
     # 使用 AI成片 功能
     async def ai2video(self, playwright: Playwright) -> None:
         # 使用 Chromium 浏览器启动一个浏览器实例
-        browser = await playwright.chromium.launch(headless=self.headless, executable_path=self.local_executable_path, proxy=self.proxy_setting)
+        browser = await create_browser(playwright, headless=self.headless, proxy=self.proxy_setting)
         # 创建一个浏览器上下文，使用指定的 cookie 文件
-        context = await browser.new_context(
-            viewport={"width": 1600, "height": 900},
+        context = await create_context(
+            browser,
             storage_state=f"{self.account_file}",
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.4324.150 Safari/537.36'
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.4324.150 Safari/537.36',
+            viewport={"width": 1600, "height": 900},
         )
-        # context = await set_init_script(context)
         await context.grant_permissions(['geolocation'])
 
         # 创建一个新的页面

@@ -182,7 +182,7 @@ export const PLATFORMS = {
     key: 'baijiahao',
     name: '百家号',
     shortName: 'BJH',
-    letter: 'B',
+    letter: 'J',
     logo: logoBaijiahao,
     color: '#e64e3a',
     bgColor: 'rgba(230, 78, 58, 0.15)',
@@ -207,9 +207,10 @@ export const PLATFORMS = {
     creatorUrl: 'https://www.tiktok.com/tiktokstudio/upload?lang=en',
     settingsFields: [
       { key: 'aiContent', label: 'AI生成内容', type: 'switch' },
+      { key: 'isOriginal', label: '原创声明', type: 'radio', options: [{ label: '原创', value: true }, { label: '非原创', value: false }] },
       { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
     ],
-    defaultSettings: { title: '', description: '', aiContent: false, scheduleTime: '' },
+    defaultSettings: { title: '', description: '', aiContent: false, isOriginal: false, scheduleTime: '' },
   },
   YOUTUBE: {
     id: 8,

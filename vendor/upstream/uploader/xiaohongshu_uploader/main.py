@@ -675,9 +675,9 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
         browser = await create_browser(playwright, headless=self.headless)
         context = await create_context(
             browser,
-            permissions=["geolocation"],
             storage_state=self.account_file,
         )
+        await context.grant_permissions(['geolocation'])
 
         try:
             page = await context.new_page()
@@ -793,9 +793,9 @@ class XiaoHongShuNote(XiaoHongShuBaseUploader):
         browser = await create_browser(playwright, headless=self.headless)
         context = await create_context(
             browser,
-            permissions=["geolocation"],
             storage_state=self.account_file,
         )
+        await context.grant_permissions(['geolocation'])
 
         try:
             page = await context.new_page()

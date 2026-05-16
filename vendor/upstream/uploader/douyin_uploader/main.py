@@ -528,8 +528,8 @@ class DouYinVideo(DouYinBaseUploader):
         context = await create_context(
             browser,
             storage_state=f"{self.account_file}",
-            permissions=["geolocation"],
         )
+        await context.grant_permissions(['geolocation'])
 
         page = await context.new_page()
         await page.goto("https://creator.douyin.com/creator-micro/content/upload")
@@ -724,8 +724,8 @@ class DouYinNote(DouYinBaseUploader):
         context = await create_context(
             browser,
             storage_state=f"{self.account_file}",
-            permissions=["geolocation"],
         )
+        await context.grant_permissions(['geolocation'])
 
         upload_success = False
         try:

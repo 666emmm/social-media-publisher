@@ -34,7 +34,7 @@ import sqlite3
 import uuid
 from datetime import datetime
 
-from flask import g, jsonify, request, send_from_directory
+from flask import g, jsonify, request, Response, send_from_directory
 
 # 覆盖 sau_backend 的前端静态文件路由，指向正确的前端目录
 # 打包后前端在 exe 同级的 frontend/ 目录

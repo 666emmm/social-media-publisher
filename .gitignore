@@ -28,6 +28,9 @@ src-tauri/src-tauri/
 # Build outputs
 frontend-dist/
 
+# CloakBrowser bundled binary (downloaded by scripts/download-cloakbrowser-binary.py)
+src-tauri/bundle-resources/
+
 # Embedded Python
 python/
 .gstack/

@@ -930,6 +930,16 @@ watch(accountDialogVisible, async (visible) => {
   }
 })
 
+// 自动选择视频格式（当只有一种格式可用时）
+watch(effectiveVideoFormat, (format) => {
+  if (format && selectedPlatform.value && !currentSettings.value?.videoFormat) {
+    const platformKey = selectedPlatform.value
+    if (platformConfigs[platformKey]) {
+      platformConfigs[platformKey].videoFormat = format
+    }
+  }
+})
+
 // Topic dialog state
 const customTopic = ref('')
 const recommendedTopics = [

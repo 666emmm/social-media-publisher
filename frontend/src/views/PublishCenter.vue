@@ -32,14 +32,19 @@
               <div
                 v-for="account in group.accounts.filter(a => publishAccountIds.has(a.id))"
                 :key="account.id"
-                class="account-item cursor-pointer"
+                :class="['account-item cursor-pointer', {
+                  active: selectedAccountId === account.id,
+                  'has-override': hasAccountOverride(account.id)
+                }]"
+                @click="selectAccount(account, group)"
               >
                 <div class="account-avatar" :style="{ borderColor: group.color }">
                   {{ account.name ? account.name.charAt(0) : '?' }}
                 </div>
                 <span class="account-name">{{ account.name }}</span>
                 <span :class="['dot', account.status === '正常' ? 'on' : 'off']"></span>
-                <el-icon class="account-remove" @click.stop="publishAccountIds.delete(account.id)"><Close /></el-icon>
+                <el-icon v-if="hasAccountOverride(account.id)" class="override-icon" title="已自定义配置"><StarFilled /></el-icon>
+                <el-icon v-else class="account-remove" @click.stop="publishAccountIds.delete(account.id)"><Close /></el-icon>
               </div>
               <div v-if="group.accounts.filter(a => publishAccountIds.has(a.id)).length === 0" class="no-accounts">暂无账号</div>
             </div>
@@ -272,40 +277,36 @@
         <div v-if="currentPlatformConfig" class="config-section">
           <div class="section-bar">
             <div class="bar" :style="{ background: currentPlatformConfig.color }"></div>
-            <span class="section-label">{{ currentPlatformConfig.name }} 个性化设置</span>
-            <span class="hint">仅对该分组账号生效</span>
+            <span class="section-label">
+              {{ currentPlatformConfig.name }}
+              {{ selectedAccountId ? '· ' + getAccountName(selectedAccountId) : '· 默认设置' }}
+            </span>
+            <span class="hint">{{ selectedAccountId ? '仅对该账号生效' : '对该分组所有未自定义的账号生效' }}</span>
           </div>
 
-          <!-- Platform-specific title & description -->
+          <!-- 如果选中了账号且有自定义配置，显示"恢复默认"按钮 -->
+          <div v-if="selectedAccountId && hasAccountOverride(selectedAccountId)" style="margin-bottom: 12px;">
+            <el-button size="small" @click="resetAccountOverride(selectedAccountId)">恢复为渠道默认</el-button>
+          </div>
+
+          <!-- 账号级 or 渠道级标题描述 -->
           <div class="platform-title-desc">
-            <div
-              class="setting-card"
-              :style="{
-                borderColor: currentPlatformConfig.color + '26',
-                background: currentPlatformConfig.color + '0a'
-              }"
-            >
+            <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
               <div class="setting-label" :style="{ color: currentPlatformConfig.color }">标题</div>
               <el-input
-                v-model="currentSettings.title"
-                placeholder="请输入该平台的标题..."
+                v-model="resolvedAccountSettings.title"
+                placeholder="请输入标题..."
                 maxlength="100"
                 show-word-limit
               />
             </div>
-            <div
-              class="setting-card"
-              :style="{
-                borderColor: currentPlatformConfig.color + '26',
-                background: currentPlatformConfig.color + '0a'
-              }"
-            >
+            <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
               <div class="setting-label" :style="{ color: currentPlatformConfig.color }">描述</div>
               <el-input
-                v-model="currentSettings.description"
+                v-model="resolvedAccountSettings.description"
                 type="textarea"
                 :rows="5"
-                placeholder="请输入该平台的描述..."
+                placeholder="请输入描述..."
                 maxlength="2000"
                 show-word-limit
               />
@@ -314,103 +315,100 @@
 
           <div class="settings-grid">
             <template v-for="field in currentPlatformConfig.settingsFields" :key="field.key">
-              <!-- ===== Special rendering for videoFormat ===== -->
-              <div v-if="field.key === 'videoFormat'" class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
-                <div class="setting-label" :style="{ color: currentPlatformConfig.color }">{{ field.label }}</div>
-                <div class="radio-row">
-                  <label
-                    v-for="opt in videoFormatOptions"
-                    :key="opt.value"
-                    :class="['radio-item', 'cursor-pointer', { disabled: opt.disabled }]"
-                  >
-                    <input
-                      type="radio"
-                      :name="selectedPlatform + '-videoFormat'"
-                      :value="opt.value"
-                      v-model="currentSettings['videoFormat']"
-                      :disabled="opt.disabled"
-                      class="cursor-pointer"
-                    />
-                    <span
-                      :class="['radio-text', { on: currentSettings['videoFormat'] === opt.value, muted: opt.disabled }]"
-                      :style="currentSettings['videoFormat'] === opt.value ? { borderColor: currentPlatformConfig.color, color: currentPlatformConfig.color } : {}"
-                    >{{ opt.label }}</span>
-                  </label>
+              <!-- videoFormat 特殊渲染 -->
+              <template v-if="field.key === 'videoFormat'">
+                <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
+                  <div class="setting-label" :style="{ color: currentPlatformConfig.color }">{{ field.label }}</div>
+                  <div class="radio-row">
+                    <label
+                      v-for="opt in videoFormatOptions"
+                      :key="opt.value"
+                      :class="['radio-item', 'cursor-pointer', { disabled: opt.disabled }]"
+                    >
+                      <input
+                        type="radio"
+                        :name="(selectedAccountId || selectedPlatform) + '-videoFormat'"
+                        :value="opt.value"
+                        v-model="resolvedAccountSettings.videoFormat"
+                        :disabled="opt.disabled"
+                        class="cursor-pointer"
+                      />
+                      <span
+                        :class="['radio-text', { on: resolvedAccountSettings.videoFormat === opt.value, muted: opt.disabled }]"
+                        :style="resolvedAccountSettings.videoFormat === opt.value ? { borderColor: currentPlatformConfig.color, color: currentPlatformConfig.color } : {}"
+                      >{{ opt.label }}</span>
+                    </label>
+                  </div>
+                  <div v-if="!commonConfig.videoLandscape && !commonConfig.videoPortrait" class="setting-desc" style="font-size: 12px; color: $text-muted;">
+                    请先上传视频
+                  </div>
                 </div>
-                <div v-if="!commonConfig.videoLandscape && !commonConfig.videoPortrait" class="setting-desc" style="font-size: 12px; color: $text-muted;">
-                  请先上传视频
-                </div>
-              </div>
-
-              <!-- ===== General field rendering ===== -->
-              <div v-else class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
-                <div class="setting-label" :style="{ color: currentPlatformConfig.color }">{{ field.label }}</div>
-                <div v-if="field.description" class="setting-desc">{{ field.description }}</div>
-
-                <!-- Input field -->
-                <el-input
-                  v-if="field.type === 'input'"
-                  v-model="currentSettings[field.key]"
-                  :placeholder="field.placeholder"
-                  size="small"
-                />
-
-                <!-- Switch field -->
-                <el-switch
-                  v-else-if="field.type === 'switch'"
-                  v-model="currentSettings[field.key]"
-                />
-
-                <!-- Radio field -->
-                <div v-else-if="field.type === 'radio'" class="radio-row">
-                  <label
-                    v-for="opt in field.options"
-                    :key="String(opt.value)"
-                    class="radio-item cursor-pointer"
-                  >
-                    <input
-                      type="radio"
-                      :name="selectedPlatform + '-' + field.key"
-                      :value="opt.value"
-                      v-model="currentSettings[field.key]"
-                      class="cursor-pointer"
-                    />
-                    <span
-                      :class="['radio-text', { on: currentSettings[field.key] === opt.value }]"
-                      :style="currentSettings[field.key] === opt.value ? { borderColor: currentPlatformConfig.color, color: currentPlatformConfig.color } : {}"
-                    >{{ opt.label }}</span>
-                  </label>
-                </div>
-
-                <!-- Select field -->
-                <el-select
-                  v-else-if="field.type === 'select'"
-                  v-model="currentSettings[field.key]"
-                  :placeholder="field.placeholder"
-                  size="small"
-                  clearable
-                  class="cursor-pointer"
+              </template>
+              <!-- 其他字段通用渲染 -->
+              <template v-else-if="field.key !== 'title' && field.key !== 'description'">
+                <div
+                  class="setting-card"
+                  :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }"
                 >
-                  <el-option
-                    v-for="opt in (field.options || [])"
-                    :key="opt.value"
-                    :label="opt.label"
-                    :value="opt.value"
-                  />
-                  <el-option v-if="!field.options || field.options.length === 0" label="暂无可选项" :value="''" disabled />
-                </el-select>
+                  <div class="setting-label" :style="{ color: currentPlatformConfig.color }">{{ field.label }}</div>
+                  <div v-if="field.description" class="setting-desc">{{ field.description }}</div>
 
-                <!-- DateTime field -->
-                <el-date-picker
-                  v-else-if="field.type === 'datetime'"
-                  v-model="currentSettings[field.key]"
-                  type="datetime"
-                  :placeholder="field.placeholder"
-                  value-format="YYYY-MM-DD HH:mm:ss"
-                  size="small"
-                  class="cursor-pointer"
-                />
-              </div>
+                  <el-input
+                    v-if="field.type === 'input'"
+                    v-model="resolvedAccountSettings[field.key]"
+                    :placeholder="field.placeholder"
+                    size="small"
+                  />
+                  <el-switch
+                    v-else-if="field.type === 'switch'"
+                    v-model="resolvedAccountSettings[field.key]"
+                  />
+                  <div v-else-if="field.type === 'radio'" class="radio-row">
+                    <label
+                      v-for="opt in field.options"
+                      :key="String(opt.value)"
+                      class="radio-item cursor-pointer"
+                    >
+                      <input
+                        type="radio"
+                        :name="(selectedAccountId || selectedPlatform) + '-' + field.key"
+                        :value="opt.value"
+                        v-model="resolvedAccountSettings[field.key]"
+                        class="cursor-pointer"
+                      />
+                      <span
+                        :class="['radio-text', { on: resolvedAccountSettings[field.key] === opt.value }]"
+                        :style="resolvedAccountSettings[field.key] === opt.value ? { borderColor: currentPlatformConfig.color, color: currentPlatformConfig.color } : {}"
+                      >{{ opt.label }}</span>
+                    </label>
+                  </div>
+                  <el-select
+                    v-else-if="field.type === 'select'"
+                    v-model="resolvedAccountSettings[field.key]"
+                    :placeholder="field.placeholder"
+                    size="small"
+                    clearable
+                    class="cursor-pointer"
+                  >
+                    <el-option
+                      v-for="opt in (field.options || [])"
+                      :key="opt.value"
+                      :label="opt.label"
+                      :value="opt.value"
+                    />
+                    <el-option v-if="!field.options || field.options.length === 0" label="暂无可选项" :value="''" disabled />
+                  </el-select>
+                  <el-date-picker
+                    v-else-if="field.type === 'datetime'"
+                    v-model="resolvedAccountSettings[field.key]"
+                    type="datetime"
+                    :placeholder="field.placeholder"
+                    value-format="YYYY-MM-DD HH:mm:ss"
+                    size="small"
+                    class="cursor-pointer"
+                  />
+                </div>
+              </template>
             </template>
           </div>
         </div>
@@ -749,7 +747,7 @@
 
 <script setup>
 import { ref, reactive, computed, nextTick, watch } from 'vue'
-import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Check, Close, InfoFilled, Promotion } from '@element-plus/icons-vue'
+import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Check, Close, InfoFilled, Promotion, StarFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
@@ -876,6 +874,62 @@ function getAccountSettings(accountId, platformKey) {
     }
   }
   return merged
+}
+
+/**
+ * 检查账号是否有自定义覆盖配置
+ */
+function hasAccountOverride(accountId) {
+  const override = accountOverrides[accountId]
+  if (!override) return false
+  return Object.values(override).some(v => v !== undefined && v !== '' && v !== false)
+}
+
+// 当前账号的设置（合并渠道默认 + 账号覆盖）
+const resolvedAccountSettings = computed(() => {
+  const platformKey = selectedPlatform.value
+  if (!platformKey) return {}
+  const platform = platformConfigs[platformKey] || {}
+
+  if (selectedAccountId.value) {
+    const override = accountOverrides[selectedAccountId.value]
+    if (override && Object.keys(override).length > 0) {
+      return {
+        ...platform,
+        ...Object.fromEntries(
+          Object.entries(override).filter(([_, v]) => v !== undefined && v !== '' && v !== false)
+        ),
+      }
+    }
+  }
+  return platform
+})
+
+// 监听账号设置变化，自动写入 accountOverrides
+watch(resolvedAccountSettings, (settings) => {
+  if (!selectedAccountId.value || !selectedPlatform.value) return
+  const platform = platformConfigs[selectedPlatform.value] || {}
+  const diff = {}
+  for (const key of Object.keys(settings)) {
+    if (settings[key] !== platform[key]) {
+      diff[key] = settings[key]
+    }
+  }
+  if (Object.keys(diff).length > 0) {
+    accountOverrides[selectedAccountId.value] = diff
+  } else {
+    delete accountOverrides[selectedAccountId.value]
+  }
+}, { deep: true })
+
+function getAccountName(accountId) {
+  const account = accountStore.accounts.find(a => a.id === accountId)
+  return account ? account.name : '未知'
+}
+
+function resetAccountOverride(accountId) {
+  delete accountOverrides[accountId]
+  ElMessage.success('已恢复为渠道默认设置')
 }
 
 // ========== Batch title/description sync ==========
@@ -1757,6 +1811,17 @@ function formatSize(bytes) {
 
     &:hover .account-remove {
       opacity: 1;
+    }
+
+    &.has-override {
+      background: rgba(255, 215, 0, 0.06);
+      .account-name { font-weight: 600; }
+    }
+
+    .override-icon {
+      font-size: 12px;
+      color: #f59e0b;
+      flex-shrink: 0;
     }
   }
 

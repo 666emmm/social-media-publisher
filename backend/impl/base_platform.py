@@ -2,14 +2,12 @@
 Abstract base class for all social media platform implementations.
 
 Each platform (Douyin, Xiaohongshu, Bilibili, etc.) must subclass BasePlatform
-and implement the abstract methods. Browser entry points delegate to the
-existing myUtils/browser.py factories.
+and implement the abstract methods. Browser entry points use the CloakBrowser
+factory (``_browser.py``) for stealth Chromium automation.
 """
 
 from abc import ABC, abstractmethod
 from queue import Queue
-
-from patchright.async_api import Playwright, Browser, BrowserContext
 
 
 class BasePlatform(ABC):
@@ -20,27 +18,28 @@ class BasePlatform(ABC):
     platform_name: str = ""
 
     # ------------------------------------------------------------------
-    # Unified browser entry points (delegate to myUtils/browser.py)
+    # Unified browser entry points (CloakBrowser stealth layer)
     # ------------------------------------------------------------------
 
     async def create_browser(
         self,
-        playwright: Playwright,
         headless: bool | None = None,
         login_mode: bool = False,
         proxy: dict | None = None,
         extra_args: list | None = None,
-    ) -> Browser:
-        """Create a Playwright browser instance.
+    ):
+        """Create a stealth Chromium browser via CloakBrowser.
 
-        Delegates to ``myUtils.browser.create_browser`` which handles
-        Chrome discovery (LOCAL_CHROME_PATH / system Chrome / built-in
-        Chromium) and Patchright anti-detection args.
+        Args:
+            headless: Run headless.  Defaults to ``LOGIN_HEADLESS`` when
+                *login_mode* is True, else ``LOCAL_CHROME_HEADLESS``.
+            login_mode: If True, use ``LOGIN_HEADLESS`` headless default.
+            proxy: Proxy config (dict or URL string).
+            extra_args: Additional Chromium CLI arguments.
         """
-        from myUtils.browser import create_browser as _create_browser
+        from ._browser import create_browser as _create_browser
 
         return await _create_browser(
-            playwright,
             headless=headless,
             login_mode=login_mode,
             proxy=proxy,
@@ -49,16 +48,13 @@ class BasePlatform(ABC):
 
     async def create_context(
         self,
-        browser: Browser,
+        browser,
         storage_state: str | None = None,
         user_agent: str | None = None,
         viewport: dict | None = None,
-    ) -> BrowserContext:
+    ):
         """Create a browser context (optionally with stored auth state)."""
-        from myUtils.browser import create_context as _create_context
-
-        return await _create_context(
-            browser,
+        return await browser.new_context(
             storage_state=storage_state,
             user_agent=user_agent,
             viewport=viewport,
@@ -66,21 +62,19 @@ class BasePlatform(ABC):
 
     async def create_persistent_context(
         self,
-        playwright: Playwright,
         user_data_dir: str,
         headless: bool = False,
         proxy: dict | None = None,
         extra_args: list | None = None,
-    ) -> BrowserContext:
+    ):
         """Create a persistent browser context with a local user data dir."""
-        from myUtils.browser import create_persistent_context as _create_persistent_context
+        from ._browser import create_persistent_context as _create_persistent_context
 
         return await _create_persistent_context(
-            playwright,
-            user_data_dir=user_data_dir,
+            user_data_dir,
             headless=headless,
             proxy=proxy,
-            extra_args=extra_args,
+            args=extra_args,
         )
 
     # ------------------------------------------------------------------

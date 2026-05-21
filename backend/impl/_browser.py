@@ -10,6 +10,7 @@ Falls back to standard Playwright when CloakBrowser binary is unavailable
 """
 
 import logging
+import os
 
 from conf import LOCAL_CHROME_HEADLESS, LOGIN_HEADLESS
 
@@ -17,6 +18,26 @@ logger = logging.getLogger(__name__)
 
 # Set to True after successful CloakBrowser binary download
 _using_cloakbrowser = False
+
+
+def _download_binary():
+    """Download CloakBrowser stealth binary, bypassing system SOCKS proxy.
+
+    httpx does not natively support SOCKS proxies unless ``socksio`` is
+    installed.  Since most users won't have that package, temporarily clear
+    proxy env vars so the binary download uses a direct connection.
+    """
+    saved = {}
+    for var in ("all_proxy", "http_proxy", "https_proxy",
+                "ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "no_proxy"):
+        if var in os.environ:
+            saved[var] = os.environ.pop(var)
+
+    from cloakbrowser import ensure_binary
+    try:
+        ensure_binary()
+    finally:
+        os.environ.update(saved)
 
 
 def init():
@@ -28,9 +49,7 @@ def init():
     global _using_cloakbrowser
 
     try:
-        from cloakbrowser import ensure_binary
-
-        ensure_binary()
+        _download_binary()
         _using_cloakbrowser = True
         logger.info("CloakBrowser stealth binary ready")
     except Exception as e:

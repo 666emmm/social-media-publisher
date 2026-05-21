@@ -11,7 +11,6 @@ from queue import Queue
 
 from conf import BASE_DIR
 
-from .._browser import create_browser_sync
 from ..base_platform import BasePlatform
 from myUtils.auth import cookie_auth_xhs
 from myUtils.login import xiaohongshu_cookie_gen, sync_account_profile
@@ -46,9 +45,13 @@ class XiaohongshuPlatform(BasePlatform):
         url = "https://creator.xiaohongshu.com/"
 
         def _launch():
-            browser = create_browser_sync(headless=False)
+            from patchright.sync_api import sync_playwright
+            from myUtils.browser import create_browser_sync, create_context_sync
+
+            pw = sync_playwright().start()
             try:
-                context = browser.new_context(storage_state=cookie_path)
+                browser = create_browser_sync(pw, headless=False)
+                context = create_context_sync(browser, storage_state=cookie_path)
                 page = context.new_page()
                 page.goto(url)
                 try:
@@ -60,6 +63,7 @@ class XiaohongshuPlatform(BasePlatform):
                     browser.close()
                 except Exception:
                     pass
+                pw.stop()
 
         thread = threading.Thread(target=_launch, daemon=True)
         thread.start()

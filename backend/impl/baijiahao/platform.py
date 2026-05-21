@@ -11,7 +11,6 @@ from queue import Queue
 
 from conf import BASE_DIR
 
-from .._browser import create_browser, create_browser_sync
 from ..base_platform import BasePlatform
 from myUtils.postVideo import post_video_baijiahao
 from uploader.baijiahao_uploader.main import cookie_auth as baijiahao_cookie_auth
@@ -39,9 +38,13 @@ class BaijiahaoPlatform(BasePlatform):
         Uses ``_scrape_baijiahao_profile`` to scrape the rendered account
         settings page.
         """
-        browser = await create_browser(headless=True)
-        try:
-            context = await browser.new_context(
+        from patchright.async_api import async_playwright
+        from myUtils.browser import create_browser, create_context
+
+        async with async_playwright() as p:
+            browser = await create_browser(p, headless=True)
+            context = await create_context(
+                browser,
                 storage_state=str(Path(BASE_DIR / "cookiesFile" / cookie_file)),
             )
             page = await context.new_page()
@@ -49,9 +52,8 @@ class BaijiahaoPlatform(BasePlatform):
             name, avatar = await _scrape_baijiahao_profile(page)
             await page.close()
             await context.close()
-            return name, avatar
-        finally:
             await browser.close()
+            return name, avatar
 
     async def open_creator_center(self, cookie_file: str) -> None:
         """Open the Baijiahao creator centre in a visible browser window."""
@@ -59,9 +61,13 @@ class BaijiahaoPlatform(BasePlatform):
         url = "https://baijiahao.baidu.com/"
 
         def _launch():
-            browser = create_browser_sync(headless=False)
+            from patchright.sync_api import sync_playwright
+            from myUtils.browser import create_browser_sync, create_context_sync
+
+            pw = sync_playwright().start()
             try:
-                context = browser.new_context(storage_state=cookie_path)
+                browser = create_browser_sync(pw, headless=False)
+                context = create_context_sync(browser, storage_state=cookie_path)
                 page = context.new_page()
                 page.goto(url)
                 try:
@@ -73,6 +79,7 @@ class BaijiahaoPlatform(BasePlatform):
                     browser.close()
                 except Exception:
                     pass
+                pw.stop()
 
         thread = threading.Thread(target=_launch, daemon=True)
         thread.start()

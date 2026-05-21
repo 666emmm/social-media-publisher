@@ -11,7 +11,6 @@ from queue import Queue
 
 from conf import BASE_DIR
 
-from .._browser import create_browser_sync
 from ..base_platform import BasePlatform
 from myUtils.postVideo import post_video_tiktok
 from uploader.tk_uploader.main_chrome import get_tiktok_cookie_wrapper as get_tiktok_cookie
@@ -47,9 +46,13 @@ class TiktokPlatform(BasePlatform):
         url = "https://www.tiktok.com/tiktokstudio/upload?lang=en"
 
         def _launch():
-            browser = create_browser_sync(headless=False)
+            from patchright.sync_api import sync_playwright
+            from myUtils.browser import create_browser_sync, create_context_sync
+
+            pw = sync_playwright().start()
             try:
-                context = browser.new_context(storage_state=cookie_path)
+                browser = create_browser_sync(pw, headless=False)
+                context = create_context_sync(browser, storage_state=cookie_path)
                 page = context.new_page()
                 page.goto(url)
                 try:
@@ -61,6 +64,7 @@ class TiktokPlatform(BasePlatform):
                     browser.close()
                 except Exception:
                     pass
+                pw.stop()
 
         thread = threading.Thread(target=_launch, daemon=True)
         thread.start()

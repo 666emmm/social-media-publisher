@@ -31,8 +31,7 @@
       "../python": "python",
       "../backend": "backend",
       "../vendor": "vendor",
-      "../frontend/dist": "frontend",
-      "../src-tauri/bundle-resources/cloakbrowser": "cloakbrowser"
+      "../frontend/dist": "frontend"
     },
     "icon": [
       "icons/32x32.png",

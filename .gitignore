@@ -31,4 +31,6 @@ frontend-dist/
 # Embedded Python
 python/
 .gstack/
-docs/superpowers/
+docs/superpowers/.claude/
+.claude/
+docs/

@@ -368,7 +368,7 @@ class TencentVideoPlatform(BasePlatform):
         """Upload cover image via the cover modal."""
         logger.info("Uploading cover image: %s", cover_path)
         try:
-            # Click the "上传横版封面" button area
+            # Click the "上传横版封面" button area to open the modal
             upload_area = page.locator(
                 'div[class*="uploadAddArea"]:has-text("上传横版封面")'
             ).first
@@ -380,23 +380,44 @@ class TencentVideoPlatform(BasePlatform):
             await upload_area.click()
             await asyncio.sleep(1)
 
-            # Wait for the modal and find the hidden file input
-            cover_input = page.locator('input#uploadCoverBtn')
-            await cover_input.wait_for(state="visible", timeout=10000)
+            # Wait for the ReactModal to appear
+            modal = page.locator('div.ReactModal__Content').first
+            await modal.wait_for(state="visible", timeout=10000)
+            logger.info("Cover upload modal opened")
+
+            # Find the hidden file input inside the modal by id
+            # The input is: <input accept=".jpg,.jpeg,.png,.webp" id="uploadCoverBtn" type="file">
+            cover_input = modal.locator('input#uploadCoverBtn')
+            await cover_input.wait_for(state="attached", timeout=10000)
+
+            # Use evaluate to set the file since input is display:none
+            await cover_input.evaluate(
+                "el => el.style.display = 'block'"
+            )
             await cover_input.set_input_files(cover_path)
             logger.info("Cover image uploaded to modal")
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
 
-            # Click the "使用" (use) button in the modal
-            use_btn = page.locator(
-                'div.ReactModal__Content button:has-text("使用")'
+            # Click the "使用" button to confirm the cover
+            # From the DOM: button with dt-mpid="上传封面确定"
+            use_btn = modal.locator(
+                'button[dt-mpid="上传封面确定"]'
             ).first
             if await use_btn.count() > 0:
                 await use_btn.click()
-                logger.info("Cover confirmed with '使用' button")
+                logger.info("Cover confirmed with '上传封面确定' button")
                 await asyncio.sleep(1)
             else:
-                logger.warning("Cover '使用' button not found")
+                # Fallback: try any "使用" button
+                use_btn_fallback = modal.locator(
+                    'button:has-text("使用")'
+                ).first
+                if await use_btn_fallback.count() > 0:
+                    await use_btn_fallback.click()
+                    logger.info("Cover confirmed with '使用' button")
+                    await asyncio.sleep(1)
+                else:
+                    logger.warning("Cover '使用' button not found in modal")
         except Exception as e:
             logger.warning("Cover upload failed (non-blocking): %s", e)
 

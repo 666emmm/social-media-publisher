@@ -498,7 +498,7 @@ def postVideo():
         return jsonify({"code": 400, "msg": "不支持的平台类型"}), 400
 
     try:
-        platform.publish_video(
+        asyncio.run(platform.publish_video(
             title=data.get('title'),
             files=data.get('fileList', []),
             tags=data.get('tags'),
@@ -521,7 +521,7 @@ def postVideo():
             is_draft=data.get('isDraft', False),
             audience=data.get('audience', 'not_kids'),
             altered_content=data.get('alteredContent', False),
-        )
+        ))
         return jsonify({"code": 200, "msg": "发布任务已提交", "data": None}), 200
     except Exception as e:
         print(f"发布视频时出错: {str(e)}")
@@ -539,7 +539,7 @@ def postVideoBatch():
         if not platform:
             return jsonify({"code": 400, "msg": "不支持的平台类型"}), 400
 
-        platform.publish_video(
+        asyncio.run(platform.publish_video(
             title=data.get('title'),
             files=data.get('fileList', []),
             tags=data.get('tags'),
@@ -562,7 +562,7 @@ def postVideoBatch():
             is_draft=data.get('isDraft', False),
             audience=data.get('audience', 'not_kids'),
             altered_content=data.get('alteredContent', False),
-        )
+        ))
 
     return jsonify({"code": 200, "msg": None, "data": None}), 200
 

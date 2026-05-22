@@ -21,7 +21,7 @@
             <el-icon class="expand-icon" :style="{ color: selectedPlatform === group.key ? group.color : '' }">
               <component :is="expandedGroups.has(group.key) ? ArrowDown : ArrowRight" />
             </el-icon>
-            <span class="platform-badge" :style="{ background: group.color }">
+            <span class="platform-badge">
               <img v-if="group.logo" :src="group.logo" :alt="group.name" class="platform-badge-img">
               <template v-else>{{ group.letter }}</template>
             </span>
@@ -456,16 +456,6 @@
       class="account-select-dialog"
     >
       <div class="account-dialog-body">
-        <div class="account-dialog-toolbar">
-          <el-input
-            v-model="accountSearchQuery"
-            placeholder="输入账号名称搜索..."
-            size="small"
-            clearable
-            class="account-search-input"
-          />
-        </div>
-
         <div class="account-dialog-content">
           <!-- Left: platform list -->
           <div class="dialog-platform-list">
@@ -479,7 +469,7 @@
               :class="['dialog-platform-item', 'cursor-pointer', { active: accountFilterPlatform === p.name }]"
               @click="accountFilterPlatform = p.name"
             >
-              <span class="dialog-platform-badge" :style="{ background: p.color }">
+              <span class="dialog-platform-badge">
                 <img v-if="p.logo" :src="p.logo" :alt="p.name" class="dialog-platform-badge-img">
                 <template v-else>{{ p.letter }}</template>
               </span>
@@ -2618,16 +2608,6 @@ function formatSize(bytes) {
 // ========== Account Dialog ==========
 .account-select-dialog {
   .account-dialog-body {
-    .account-dialog-toolbar {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-
-      .account-search-input {
-        flex: 1;
-      }
-    }
-
     .account-dialog-content {
       display: flex;
       gap: 0;

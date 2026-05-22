@@ -21,7 +21,10 @@
             <el-icon class="expand-icon" :style="{ color: selectedPlatform === group.key ? group.color : '' }">
               <component :is="expandedGroups.has(group.key) ? ArrowDown : ArrowRight" />
             </el-icon>
-            <span class="platform-badge" :style="{ background: group.color }">{{ group.letter }}</span>
+            <span class="platform-badge" :style="{ background: group.color }">
+              <img v-if="group.logo" :src="group.logo" :alt="group.name" class="platform-badge-img">
+              <template v-else>{{ group.letter }}</template>
+            </span>
             <span class="group-name">{{ group.name }}</span>
             <span class="group-count">{{ group.accounts.filter(a => publishAccountIds.has(a.id)).length }}</span>
           </div>
@@ -454,21 +457,6 @@
     >
       <div class="account-dialog-body">
         <div class="account-dialog-toolbar">
-          <el-select
-            v-model="accountFilterPlatform"
-            placeholder="筛选平台"
-            size="small"
-            clearable
-            class="cursor-pointer"
-          >
-            <el-option label="全部平台" :value="''" />
-            <el-option
-              v-for="p in platformList"
-              :key="p.key"
-              :label="p.name"
-              :value="p.name"
-            />
-          </el-select>
           <el-input
             v-model="accountSearchQuery"
             placeholder="输入账号名称搜索..."
@@ -491,7 +479,10 @@
               :class="['dialog-platform-item', 'cursor-pointer', { active: accountFilterPlatform === p.name }]"
               @click="accountFilterPlatform = p.name"
             >
-              <span class="dialog-platform-badge" :style="{ background: p.color }">{{ p.letter }}</span>
+              <span class="dialog-platform-badge" :style="{ background: p.color }">
+                <img v-if="p.logo" :src="p.logo" :alt="p.name" class="dialog-platform-badge-img">
+                <template v-else>{{ p.letter }}</template>
+              </span>
               {{ p.name }}
             </div>
           </div>
@@ -1779,6 +1770,13 @@ function formatSize(bytes) {
       font-size: 11px;
       font-weight: 700;
       flex-shrink: 0;
+      overflow: hidden;
+
+      .platform-badge-img {
+        width: 16px;
+        height: 16px;
+        object-fit: contain;
+      }
     }
 
     .group-name {
@@ -2676,6 +2674,13 @@ function formatSize(bytes) {
           font-size: 9px;
           font-weight: 700;
           flex-shrink: 0;
+          overflow: hidden;
+
+          .dialog-platform-badge-img {
+            width: 14px;
+            height: 14px;
+            object-fit: contain;
+          }
         }
       }
     }

@@ -1127,6 +1127,7 @@ function confirmMaterialSelect() {
         commonConfig.videoLandscape = videoData
       }
       ElMessage.success('视频已设置')
+      triggerFrameExtraction(videoData, materialLibraryVideoTarget.value)
     }
   }
   materialLibraryVisible.value = false

@@ -8,12 +8,12 @@ export const frameApi = {
 
   /** Query extraction progress */
   getFramesStatus(videoPath) {
-    return http.get('/api/frames-status', { params: { video_path: videoPath } })
+    return http.get('/api/frames-status', { video_path: videoPath })
   },
 
   /** Get list of extracted frames for timeline / recommended frames */
   getFrames(videoPath) {
-    return http.get('/api/frames', { params: { video_path: videoPath } })
+    return http.get('/api/frames', { video_path: videoPath })
   },
 
   /** Get URL for a specific frame image (thumbnail or HD) */

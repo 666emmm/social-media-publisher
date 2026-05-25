@@ -1,0 +1,323 @@
+"""
+FFmpeg service for video processing.
+
+Provides utilities to locate ffmpeg/ffprobe binaries, extract video metadata,
+and perform frame extraction (thumbnail and HD) for the video timeline feature.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+import threading
+from pathlib import Path
+
+from loguru import logger
+
+
+# ---------------------------------------------------------------------------
+# Binary discovery
+# ---------------------------------------------------------------------------
+
+def _find_ffmpeg() -> str:
+    """Locate the ffmpeg binary.
+
+    Priority order:
+      1. PyInstaller bundle: sys._MEIPASS/bin/ffmpeg
+      2. Local bundle: backend/bin/ffmpeg
+      3. System PATH via shutil.which
+
+    Raises:
+        FileNotFoundError: if ffmpeg cannot be found anywhere.
+    """
+    # 1. PyInstaller bundle
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidate = os.path.join(meipass, "bin", "ffmpeg")
+        if os.path.isfile(candidate):
+            logger.debug("Found ffmpeg in PyInstaller bundle: {}", candidate)
+            return candidate
+
+    # 2. Local bundle relative to this file's parent (backend/)
+    local_bin = Path(__file__).resolve().parent / "bin" / "ffmpeg"
+    if local_bin.is_file():
+        logger.debug("Found ffmpeg in local bundle: {}", local_bin)
+        return str(local_bin)
+
+    # 3. System PATH
+    found = shutil.which("ffmpeg")
+    if found:
+        logger.debug("Found ffmpeg on system PATH: {}", found)
+        return found
+
+    raise FileNotFoundError(
+        "ffmpeg not found. Install ffmpeg or place the binary in backend/bin/"
+    )
+
+
+def _find_ffprobe() -> str:
+    """Locate the ffprobe binary.
+
+    Same priority order as _find_ffmpeg().
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidate = os.path.join(meipass, "bin", "ffprobe")
+        if os.path.isfile(candidate):
+            logger.debug("Found ffprobe in PyInstaller bundle: {}", candidate)
+            return candidate
+
+    local_bin = Path(__file__).resolve().parent / "bin" / "ffprobe"
+    if local_bin.is_file():
+        logger.debug("Found ffprobe in local bundle: {}", local_bin)
+        return str(local_bin)
+
+    found = shutil.which("ffprobe")
+    if found:
+        logger.debug("Found ffprobe on system PATH: {}", found)
+        return found
+
+    raise FileNotFoundError(
+        "ffprobe not found. Install ffmpeg or place the binary in backend/bin/"
+    )
+
+
+# Module-level constants resolved at import time.
+FFMPEG: str = _find_ffmpeg()
+FFPROBE: str = _find_ffprobe()
+
+
+# ---------------------------------------------------------------------------
+# Video metadata
+# ---------------------------------------------------------------------------
+
+def get_video_duration(video_path: str) -> float:
+    """Return the duration of *video_path* in seconds."""
+    cmd = [
+        FFPROBE,
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        video_path,
+    ]
+    logger.debug("Running ffprobe: {}", " ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    duration = float(result.stdout.strip())
+    return duration
+
+
+# ---------------------------------------------------------------------------
+# Frame extraction task tracking
+# ---------------------------------------------------------------------------
+
+_lock = threading.Lock()
+_extraction_tasks: dict = {}
+"""In-memory dict tracking extraction status per video_path.
+
+Format::
+
+    {
+        "video_path": {
+            "status": "processing" | "done" | "error",
+            "total_frames": int,
+            "duration": float,
+        },
+        ...
+    }
+"""
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _frames_dir(base_dir: Path, video_path: str) -> Path:
+    """Return the directory where extracted frames are stored.
+
+    ``{base_dir}/frames/{video_stem}/``
+    """
+    stem = Path(video_path).stem
+    return Path(base_dir) / "frames" / stem
+
+
+def _extract_frames_sync(base_dir, video_path: str) -> None:
+    """Extract 1-fps thumbnails in a background thread.
+
+    Runs ffmpeg to produce scaled-down JPEG frames at 1 fps.
+    Updates ``_extraction_tasks`` with progress / result.
+    """
+    try:
+        output_dir = _frames_dir(base_dir, video_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        duration = get_video_duration(video_path)
+
+        with _lock:
+            _extraction_tasks[video_path] = {
+                "status": "processing",
+                "total_frames": 0,
+                "duration": duration,
+            }
+
+        output_pattern = str(output_dir / "frame_%d.jpg")
+        cmd = [
+            FFMPEG,
+            "-i", video_path,
+            "-vf", "fps=1,scale=320:-1",
+            "-q:v", "3",
+            "-y",
+            output_pattern,
+        ]
+        logger.info("Extracting frames: {}", " ".join(cmd))
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+        # Count resulting frame files
+        frame_files = sorted(output_dir.glob("frame_*.jpg"))
+        total_frames = len(frame_files)
+
+        with _lock:
+            _extraction_tasks[video_path]["status"] = "done"
+            _extraction_tasks[video_path]["total_frames"] = total_frames
+
+        logger.info(
+            "Frame extraction done for {}: {} frames", video_path, total_frames
+        )
+
+    except Exception as exc:
+        logger.exception("Frame extraction failed for {}: {}", video_path, exc)
+        with _lock:
+            _extraction_tasks[video_path] = {
+                "status": "error",
+                "total_frames": 0,
+                "duration": 0.0,
+            }
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def start_frame_extraction(base_dir, video_path: str) -> str:
+    """Start frame extraction in a daemon thread.
+
+    Idempotent: if extraction is already *done* or *processing* for
+    *video_path*, returns immediately.
+
+    Returns:
+        The *video_path* string (used as the task identifier).
+    """
+    with _lock:
+        task = _extraction_tasks.get(video_path)
+        if task and task["status"] in ("processing", "done"):
+            logger.debug(
+                "Extraction already {} for {}, skipping",
+                task["status"],
+                video_path,
+            )
+            return video_path
+
+    thread = threading.Thread(
+        target=_extract_frames_sync,
+        args=(base_dir, video_path),
+        daemon=True,
+        name=f"frame-extract-{Path(video_path).stem}",
+    )
+    thread.start()
+    return video_path
+
+
+def get_extraction_status(video_path: str) -> dict:
+    """Return the current extraction status dict for *video_path*.
+
+    Returns an empty dict if no extraction has been started.
+    """
+    with _lock:
+        return dict(_extraction_tasks.get(video_path, {}))
+
+
+def get_frame_list(base_dir, video_path: str) -> dict:
+    """Return the list of extracted thumbnail frames for a video.
+
+    Returns::
+
+        {
+            "frames": [
+                {"url": "/api/frame-image?video_path=...&seconds=N&thumbnail=1", "seconds": N},
+                ...
+            ],
+            "duration": float,
+        }
+
+    Frames are sorted by filename; ``seconds`` equals ``frame_number - 1``.
+    """
+    output_dir = _frames_dir(base_dir, video_path)
+    frames = []
+
+    with _lock:
+        task = _extraction_tasks.get(video_path, {})
+        duration = task.get("duration", 0.0)
+
+    frame_files = sorted(output_dir.glob("frame_*.jpg"))
+    for f in frame_files:
+        # Extract the frame number from filename like "frame_5.jpg"
+        stem = f.stem  # e.g. "frame_5"
+        frame_number = int(stem.split("_", 1)[1])
+        seconds = frame_number - 1
+        frames.append(
+            {
+                "url": (
+                    f"/api/frame-image?video_path="
+                    f"{video_path}&seconds={seconds}&thumbnail=1"
+                ),
+                "seconds": seconds,
+            }
+        )
+
+    return {"frames": frames, "duration": duration}
+
+
+def get_frame_image_path(
+    base_dir, video_path: str, seconds: int, thumbnail: bool = False
+) -> str | None:
+    """Return the file path for a specific frame.
+
+    Args:
+        base_dir: The data base directory.
+        video_path: Path to the source video.
+        seconds: The timestamp in seconds.
+        thumbnail: If True, return the pre-extracted low-res thumbnail.
+                   If False, return (or extract on-demand) an HD frame.
+
+    Returns:
+        The absolute file path to the frame image, or None on failure.
+    """
+    frames_root = _frames_dir(base_dir, video_path)
+
+    if thumbnail:
+        path = frames_root / f"frame_{seconds + 1}.jpg"
+        return str(path) if path.is_file() else None
+
+    # HD frame — check cache first
+    frames_root.mkdir(parents=True, exist_ok=True)
+    hd_path = frames_root / f"hd_{seconds}.jpg"
+    if hd_path.is_file():
+        logger.debug("HD frame cache hit: {}", hd_path)
+        return str(hd_path)
+
+    # Extract on-demand
+    cmd = [
+        FFMPEG,
+        "-i", video_path,
+        "-vf", f"select=eq(n\\,{seconds})",
+        "-vframes", "1",
+        "-q:v", "2",
+        "-y",
+        str(hd_path),
+    ]
+    logger.info("Extracting HD frame: {}", " ".join(cmd))
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return str(hd_path)
+    except subprocess.CalledProcessError as exc:
+        logger.error("Failed to extract HD frame at {}s: {}", seconds, exc)
+        return None

@@ -51,6 +51,10 @@ from ext_api import ext_api  # noqa: E402
 app.register_blueprint(ext_api)
 logger.info("[Startup] ext_api registered OK")
 
+from routes.frames import frames_bp  # noqa: E402
+app.register_blueprint(frames_bp)
+logger.info("[Startup] frames_bp registered OK")
+
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 logger.info(f"[Startup] Frontend dir: {FRONTEND_DIR} (exists={FRONTEND_DIR.exists()})")
 
@@ -75,6 +79,11 @@ def favicon():
 @app.route('/vite.svg')
 def vite_svg():
     return send_from_directory(str(FRONTEND_DIR), 'vite.svg')
+
+
+@app.route('/changelog/<path:filename>')
+def serve_changelog(filename):
+    return send_from_directory(str(BASE_DIR / "changelog"), filename)
 
 
 # ── Helper ──────────────────────────────────────────────────

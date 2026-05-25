@@ -79,7 +79,7 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   HomeFilled, User, Picture, Upload,
-  Clock, Setting, Expand, Fold, UserFilled
+  Clock, Setting, Expand, Fold, UserFilled, Document, Notebook
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -91,8 +91,10 @@ const navItems = [
   { path: '/', icon: HomeFilled, title: '仪表盘' },
   { path: '/account-management', icon: User, title: '账号管理' },
   { path: '/material-management', icon: Picture, title: '素材管理' },
+  { path: '/drafts', icon: Document, title: '草稿箱' },
   { path: '/publish-center', icon: Upload, title: '发布中心' },
   { path: '/publish-history', icon: Clock, title: '发布历史' },
+  { path: '/changelog', icon: Notebook, title: '更新日志' },
   { path: '/author', icon: UserFilled, title: '关于作者' }
 ]
 

@@ -99,7 +99,7 @@ export default defineConfig({
         timeout: 120000,
         proxyTimeout: 120000,
       },
-      '/api/v2': {
+      '/api': {
         target: 'http://localhost:5409',
         changeOrigin: true,
       },

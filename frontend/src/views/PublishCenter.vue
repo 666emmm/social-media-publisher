@@ -62,6 +62,9 @@
 
     <!-- ========== RIGHT MAIN AREA ========== -->
     <main class="publish-main">
+      <div class="main-body">
+      <!-- Left: form + content -->
+      <div class="main-form-col">
       <!-- Top bar -->
       <div class="main-header">
         <div class="header-left">
@@ -75,7 +78,10 @@
           </span>
         </div>
         <div class="header-right">
-          <span class="text-btn cursor-pointer" @click="saveDraft">保存草稿</span>
+          <button class="draft-btn" @click="saveDraft">
+            <el-icon><Document /></el-icon>
+            {{ currentDraftId ? '更新草稿' : '保存草稿' }}
+          </button>
           <button class="publish-btn" @click="publishAll" :disabled="publishing">
             {{ publishing ? '发布中...' : '一键发布' }}
           </button>
@@ -92,125 +98,41 @@
             <span class="hint">所有账号共享</span>
           </div>
 
-          <!-- Video Section -->
-          <div class="media-section">
-            <div class="section-label">视频</div>
-            <div class="video-dual-grid">
-              <!-- Landscape -->
-              <div class="video-card">
-                <div class="video-card-label">
-                  <span>横版视频</span>
-                  <span class="video-ratio">16:9</span>
-                </div>
-                <div v-if="!commonConfig.videoLandscape" class="video-card-empty" @click="triggerUploadVideo('landscape')">
-                  <el-icon :size="28"><Upload /></el-icon>
-                  <span class="video-card-empty-text">上传横版视频</span>
-                </div>
-                <div v-else class="video-card-preview">
-                  <video :src="commonConfig.videoLandscape.url" controls preload="metadata" class="video-player"></video>
-                  <div class="video-card-overlay">
-                    <button class="overlay-btn" @click="triggerUploadVideo('landscape')">替换</button>
-                    <button class="overlay-btn danger" @click="clearVideo('landscape')">移除</button>
-                  </div>
-                </div>
-                <div class="video-card-actions">
-                  <button class="cover-action-btn" @click="triggerUploadVideo('landscape')">
-                    <el-icon :size="14"><Upload /></el-icon><span>本地上传</span>
-                  </button>
-                  <button class="cover-action-btn" @click="selectFromLibrary('video', 'landscape')">
-                    <el-icon :size="14"><Picture /></el-icon><span>素材库</span>
-                  </button>
-                </div>
-              </div>
-              <!-- Portrait -->
-              <div class="video-card">
-                <div class="video-card-label">
-                  <span>竖版视频</span>
-                  <span class="video-ratio">9:16</span>
-                </div>
-                <div v-if="!commonConfig.videoPortrait" class="video-card-empty" @click="triggerUploadVideo('portrait')">
-                  <el-icon :size="28"><Upload /></el-icon>
-                  <span class="video-card-empty-text">上传竖版视频</span>
-                </div>
-                <div v-else class="video-card-preview">
-                  <video :src="commonConfig.videoPortrait.url" controls preload="metadata" class="video-player"></video>
-                  <div class="video-card-overlay">
-                    <button class="overlay-btn" @click="triggerUploadVideo('portrait')">替换</button>
-                    <button class="overlay-btn danger" @click="clearVideo('portrait')">移除</button>
-                  </div>
-                </div>
-                <div class="video-card-actions">
-                  <button class="cover-action-btn" @click="triggerUploadVideo('portrait')">
-                    <el-icon :size="14"><Upload /></el-icon><span>本地上传</span>
-                  </button>
-                  <button class="cover-action-btn" @click="selectFromLibrary('video', 'portrait')">
-                    <el-icon :size="14"><Picture /></el-icon><span>素材库</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <!-- Cover Section -->
           <div class="media-section cover-section">
             <div class="section-label">封面</div>
             <div class="cover-grid">
-              <!-- Landscape cover -->
-              <div class="cover-card">
-                <div class="cover-card-label">
-                  <span>横版封面</span>
-                  <span class="cover-ratio">16:9</span>
-                </div>
-                <div v-if="!commonConfig.coverLandscape" class="cover-empty" @click="triggerUploadCover('landscape')">
-                  <el-icon :size="28"><Picture /></el-icon>
-                  <span class="cover-empty-text">上传横版封面</span>
-                </div>
-                <div v-else class="cover-preview-wrap">
-                  <img :src="commonConfig.coverLandscape.url" class="cover-preview" />
-                  <div class="cover-preview-overlay">
-                    <button class="overlay-btn" @click="openCropDialog('landscape')">裁剪</button>
-                    <button class="overlay-btn" @click="triggerUploadCover('landscape')">更换</button>
-                    <button class="overlay-btn danger" @click="commonConfig.coverLandscape = null">删除</button>
-                  </div>
-                </div>
-                <div class="cover-card-actions">
-                  <button class="cover-action-btn" @click="triggerUploadCover('landscape')">
-                    <el-icon :size="14"><Upload /></el-icon><span>上传</span>
-                  </button>
-                  <button class="cover-action-btn" @click="selectFromLibrary('cover', 'landscape')">
-                    <el-icon :size="14"><Picture /></el-icon><span>素材库</span>
-                  </button>
-                </div>
-              </div>
-              <!-- Portrait cover -->
-              <div class="cover-card">
-                <div class="cover-card-label">
-                  <span>竖版封面</span>
-                  <span class="cover-ratio">3:4</span>
-                </div>
-                <div v-if="!commonConfig.coverPortrait" class="cover-empty" @click="triggerUploadCover('portrait')">
-                  <el-icon :size="28"><Picture /></el-icon>
-                  <span class="cover-empty-text">上传竖版封面</span>
-                </div>
-                <div v-else class="cover-preview-wrap">
-                  <img :src="commonConfig.coverPortrait.url" class="cover-preview" />
-                  <div class="cover-preview-overlay">
-                    <button class="overlay-btn" @click="openCropDialog('portrait')">裁剪</button>
-                    <button class="overlay-btn" @click="triggerUploadCover('portrait')">更换</button>
-                    <button class="overlay-btn danger" @click="commonConfig.coverPortrait = null">删除</button>
-                  </div>
-                </div>
-                <div class="cover-card-actions">
-                  <button class="cover-action-btn" @click="triggerUploadCover('portrait')">
-                    <el-icon :size="14"><Upload /></el-icon><span>上传</span>
-                  </button>
-                  <button class="cover-action-btn" @click="selectFromLibrary('cover', 'portrait')">
-                    <el-icon :size="14"><Picture /></el-icon><span>素材库</span>
-                  </button>
-                </div>
-              </div>
+              <CoverCard
+                label="竖版封面"
+                ratio-label="9:16"
+                v-model="commonConfig.coverPortrait"
+                :recommended-frames="portraitCoverFrames"
+                :video-path="commonConfig.videoPortrait?.path || commonConfig.videoLandscape?.path || ''"
+                @edit="openCoverEditor('portrait')"
+                @open-library="selectFromLibrary('cover', 'portrait')"
+              />
+              <CoverCard
+                label="横版封面"
+                ratio-label="16:9"
+                v-model="commonConfig.coverLandscape"
+                :recommended-frames="landscapeCoverFrames"
+                :video-path="commonConfig.videoLandscape?.path || commonConfig.videoPortrait?.path || ''"
+                @edit="openCoverEditor('landscape')"
+                @open-library="selectFromLibrary('cover', 'landscape')"
+              />
             </div>
           </div>
+
+          <CoverEditorDialog
+            ref="coverEditorRef"
+            :video-landscape="commonConfig.videoLandscape"
+            :video-portrait="commonConfig.videoPortrait"
+            :cover-landscape="commonConfig.coverLandscape"
+            :cover-portrait="commonConfig.coverPortrait"
+            :materials="materials"
+            @update:cover-landscape="commonConfig.coverLandscape = $event"
+            @update:cover-portrait="commonConfig.coverPortrait = $event"
+          />
 
           <!-- Batch title/description sync -->
           <div class="batch-sync-section">
@@ -443,6 +365,60 @@
           <p class="hint-sub">选择后可配置该平台的个性化发布设置</p>
         </div>
       </div>
+      </div><!-- /main-form-col -->
+
+      <!-- Right: Phone preview panel -->
+      <div class="phone-panel">
+        <div class="phone-panel-header">
+          <span class="phone-panel-title">视频预览</span>
+        </div>
+        <div class="phone-mode-tabs">
+          <button :class="['mode-tab', { active: videoModeTab === 'portrait' }]" @click="videoModeTab = 'portrait'">
+            <span class="mode-icon-portrait"></span> 竖版 9:16
+          </button>
+          <button :class="['mode-tab', { active: videoModeTab === 'landscape' }]" @click="videoModeTab = 'landscape'">
+            <span class="mode-icon-landscape"></span> 横版 16:9
+          </button>
+        </div>
+        <div class="phone-preview-area">
+          <div :class="['phone-mockup', videoModeTab]">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <template v-if="currentVideoData">
+                <video
+                  :src="currentVideoData.url"
+                  controls
+                  preload="metadata"
+                  class="phone-video-player"
+                ></video>
+              </template>
+              <template v-else>
+                <div class="phone-empty" @click="triggerUploadVideo(videoModeTab)">
+                  <el-icon :size="28"><Upload /></el-icon>
+                  <span>上传{{ videoModeTab === 'portrait' ? '竖版' : '横版' }}视频</span>
+                </div>
+              </template>
+            </div>
+            <div class="phone-home-bar"></div>
+          </div>
+        </div>
+        <div class="phone-panel-actions">
+          <button class="cover-action-btn primary" @click="triggerUploadVideo(videoModeTab)">
+            <el-icon :size="14"><Upload /></el-icon><span>本地上传</span>
+          </button>
+          <button class="cover-action-btn" @click="selectFromLibrary('video', videoModeTab)">
+            <el-icon :size="14"><Picture /></el-icon><span>素材库</span>
+          </button>
+        </div>
+        <div v-if="currentVideoData" class="phone-panel-info">
+          <span class="phone-info-name">{{ currentVideoData.name }}</span>
+          <button class="phone-info-remove" @click="clearVideo(videoModeTab)">
+            <el-icon :size="12"><Delete /></el-icon>
+          </button>
+        </div>
+      </div>
+
+      </div><!-- /main-body -->
     </main>
 
     <!-- ========== DIALOGS ========== -->
@@ -583,76 +559,6 @@
       </template>
     </el-dialog>
 
-    <!-- Cover Upload Dialog -->
-    <el-dialog
-      v-model="coverUploadDialogVisible"
-      :title="'上传' + (coverUploadTarget === 'portrait' ? '竖版' : '横版') + '封面'"
-      width="500px"
-      class="cover-upload-dialog"
-    >
-      <el-upload
-        class="cover-upload"
-        drag
-        :auto-upload="true"
-        :action="`${apiBaseUrl}/upload`"
-        :on-success="handleCoverUploadSuccess"
-        :on-error="handleUploadError"
-        accept="image/*"
-        :headers="authHeaders"
-      >
-        <el-icon class="el-icon--upload" :size="48"><Upload /></el-icon>
-        <div class="el-upload__text">
-          将封面图片拖到此处，或<em>点击上传</em>
-        </div>
-        <template #tip>
-          <div class="el-upload__tip">
-            {{ coverUploadTarget === 'portrait' ? '竖版封面推荐比例 3:4' : '横版封面推荐比例 16:9' }}，支持JPG、PNG格式
-          </div>
-        </template>
-      </el-upload>
-
-      <template #footer>
-        <div class="dialog-footer-right">
-          <el-button @click="coverUploadDialogVisible = false">关闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- Cover Crop Dialog -->
-    <el-dialog
-      v-model="cropDialogVisible"
-      :title="'裁剪' + (cropTarget === 'portrait' ? '竖版' : '横版') + '封面'"
-      width="600px"
-      class="crop-dialog"
-    >
-      <div class="crop-container">
-        <div class="crop-canvas-wrap">
-          <canvas ref="cropCanvasRef" class="crop-canvas"></canvas>
-          <div
-            class="crop-selection"
-            :style="cropSelectionStyle"
-            @mousedown="startCropDrag"
-          >
-            <div class="crop-handle top-left" data-handle="tl"></div>
-            <div class="crop-handle top-right" data-handle="tr"></div>
-            <div class="crop-handle bottom-left" data-handle="bl"></div>
-            <div class="crop-handle bottom-right" data-handle="br"></div>
-          </div>
-        </div>
-        <div class="crop-info">
-          <span>{{ cropTarget === 'portrait' ? '3:4' : '16:9' }}</span>
-          <span class="crop-size">{{ Math.round(cropRect.w) }} x {{ Math.round(cropRect.h) }}</span>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="dialog-footer-right">
-          <el-button @click="cropDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="applyCrop">确认裁剪</el-button>
-        </div>
-      </template>
-    </el-dialog>
-
     <!-- Material Library Dialog -->
     <el-dialog
       v-model="materialLibraryVisible"
@@ -734,19 +640,12 @@
     </el-dialog>
 
     <!-- Hidden file inputs -->
-    <input
-      ref="coverInputRef"
-      type="file"
-      accept="image/*"
-      style="display: none"
-      @change="handleCoverFileChange"
-    />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, nextTick, watch } from 'vue'
-import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Check, Close, InfoFilled, Promotion, StarFilled } from '@element-plus/icons-vue'
+import { ref, reactive, computed, nextTick, watch, onMounted } from 'vue'
+import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Check, Close, InfoFilled, Promotion, StarFilled, Delete, Document } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
@@ -754,11 +653,17 @@ import { materialApi } from '@/api/material'
 import { accountApi } from '@/api/account'
 import { http } from '@/utils/request'
 import { platformList, getPlatformByKey, platformKeyToId } from '@/config/platforms'
+import CoverCard from '@/components/CoverCard.vue'
+import CoverEditorDialog from '@/components/CoverEditorDialog.vue'
+import { frameApi } from '@/api/frame'
+import { draftApi } from '@/api/draft'
+import { useRoute } from 'vue-router'
 
 // ========== Stores & Config ==========
 const accountStore = useAccountStore()
 const appStore = useAppStore()
 appStore.loadAutoFillTitle()  // 加载自动填充标题开关状态
+const route = useRoute()
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
 const authHeaders = computed(() => ({ 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }))
 
@@ -786,6 +691,10 @@ const accountGroups = computed(() => {
 
 const totalCount = computed(() => accountStore.accounts.length)
 
+const currentVideoData = computed(() =>
+  videoModeTab.value === 'portrait' ? commonConfig.videoPortrait : commonConfig.videoLandscape
+)
+
 const currentPlatformConfig = computed(() =>
   selectedPlatform.value ? getPlatformByKey(selectedPlatform.value) : null
 )
@@ -795,28 +704,23 @@ const commonConfig = reactive({
   videoLandscape: null,  // { name, url, path, size, type }
   videoPortrait: null,   // { name, url, path, size, type }
   coverLandscape: null, // 横版封面 16:9
-  coverPortrait: null,  // 竖版封面 3:4
+  coverPortrait: null,  // 竖版封面 9:16
   topics: [],
 })
 
-// Cover upload target: 'landscape' or 'portrait'
-const coverUploadTarget = ref('landscape')
+// Cover editor
+const coverEditorRef = ref(null)
+const landscapeFrames = ref([])
+const portraitFrames = ref([])
+const videoModeTab = ref('portrait')  // 'portrait' | 'landscape'
 
-// Crop dialog state
-const cropDialogVisible = ref(false)
-const cropTarget = ref('landscape') // 'landscape' or 'portrait'
-const cropCanvasRef = ref(null)
-const cropImage = ref(null) // Image element for cropping
-const cropRect = reactive({ x: 0, y: 0, w: 0, h: 0 })
-const cropDragState = ref(null) // null | { type, startX, startY, origRect }
-const cropDisplayScale = ref(1) // canvas display scale vs actual image
-
-const cropSelectionStyle = computed(() => ({
-  left: cropRect.x * cropDisplayScale.value + 'px',
-  top: cropRect.y * cropDisplayScale.value + 'px',
-  width: cropRect.w * cropDisplayScale.value + 'px',
-  height: cropRect.h * cropDisplayScale.value + 'px',
-}))
+// Smart frame fallback: if only one video exists, both covers share its frames
+const portraitCoverFrames = computed(() =>
+  portraitFrames.value.length > 0 ? portraitFrames.value : landscapeFrames.value
+)
+const landscapeCoverFrames = computed(() =>
+  landscapeFrames.value.length > 0 ? landscapeFrames.value : portraitFrames.value
+)
 
 // ========== Per-platform Config ==========
 const platformConfigs = reactive({
@@ -997,7 +901,6 @@ const accountDialogVisible = ref(false)
 const topicDialogVisible = ref(false)
 const videoUploadDialogVisible = ref(false)
 const videoUploadTarget = ref('landscape') // 'landscape' | 'portrait'
-const coverUploadDialogVisible = ref(false)
 const materialLibraryVisible = ref(false)
 const materialLibraryMode = ref('video') // 'video' | 'cover'
 const materialLibraryCoverTarget = ref('landscape') // 'landscape' | 'portrait'
@@ -1063,8 +966,6 @@ const publishResults = ref([])
 const currentPublishingAccount = ref('')
 const isCancelled = ref(false)
 
-const coverInputRef = ref(null)
-
 // ========== Sidebar Methods ==========
 
 function toggleGroup(key) {
@@ -1079,6 +980,7 @@ function toggleGroup(key) {
 
 // Selected accounts for publishing (default empty)
 const publishAccountIds = reactive(new Set())
+const currentDraftId = ref(null) // null = 新草稿, number = 编辑已有草稿
 
 function togglePublishAccount(account, group) {
   selectedPlatform.value = group.key
@@ -1103,182 +1005,45 @@ function triggerUploadVideo(target = 'landscape') {
   videoUploadDialogVisible.value = true
 }
 
-function triggerUploadCover(target = 'landscape') {
-  coverUploadTarget.value = target
-  coverUploadDialogVisible.value = true
-}
-
 function clearVideo(type) {
   // type: 'landscape' | 'portrait'
   if (type === 'landscape') commonConfig.videoLandscape = null
   else commonConfig.videoPortrait = null
 }
 
-function openCropDialog(target) {
-  cropTarget.value = target
-  const coverData = target === 'portrait' ? commonConfig.coverPortrait : commonConfig.coverLandscape
-  if (!coverData) return
+// ========== Cover Editor ==========
 
-  // Load image and init canvas
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  img.onload = () => {
-    cropImage.value = img
-    nextTick(() => initCropCanvas(img))
-  }
-  img.src = coverData.url
-  cropDialogVisible.value = true
+function openCoverEditor(tab = 'landscape') {
+  coverEditorRef.value?.open(tab)
 }
 
-function initCropCanvas(img) {
-  const canvas = cropCanvasRef.value
-  if (!canvas) return
-
-  const maxW = 540
-  const maxH = 400
-  const scale = Math.min(maxW / img.width, maxH / img.height, 1)
-  cropDisplayScale.value = scale
-
-  canvas.width = img.width * scale
-  canvas.height = img.height * scale
-  canvas.style.width = canvas.width + 'px'
-  canvas.style.height = canvas.height + 'px'
-
-  const ctx = canvas.getContext('2d')
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-
-  // Init crop rect: centered with target aspect ratio
-  const ratio = cropTarget.value === 'portrait' ? 3 / 4 : 16 / 9
-  let rw = canvas.width / scale * 0.8
-  let rh = rw / ratio
-  if (rh > img.height * 0.8) {
-    rh = img.height * 0.8
-    rw = rh * ratio
-  }
-  cropRect.x = (img.width - rw) / 2
-  cropRect.y = (img.height - rh) / 2
-  cropRect.w = rw
-  cropRect.h = rh
-}
-
-function startCropDrag(e) {
-  e.preventDefault()
-  const target = e.target.dataset.handle
-  cropDragState.value = {
-    type: target || 'move',
-    startX: e.clientX,
-    startY: e.clientY,
-    origRect: { ...cropRect },
-  }
-
-  const onMove = (ev) => {
-    if (!cropDragState.value) return
-    const dx = (ev.clientX - cropDragState.value.startX) / cropDisplayScale.value
-    const dy = (ev.clientY - cropDragState.value.startY) / cropDisplayScale.value
-    const orig = cropDragState.value.origRect
-    const img = cropImage.value
-    const ratio = cropTarget.value === 'portrait' ? 3 / 4 : 16 / 9
-    const type = cropDragState.value.type
-
-    if (type === 'move') {
-      cropRect.x = Math.max(0, Math.min(img.width - orig.w, orig.x + dx))
-      cropRect.y = Math.max(0, Math.min(img.height - orig.h, orig.y + dy))
-    } else {
-      // Resize from corner, maintaining aspect ratio
-      let newW = orig.w
-      let newH = orig.h
-      if (type === 'br') { newW = orig.w + dx; newH = newW / ratio }
-      else if (type === 'bl') { newW = orig.w - dx; newH = newW / ratio }
-      else if (type === 'tr') { newW = orig.w + dx; newH = newW / ratio }
-      else if (type === 'tl') { newW = orig.w - dx; newH = newW / ratio }
-
-      newW = Math.max(60, newW)
-      newH = newW / ratio
-
-      if (type === 'tl' || type === 'bl') {
-        cropRect.x = orig.x + orig.w - newW
+function triggerFrameExtraction(videoData, type) {
+  if (!videoData?.path) return
+  const doExtract = async () => {
+    try {
+      const resp = await frameApi.extractFrames(videoData.path)
+      if (resp.data) {
+        const allFrames = resp.data.frames || []
+        const recommended = pickRecommendedFrames(allFrames, 6)
+        if (type === 'landscape') landscapeFrames.value = recommended
+        else portraitFrames.value = recommended
       }
-      if (type === 'tl' || type === 'tr') {
-        cropRect.y = orig.y + orig.h - newH
-      }
-
-      // Clamp
-      cropRect.x = Math.max(0, cropRect.x)
-      cropRect.y = Math.max(0, cropRect.y)
-      if (cropRect.x + newW > img.width) newW = img.width - cropRect.x
-      if (cropRect.y + newH > img.height) newH = img.height - cropRect.y
-      newH = newW / ratio
-
-      cropRect.w = newW
-      cropRect.h = newH
+    } catch (e) {
+      console.error('Frame extraction failed:', e)
     }
-
-    // Redraw canvas
-    redrawCropCanvas()
   }
-
-  const onUp = () => {
-    cropDragState.value = null
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
-  }
-
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
+  doExtract()
 }
 
-function redrawCropCanvas() {
-  // No need to redraw canvas - CSS box-shadow on .crop-selection handles the dim overlay,
-  // and the crop-selection div position updates via Vue reactivity.
-}
-
-function applyCrop() {
-  const img = cropImage.value
-  if (!img) return
-
-  const offscreen = document.createElement('canvas')
-  offscreen.width = Math.round(cropRect.w)
-  offscreen.height = Math.round(cropRect.h)
-  const ctx = offscreen.getContext('2d')
-  ctx.drawImage(img, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0, 0, offscreen.width, offscreen.height)
-
-  offscreen.toBlob((blob) => {
-    if (!blob) {
-      ElMessage.error('裁剪失败')
-      return
-    }
-
-    // Upload cropped image
-    const formData = new FormData()
-    formData.append('file', blob, `cover_${cropTarget.value}_${Date.now()}.png`)
-
-    http.post('/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }).then((resp) => {
-      if (resp.code === 200) {
-        const filePath = resp.data.path || resp.data
-        const filename = filePath.split('/').pop()
-        const coverData = {
-          name: `裁剪_${cropTarget.value === 'portrait' ? '竖版' : '横版'}_封面.png`,
-          url: materialApi.getMaterialPreviewUrl(filename),
-          path: filePath,
-          size: blob.size,
-          type: 'image/png',
-        }
-        if (cropTarget.value === 'portrait') {
-          commonConfig.coverPortrait = coverData
-        } else {
-          commonConfig.coverLandscape = coverData
-        }
-        cropDialogVisible.value = false
-        ElMessage.success('封面裁剪完成')
-      } else {
-        ElMessage.error(resp.msg || '裁剪上传失败')
-      }
-    }).catch(() => {
-      ElMessage.error('裁剪上传失败')
-    })
-  }, 'image/png')
+function pickRecommendedFrames(frames, count) {
+  if (frames.length <= count) return frames
+  const result = [frames[0]]
+  for (let i = 1; i < count - 1; i++) {
+    const idx = Math.round((frames.length - 1) * i / (count - 1))
+    result.push(frames[idx])
+  }
+  result.push(frames[frames.length - 1])
+  return result
 }
 
 function handleVideoUploadSuccess(response, file) {
@@ -1299,29 +1064,17 @@ function handleVideoUploadSuccess(response, file) {
     }
     videoUploadDialogVisible.value = false
     ElMessage.success('视频上传成功')
-  } else {
-    ElMessage.error(response.msg || '上传失败')
-  }
-}
-
-function handleCoverUploadSuccess(response, file) {
-  if (response.code === 200) {
-    const filePath = response.data.filepath || response.data
-    const filename = filePath.split('/').pop()
-    const coverData = {
-      name: file.name,
-      url: materialApi.getMaterialPreviewUrl(filename),
-      path: filePath,
-      size: file.size,
-      type: file.type,
+    // Auto-fill title from video filename
+    if (appStore.autoFillTitle) {
+      const title = file.name.replace(/\.[^.]+$/, '')
+      for (const key of Object.keys(platformConfigs)) {
+        if (!platformConfigs[key].title) {
+          platformConfigs[key].title = title
+        }
+      }
     }
-    if (coverUploadTarget.value === 'portrait') {
-      commonConfig.coverPortrait = coverData
-    } else {
-      commonConfig.coverLandscape = coverData
-    }
-    coverUploadDialogVisible.value = false
-    ElMessage.success('封面上传成功')
+    // Extract frames for the uploaded type; the other cover falls back via computed
+    triggerFrameExtraction(videoData, videoUploadTarget.value)
   } else {
     ElMessage.error(response.msg || '上传失败')
   }
@@ -1329,10 +1082,6 @@ function handleCoverUploadSuccess(response, file) {
 
 function handleUploadError() {
   ElMessage.error('文件上传失败')
-}
-
-function handleCoverFileChange(e) {
-  // handled by el-upload dialog
 }
 
 // ========== Material Library ==========
@@ -1402,6 +1151,15 @@ function confirmMaterialSelect() {
         commonConfig.videoLandscape = videoData
       }
       ElMessage.success('视频已设置')
+      if (appStore.autoFillTitle) {
+        const title = material.filename.replace(/\.[^.]+$/, '')
+        for (const key of Object.keys(platformConfigs)) {
+          if (!platformConfigs[key].title) {
+            platformConfigs[key].title = title
+          }
+        }
+      }
+      triggerFrameExtraction(videoData, materialLibraryVideoTarget.value)
     }
   }
   materialLibraryVisible.value = false
@@ -1459,26 +1217,124 @@ function confirmAccountSelection() {
 
 // ========== Publish Methods ==========
 
-function saveDraft() {
+async function saveDraft() {
   try {
     const draftData = {
       commonConfig: {
         topics: [...commonConfig.topics],
-        videoLandscape: commonConfig.videoLandscape ? { name: commonConfig.videoLandscape.name, path: commonConfig.videoLandscape.path, url: commonConfig.videoLandscape.url, size: commonConfig.videoLandscape.size, type: commonConfig.videoLandscape.type } : null,
-        videoPortrait: commonConfig.videoPortrait ? { name: commonConfig.videoPortrait.name, path: commonConfig.videoPortrait.path, url: commonConfig.videoPortrait.url, size: commonConfig.videoPortrait.size, type: commonConfig.videoPortrait.type } : null,
-        coverLandscape: commonConfig.coverLandscape ? { name: commonConfig.coverLandscape.name, path: commonConfig.coverLandscape.path, url: commonConfig.coverLandscape.url, size: commonConfig.coverLandscape.size, type: commonConfig.coverLandscape.type } : null,
-        coverPortrait: commonConfig.coverPortrait ? { name: commonConfig.coverPortrait.name, path: commonConfig.coverPortrait.path, url: commonConfig.coverPortrait.url, size: commonConfig.coverPortrait.size, type: commonConfig.coverPortrait.type } : null,
+        videoLandscape: commonConfig.videoLandscape
+          ? { name: commonConfig.videoLandscape.name, path: commonConfig.videoLandscape.path, url: commonConfig.videoLandscape.url, size: commonConfig.videoLandscape.size, type: commonConfig.videoLandscape.type }
+          : null,
+        videoPortrait: commonConfig.videoPortrait
+          ? { name: commonConfig.videoPortrait.name, path: commonConfig.videoPortrait.path, url: commonConfig.videoPortrait.url, size: commonConfig.videoPortrait.size, type: commonConfig.videoPortrait.type }
+          : null,
+        coverLandscape: commonConfig.coverLandscape
+          ? { name: commonConfig.coverLandscape.name, path: commonConfig.coverLandscape.path, url: commonConfig.coverLandscape.url, size: commonConfig.coverLandscape.size, type: commonConfig.coverLandscape.type, _fromFrame: commonConfig.coverLandscape._fromFrame }
+          : null,
+        coverPortrait: commonConfig.coverPortrait
+          ? { name: commonConfig.coverPortrait.name, path: commonConfig.coverPortrait.path, url: commonConfig.coverPortrait.url, size: commonConfig.coverPortrait.size, type: commonConfig.coverPortrait.type, _fromFrame: commonConfig.coverPortrait._fromFrame }
+          : null,
       },
-      accountOverrides: JSON.parse(JSON.stringify(accountOverrides)),
       platformConfigs: JSON.parse(JSON.stringify(platformConfigs)),
-      savedAt: new Date().toISOString(),
+      accountOverrides: JSON.parse(JSON.stringify(accountOverrides)),
+      publishAccountIds: [...publishAccountIds],
+      selectedPlatform: selectedPlatform.value,
+      selectedAccountId: selectedAccountId.value,
+      expandedGroups: [...expandedGroups.value],
+      videoModeTab: videoModeTab.value,
     }
-    localStorage.setItem('publishDraft', JSON.stringify(draftData))
-    ElMessage.success('草稿已保存')
+
+    if (currentDraftId.value) {
+      await draftApi.updateDraft(currentDraftId.value, { draft_data: draftData })
+      ElMessage.success('草稿已更新')
+    } else {
+      const resp = await draftApi.createDraft({ draft_data: draftData })
+      currentDraftId.value = resp.data.id
+      ElMessage.success('草稿已保存')
+    }
   } catch (e) {
     ElMessage.error('草稿保存失败')
   }
 }
+
+async function restoreDraft(draftId) {
+  try {
+    const resp = await draftApi.getDraft(draftId)
+    const data = resp.data
+    const dd = data.draft_data
+    if (!dd) {
+      ElMessage.error('草稿数据为空')
+      return
+    }
+
+    // 恢复 commonConfig
+    if (dd.commonConfig) {
+      if (dd.commonConfig.topics) commonConfig.topics = dd.commonConfig.topics
+      if (dd.commonConfig.videoLandscape) commonConfig.videoLandscape = dd.commonConfig.videoLandscape
+      if (dd.commonConfig.videoPortrait) commonConfig.videoPortrait = dd.commonConfig.videoPortrait
+      if (dd.commonConfig.coverLandscape) commonConfig.coverLandscape = dd.commonConfig.coverLandscape
+      if (dd.commonConfig.coverPortrait) commonConfig.coverPortrait = dd.commonConfig.coverPortrait
+    }
+
+    // 恢复 platformConfigs（深度合并以保留可能新增的字段）
+    if (dd.platformConfigs) {
+      for (const [key, val] of Object.entries(dd.platformConfigs)) {
+        if (platformConfigs[key]) {
+          Object.assign(platformConfigs[key], val)
+        }
+      }
+    }
+
+    // 恢复 accountOverrides
+    if (dd.accountOverrides) {
+      Object.keys(accountOverrides).forEach(k => delete accountOverrides[k])
+      Object.assign(accountOverrides, dd.accountOverrides)
+    }
+
+    // 恢复 publishAccountIds
+    if (dd.publishAccountIds) {
+      publishAccountIds.clear()
+      dd.publishAccountIds.forEach(id => publishAccountIds.add(id))
+    }
+
+    // 恢复 expandedGroups
+    if (dd.expandedGroups) {
+      expandedGroups.value = new Set(dd.expandedGroups)
+    }
+
+    // 恢复 selectedPlatform
+    if (dd.selectedPlatform) {
+      selectedPlatform.value = dd.selectedPlatform
+    }
+
+    // 恢复 videoModeTab
+    if (dd.videoModeTab) {
+      videoModeTab.value = dd.videoModeTab
+    }
+
+    // 设置草稿编辑模式
+    currentDraftId.value = draftId
+
+    // 重新提取视频抽帧（异步，不阻塞）
+    if (commonConfig.videoLandscape) {
+      triggerFrameExtraction(commonConfig.videoLandscape, 'landscape')
+    }
+    if (commonConfig.videoPortrait) {
+      triggerFrameExtraction(commonConfig.videoPortrait, 'portrait')
+    }
+
+    ElMessage.success('草稿已恢复')
+  } catch (e) {
+    ElMessage.error('草稿恢复失败')
+  }
+}
+
+onMounted(() => {
+  const draftId = route.query.draft
+  if (draftId) {
+    restoreDraft(Number(draftId))
+  }
+})
 
 async function publishAll() {
   // Validate
@@ -1934,92 +1790,128 @@ function formatSize(bytes) {
   flex-direction: column;
   background: $bg-elevated;
   overflow: hidden;
+}
 
-  .main-header {
+.main-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.main-form-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.main-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid $border;
+  flex-shrink: 0;
+
+  .header-left {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 16px 24px;
-    border-bottom: 1px solid $border;
-    flex-shrink: 0;
+    gap: 12px;
 
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-
-      .page-title {
-        font-size: 18px;
-        font-weight: 700;
-        color: $text-primary;
-      }
-
-      .platform-tag {
-        font-size: 12px;
-        font-weight: 500;
-        padding: 4px 12px;
-        border-radius: 20px;
-      }
+    .page-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: $text-primary;
     }
 
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-
-      .text-btn {
-        font-size: 14px;
-        color: $text-secondary;
-        transition: $transition-base;
-
-        &:hover {
-          color: $brand-start;
-        }
-      }
-
-      .publish-btn {
-        display: inline-flex;
-        align-items: center;
-        padding: 8px 24px;
-        border: 1px solid transparent;
-        border-radius: $radius-sm;
-        background: $gradient-brand;
-        color: #fff;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: $transition-base;
-        outline: none;
-        font-family: inherit;
-
-        &:hover {
-          opacity: 0.9;
-        }
-
-        &:active {
-          transform: scale(0.97);
-        }
-
-        &:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-      }
+    .platform-tag {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 20px;
     }
   }
 
-  .main-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px;
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
 
-    &::-webkit-scrollbar {
-      width: 6px;
+    .text-btn {
+      font-size: 14px;
+      color: $text-secondary;
+      transition: $transition-base;
+
+      &:hover {
+        color: $brand-start;
+      }
     }
-    &::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 3px;
+
+    .publish-btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 24px;
+      border: 1px solid transparent;
+      border-radius: $radius-sm;
+      background: $gradient-brand;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: $transition-base;
+      outline: none;
+      font-family: inherit;
+
+      &:hover {
+        opacity: 0.9;
+      }
+
+      &:active {
+        transform: scale(0.97);
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
     }
+
+    .draft-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 16px;
+      height: 36px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: $radius-base;
+      background: rgba(255, 255, 255, 0.06);
+      color: $text-secondary;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: $transition-base;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.25);
+        color: $text-primary;
+      }
+    }
+  }
+}
+
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
   }
 }
 
@@ -2083,234 +1975,214 @@ function formatSize(bytes) {
   margin-right: 4px;
 }
 
-// ----- Video Dual Card Grid -----
-.video-dual-grid {
+// ----- Right Phone Panel -----
+.phone-panel {
+  width: 400px;
+  flex-shrink: 0;
+  background: $bg-base;
+  border-left: 1px solid $border;
   display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  flex-direction: column;
+  justify-content: center;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 2px; }
 }
 
-.video-card {
+.phone-panel-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid $border;
+}
+
+.phone-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: $text-primary;
+}
+
+.phone-mode-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px 8px;
+}
+
+.mode-tab {
   flex: 1;
-  border: 1px dashed $border;
-  border-radius: $radius-base;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: $text-muted;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: $transition-fast;
+  font-family: inherit;
+  outline: none;
+
+  &:hover:not(.active) {
+    color: $text-secondary;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  &.active {
+    background: rgba($brand-start, 0.08);
+    border-color: rgba($brand-start, 0.2);
+    color: $brand-start;
+  }
+}
+
+.mode-icon-portrait {
+  display: inline-block;
+  width: 10px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+.mode-icon-landscape {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.phone-preview-area {
+  display: flex;
+  justify-content: center;
+  padding: 16px 4px;
+}
+
+.phone-mockup {
+  position: relative;
+  background: #1a1a2e;
+  border: 3px solid #2a2a40;
+  border-radius: 28px;
+  padding: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: width 0.3s ease;
+
+  width: 90%;
+}
+
+.phone-notch {
+  width: 60px;
+  height: 6px;
+  background: #2a2a40;
+  border-radius: 3px;
+  margin-bottom: 6px;
+}
+
+.phone-screen {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  background: $bg-base;
+  border-radius: 16px;
   overflow: hidden;
-  transition: $transition-base;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.phone-video-player {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  outline: none;
+}
+
+.phone-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  color: $text-muted;
+  font-size: 11px;
+  cursor: pointer;
+  transition: $transition-fast;
 
   &:hover {
-    border-color: $border-active;
+    color: $brand-start;
+    background: rgba($brand-start, 0.04);
   }
+}
 
-  .video-card-label {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.03);
-    font-size: 12px;
-    font-weight: 500;
-    color: $text-secondary;
+.phone-home-bar {
+  width: 40px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  margin-top: 6px;
+}
 
-    .video-ratio {
-      font-size: 10px;
-      color: $text-muted;
-      background: rgba(255, 255, 255, 0.06);
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-  }
+.phone-panel-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+  .cover-action-btn { flex: 1; }
+}
 
-  .video-card-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 40px 0;
-    color: $text-muted;
-    cursor: pointer;
-    transition: $transition-base;
+.phone-panel-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 16px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid $border;
+  border-radius: $radius-base;
+}
 
-    &:hover {
-      background: rgba(255, 255, 255, 0.03);
-      color: $brand-start;
-      .video-card-empty-text { color: $brand-start; }
-    }
+.phone-info-name {
+  font-size: 12px;
+  color: $text-secondary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
 
-    .video-card-empty-text { font-size: 12px; transition: $transition-fast; }
-  }
-
-  .video-card-preview {
-    position: relative;
-    video {
-      width: 100%;
-      display: block;
-      max-height: 200px;
-      outline: none;
-    }
-    .video-card-overlay {
-      position: absolute;
-      bottom: 0; left: 0; right: 0;
-      display: flex;
-      justify-content: center;
-      gap: 12px;
-      padding: 8px 0;
-      background: linear-gradient(transparent, rgba(0,0,0,0.7));
-      opacity: 0;
-      transition: $transition-base;
-      .overlay-btn {
-        padding: 3px 10px;
-        border: none; border-radius: 4px;
-        background: rgba(255,255,255,0.15);
-        color: #fff; font-size: 12px;
-        cursor: pointer; transition: $transition-fast;
-        outline: none; font-family: inherit;
-        &:hover { background: rgba(255,255,255,0.25); }
-        &.danger:hover { background: rgba($danger-color,0.6); }
-      }
-    }
-    &:hover .video-card-overlay { opacity: 1; }
-  }
-
-  .video-card-actions {
-    display: flex;
-    gap: 8px;
-    padding: 8px 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    .cover-action-btn { flex: 1; }
+.phone-info-remove {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: $text-muted;
+  cursor: pointer;
+  transition: $transition-fast;
+  &:hover {
+    background: rgba($danger-color, 0.1);
+    color: $danger-color;
   }
 }
 
 // ----- Cover Section -----
 .cover-section {
-  // overrides if needed
+  background: rgba(255, 255, 255, 0.01);
+  border-color: $border;
 }
 
 .cover-grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
-  align-items: flex-start;
-}
-
-.cover-card {
-  flex: 1;
-  border: 1px dashed $border;
-  border-radius: $radius-base;
-  overflow: hidden;
-  transition: $transition-base;
-
-  &:hover {
-    border-color: $border-active;
-  }
-
-  .cover-card-label {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.03);
-    font-size: 12px;
-    font-weight: 500;
-    color: $text-secondary;
-
-    .cover-ratio {
-      font-size: 10px;
-      color: $text-muted;
-      background: rgba(255, 255, 255, 0.06);
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-  }
-
-  .cover-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 24px 0;
-    color: $text-muted;
-    cursor: pointer;
-    transition: $transition-base;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.03);
-      color: $brand-start;
-
-      .cover-empty-text {
-        color: $brand-start;
-      }
-    }
-
-    .cover-empty-text {
-      font-size: 12px;
-      transition: $transition-fast;
-    }
-  }
-
-  .cover-card-actions {
-    display: flex;
-    gap: 8px;
-    padding: 8px 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-
-    .cover-action-btn {
-      flex: 1;
-    }
-  }
-
-  .cover-preview-wrap {
-    position: relative;
-    display: flex;
-    justify-content: center;
-
-    .cover-preview {
-      display: block;
-      height: 360px;
-      width: auto;
-      max-width: 100%;
-      object-fit: contain;
-    }
-
-    .cover-preview-overlay {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      display: flex;
-      justify-content: center;
-      gap: 12px;
-      padding: 8px 0;
-      background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
-      opacity: 0;
-      transition: $transition-base;
-
-      .overlay-btn {
-        padding: 3px 10px;
-        border: none;
-        border-radius: 4px;
-        background: rgba(255, 255, 255, 0.15);
-        color: #fff;
-        font-size: 12px;
-        cursor: pointer;
-        transition: $transition-fast;
-        outline: none;
-        font-family: inherit;
-
-        &:hover {
-          background: rgba(255, 255, 255, 0.25);
-        }
-
-        &.danger:hover {
-          background: rgba($danger-color, 0.6);
-        }
-      }
-    }
-
-    &:hover .cover-preview-overlay {
-      opacity: 1;
-    }
-  }
+  align-items: stretch;
 }
 
 .cover-action-btn {
@@ -2793,104 +2665,6 @@ function formatSize(bytes) {
 
 // ========== Upload Dialogs ==========
 .video-upload-dialog,
-.cover-upload-dialog {
-  .video-upload,
-  .cover-upload {
-    width: 100%;
-
-    :deep(.el-upload-dragger) {
-      width: 100%;
-      height: 180px;
-      background: rgba(255, 255, 255, 0.02);
-      border-color: $border;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      transition: $transition-base;
-
-      &:hover {
-        border-color: $border-active;
-      }
-
-      .el-icon--upload {
-        color: $text-muted;
-        margin-bottom: 8px;
-      }
-    }
-
-    .el-upload__text {
-      color: $text-secondary;
-      font-size: 14px;
-
-      em {
-        color: $brand-start;
-      }
-    }
-
-    .el-upload__tip {
-      color: $text-muted;
-      font-size: 12px;
-      margin-top: 8px;
-    }
-  }
-}
-
-// ========== Crop Dialog ==========
-.crop-dialog {
-  .crop-container {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .crop-canvas-wrap {
-    position: relative;
-    width: fit-content;
-    margin: 0 auto;
-    background: #000;
-    border-radius: $radius-base;
-    overflow: hidden;
-  }
-
-  .crop-canvas {
-    display: block;
-  }
-
-  .crop-selection {
-    position: absolute;
-    border: 2px solid $brand-start;
-    cursor: move;
-    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
-  }
-
-  .crop-handle {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    background: $brand-start;
-    border: 1px solid #fff;
-    border-radius: 2px;
-
-    &.top-left { top: -5px; left: -5px; cursor: nw-resize; }
-    &.top-right { top: -5px; right: -5px; cursor: ne-resize; }
-    &.bottom-left { bottom: -5px; left: -5px; cursor: sw-resize; }
-    &.bottom-right { bottom: -5px; right: -5px; cursor: se-resize; }
-  }
-
-  .crop-info {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 12px;
-    color: $text-muted;
-
-    .crop-size {
-      color: $text-secondary;
-    }
-  }
-}
-
 // ========== Material Library Dialog ==========
 .material-library-dialog {
   .material-library-content {

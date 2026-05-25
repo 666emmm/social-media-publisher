@@ -80,6 +80,21 @@ def init_database():
     )
     """)
 
+    # 草稿箱表
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS drafts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT DEFAULT '',
+        cover_path TEXT DEFAULT '',
+        draft_data TEXT DEFAULT '{}',
+        channels_summary TEXT DEFAULT '[]',
+        video_duration REAL DEFAULT 0,
+        video_file_size INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
     conn.commit()
     conn.close()
     logger.info(f"Database initialized at {DB_PATH}")

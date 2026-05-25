@@ -352,6 +352,7 @@
     .section-icon.iqiyi { background: linear-gradient(135deg, #1E8800, #146600); }
     .section-icon.migration { background: linear-gradient(135deg, var(--primary), #1D4ED8); }
     .section-icon.ui { background: linear-gradient(135deg, var(--success), #059669); }
+    .section-icon.settings { background: linear-gradient(135deg, var(--purple), #7C3AED); }
 
     .section-title {
       font-size: 2.5rem;
@@ -544,11 +545,11 @@
       <h1><span>Social-Auto-Upload</span><br>Web-UI</h1>
       <p class="hero-subtitle">
         腾讯视频 + 爱奇艺双平台接入 · 全平台 CloakBrowser 迁移完成 ·<br>
-        发布界面 UI/UX 全面优化 · 打包流程精简
+        上传视频自动填充标题 · 发布界面 UI/UX 全面优化
       </p>
       <div class="hero-stats">
         <div class="stat">
-          <div class="stat-number">21<span>+</span></div>
+          <div class="stat-number">27<span>+</span></div>
           <div class="stat-label">提交次数</div>
         </div>
         <div class="stat">
@@ -603,15 +604,15 @@
         <li class="highlight-item">
           <div class="highlight-num">4</div>
           <div class="highlight-text">
-            <h3>发布界面 UI/UX 大改</h3>
-            <p>渠道和账号使用实际 logo 图片、配置信息不再丢失、发布成功判定基于页面跳转而非点击事件</p>
+            <h3>上传视频自动填充标题</h3>
+            <p>系统设置新增开关，上传视频成功后自动将文件名（去除扩展名）填入所有渠道的标题字段</p>
           </div>
         </li>
         <li class="highlight-item">
           <div class="highlight-num">5</div>
           <div class="highlight-text">
-            <h3>打包流程精简</h3>
-            <p>print 统一为 logging 规范日志输出，打包脚本自动清理 Playwright 浏览器目录，安装包体积更小</p>
+            <h3>发布界面 UI/UX 大改</h3>
+            <p>渠道和账号使用实际 logo 图片、配置信息不再丢失、发布成功判定基于页面跳转而非点击事件</p>
           </div>
         </li>
       </ul>
@@ -878,13 +879,60 @@
     </div>
   </section>
 
-  <!-- Section 7: Footer -->
-  <section class="section footer" data-section="6">
+  <!-- Section 7: 自动填充标题 -->
+  <section class="section" data-section="6" style="background:linear-gradient(180deg,#1a2332,#0F172A);justify-content:flex-start;padding-top:6rem;">
+    <div class="section-content">
+      <div class="section-header">
+        <div class="section-icon settings">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </div>
+        <h2 class="section-title">自动填充标题</h2>
+        <span class="section-meta">2 次提交</span>
+      </div>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-title">
+            系统设置开关
+            <span class="card-tag feat">新功能</span>
+          </div>
+          <div class="card-desc">
+            <p>设置页面新增「发布设置」卡片</p>
+            <ul>
+              <li>上传视频后自动填充标题 Toggle 开关</li>
+              <li>状态持久化到 localStorage</li>
+              <li>默认开启</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">
+            发布中心联动
+            <span class="card-tag feat">新功能</span>
+          </div>
+          <div class="card-desc">
+            <p>上传视频成功后自动执行</p>
+            <ul>
+              <li>将视频文件名（去除扩展名）填入所有渠道标题</li>
+              <li>同步更新当前选中平台的 <code>form.title</code></li>
+              <li>同步更新批量标题 <code>batchTitle</code></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 8: Footer -->
+  <section class="section footer" data-section="7">
     <div class="section-content">
       <div class="footer-logo">Social-Auto-Upload-Web-UI</div>
       <p>让社交媒体内容上传变得更简单</p>
       <div class="footer-meta">
-        最后更新于 2026年5月24日 · 共 21 次提交 · 10 个平台
+        最后更新于 2026年5月25日 · 共 27 次提交 · 10 个平台
       </div>
     </div>
   </section>

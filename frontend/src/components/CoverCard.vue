@@ -120,28 +120,199 @@ async function onFileSelected(e) {
 </script>
 
 <style scoped lang="scss">
-.cover-card { border: 1px solid #e4e7ed; border-radius: 8px; padding: 12px; background: #fafafa; }
-.cover-card-label { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
-.cover-ratio { font-size: 11px; color: #999; background: #f0f0f0; padding: 1px 6px; border-radius: 3px; }
-.recommended-frames { display: flex; gap: 4px; margin-bottom: 8px; overflow-x: auto; }
-.frame-thumb { width: 52px; height: 36px; border-radius: 4px; overflow: hidden; cursor: pointer; border: 2px solid transparent; flex-shrink: 0; position: relative;
+@use '@/styles/variables' as *;
+
+.cover-card {
+  flex: 1;
+  border: 1px dashed $border;
+  border-radius: $radius-base;
+  overflow: hidden;
+  transition: $transition-base;
+
+  &:hover { border-color: $border-active; }
+
+  :deep(.cover-card-label) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 12px;
+    font-weight: 500;
+    color: $text-secondary;
+
+    :deep(.cover-ratio) {
+      font-size: 10px;
+      color: $text-muted;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+  }
+}
+
+.recommended-frames {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.frame-thumb {
+  width: 52px;
+  height: 36px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  flex-shrink: 0;
+  position: relative;
+
   img { width: 100%; height: 100%; object-fit: cover; }
-  &.active { border-color: var(--el-color-primary); }
-  &:hover { border-color: var(--el-color-primary-light-3); } }
-.frame-check { position: absolute; top: 2px; right: 2px; background: var(--el-color-primary); color: #fff; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
-.edit-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fff; border: 2px dashed #dcdfe6; font-size: 10px; color: #999; gap: 2px;
-  &:hover { border-color: var(--el-color-primary); color: var(--el-color-primary); } }
-.cover-preview-wrap { position: relative; border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
-.cover-preview { width: 100%; display: block; }
-.cover-preview-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; gap: 8px; opacity: 0; transition: opacity 0.2s; }
-.cover-preview-wrap:hover .cover-preview-overlay { opacity: 1; }
-.overlay-btn { padding: 4px 12px; border: 1px solid rgba(255,255,255,0.6); border-radius: 4px; background: rgba(255,255,255,0.2); color: #fff; font-size: 12px; cursor: pointer;
-  &:hover { background: rgba(255,255,255,0.4); }
-  &.danger:hover { background: rgba(245,108,108,0.7); } }
-.cover-empty { border: 2px dashed #dcdfe6; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; cursor: pointer; color: #c0c4cc; margin-bottom: 8px;
-  &:hover { border-color: var(--el-color-primary); color: var(--el-color-primary); } }
-.cover-empty-text { font-size: 13px; margin-top: 6px; }
-.cover-card-actions { display: flex; gap: 8px; }
-.cover-action-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 6px; border: 1px solid #dcdfe6; border-radius: 4px; background: #fff; cursor: pointer; font-size: 13px;
-  &:hover { border-color: var(--el-color-primary); color: var(--el-color-primary); } }
+  &.active { border-color: $brand-start; }
+  &:hover { border-color: rgba($brand-start, 0.5); }
+}
+
+.frame-check {
+  position: absolute;
+  top: 2px; right: 2px;
+  background: $brand-start;
+  color: #fff;
+  border-radius: 50%;
+  width: 16px; height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed $border;
+  border-radius: 4px;
+  font-size: 10px;
+  color: $text-muted;
+  gap: 2px;
+  transition: $transition-base;
+
+  &:hover {
+    border-color: $border-active;
+    color: $brand-start;
+  }
+}
+
+.cover-preview-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.cover-preview {
+  display: block;
+  height: 240px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.cover-preview-overlay {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  opacity: 0;
+  transition: $transition-base;
+}
+
+.cover-preview-wrap:hover .cover-preview-overlay {
+  opacity: 1;
+}
+
+.overlay-btn {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: $transition-fast;
+  outline: none;
+  font-family: inherit;
+
+  &:hover { background: rgba(255, 255, 255, 0.25); }
+  &.danger:hover { background: rgba($danger-color, 0.6); }
+}
+
+.cover-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 32px 0;
+  color: $text-muted;
+  cursor: pointer;
+  transition: $transition-base;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.03);
+    color: $brand-start;
+  }
+}
+
+.cover-empty-text {
+  font-size: 12px;
+  transition: $transition-fast;
+}
+
+.cover-card-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cover-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: 1px solid $border;
+  border-radius: $radius-sm;
+  background: rgba(255, 255, 255, 0.03);
+  color: $text-secondary;
+  font-size: 12px;
+  cursor: pointer;
+  transition: $transition-base;
+  outline: none;
+  font-family: inherit;
+  line-height: 1;
+
+  :deep(.el-icon) {
+    flex-shrink: 0;
+    color: $text-muted;
+    transition: $transition-base;
+  }
+
+  &:hover {
+    border-color: rgba($brand-start, 0.35);
+    background: linear-gradient(135deg, rgba($brand-start, 0.08), rgba($brand-end, 0.06));
+    color: $text-primary;
+
+    :deep(.el-icon) { color: $brand-start; }
+  }
+
+  &:active { transform: scale(0.97); }
+}
 </style>

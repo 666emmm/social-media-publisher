@@ -327,28 +327,75 @@ defineExpose({ open })
 </script>
 
 <style scoped lang="scss">
+@use '@/styles/variables' as *;
+
 .cover-editor-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
-.tab-btn { padding: 6px 16px; border: 1px solid #dcdfe6; border-radius: 4px; background: #fff; cursor: pointer; font-size: 14px;
-  &.active { background: var(--el-color-primary); color: #fff; border-color: var(--el-color-primary); } }
+.tab-btn {
+  padding: 6px 16px;
+  border: 1px solid $border;
+  border-radius: $radius-sm;
+  background: rgba(255, 255, 255, 0.03);
+  color: $text-secondary;
+  cursor: pointer;
+  font-size: 14px;
+  transition: $transition-base;
+  &.active {
+    background: $gradient-brand;
+    color: #fff;
+    border-color: transparent;
+  }
+  &:hover:not(.active) {
+    border-color: $border-active;
+    color: $text-primary;
+  }
+}
 .cover-editor-body { display: flex; gap: 16px; }
 .editor-main { flex: 1; display: flex; flex-direction: column; gap: 12px; }
-.crop-area { background: #111; border-radius: 4px; min-height: 240px; display: flex; align-items: center; justify-content: center; }
-.crop-empty { color: #999; font-size: 13px; }
+.crop-area {
+  background: #0a0a1a;
+  border-radius: $radius-base;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.crop-empty { color: $text-muted; font-size: 13px; }
 .crop-canvas-wrap { position: relative; display: inline-block; }
 .crop-canvas { display: block; max-width: 100%; }
-.crop-selection { position: absolute; border: 2px solid var(--el-color-primary); box-shadow: 0 0 0 9999px rgba(0,0,0,0.5); cursor: move; }
-.crop-handle { position: absolute; width: 10px; height: 10px; background: #fff; border: 1px solid var(--el-color-primary); border-radius: 50%;
+.crop-selection { position: absolute; border: 2px solid $brand-start; box-shadow: 0 0 0 9999px rgba(0,0,0,0.5); cursor: move; }
+.crop-handle {
+  position: absolute;
+  width: 10px; height: 10px;
+  background: $brand-start;
+  border: 1px solid #fff;
+  border-radius: 50%;
   &.top-left { top: -5px; left: -5px; cursor: nw-resize; }
   &.top-right { top: -5px; right: -5px; cursor: ne-resize; }
   &.bottom-left { bottom: -5px; left: -5px; cursor: sw-resize; }
-  &.bottom-right { bottom: -5px; right: -5px; cursor: se-resize; } }
-.crop-info { text-align: center; color: #999; font-size: 12px; margin-top: 4px; }
+  &.bottom-right { bottom: -5px; right: -5px; cursor: se-resize; }
+}
+.crop-info { text-align: center; color: $text-muted; font-size: 12px; margin-top: 4px; }
 .editor-upload { display: flex; gap: 8px; }
-.editor-sidebar { width: 180px; border-left: 1px solid #eee; padding-left: 12px; overflow-y: auto; max-height: 420px; }
-.sidebar-title { font-size: 13px; font-weight: 500; margin-bottom: 8px; color: #666; }
+.editor-sidebar {
+  width: 180px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding-left: 12px;
+  overflow-y: auto;
+  max-height: 420px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.sidebar-title { font-size: 13px; font-weight: 500; margin-bottom: 8px; color: $text-secondary; }
 .sidebar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.sidebar-thumb { aspect-ratio: 1; border-radius: 4px; overflow: hidden; cursor: pointer; border: 2px solid transparent;
-  &:hover { border-color: var(--el-color-primary); }
-  img { width: 100%; height: 100%; object-fit: cover; } }
-.sidebar-empty { color: #999; font-size: 12px; text-align: center; padding: 20px 0; }
+.sidebar-thumb {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: $transition-fast;
+  &:hover { border-color: $brand-start; }
+  img { width: 100%; height: 100%; object-fit: cover; }
+}
+.sidebar-empty { color: $text-muted; font-size: 12px; text-align: center; padding: 20px 0; }
 </style>

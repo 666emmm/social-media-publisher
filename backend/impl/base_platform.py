@@ -3,7 +3,7 @@ Abstract base class for all social media platform implementations.
 
 Each platform (Douyin, Xiaohongshu, Bilibili, etc.) must subclass BasePlatform
 and implement the abstract methods. Browser entry points delegate to
-``_browser.py`` (CloakBrowser stealth layer with Playwright fallback).
+``_browser.py`` (CloakBrowser stealth layer).
 """
 
 from abc import ABC, abstractmethod
@@ -34,7 +34,7 @@ class BasePlatform(ABC):
         proxy: dict | None = None,
         extra_args: list | None = None,
     ):
-        """Create a stealth Chromium browser via CloakBrowser (or Playwright fallback)."""
+        """Create a stealth Chromium browser via CloakBrowser."""
         return await _create_browser(
             headless=headless,
             login_mode=login_mode,

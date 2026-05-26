@@ -374,8 +374,22 @@ def get_settings():
             "maxConcurrent": "2",
             "browserMode": "headed",
             "heartbeatInterval": "3600",
+            "autoFillTitle": "true",
+            "autoSaveDraft": "true",
+            "autoSaveInterval": "10",
         }
         defaults.update(settings)
+        # 转换布尔值类型
+        for key in ['autoFillTitle', 'autoSaveDraft']:
+            if key in defaults:
+                defaults[key] = defaults[key] in ('true', 'True', '1', True)
+        # 转换数值类型
+        for key in ['publishInterval', 'maxConcurrent', 'heartbeatInterval', 'autoSaveInterval']:
+            if key in defaults:
+                try:
+                    defaults[key] = int(defaults[key])
+                except (ValueError, TypeError):
+                    pass
         return jsonify({"code": 200, "data": defaults})
     except Exception as e:
         return jsonify({"code": 500, "msg": str(e)}), 500
@@ -583,6 +597,8 @@ def _extract_channels_summary(draft_data):
         type_to_platform = {v: k for k, v in {
             'xiaohongshu': 1, 'channels': 2, 'douyin': 3,
             'kuaishou': 4, 'bilibili': 5,
+            'baijiahao': 6, 'tiktok': 7, 'youtube': 8,
+            'tencent_video': 9, 'iqiyi': 10,
         }.items()}
 
         platform_counts = {}
@@ -618,7 +634,9 @@ def _extract_video_file_size(draft_data):
 def get_changelog():
     """获取更新日志列表（按文件名倒序）"""
     import os
-    changelog_dir = BASE_DIR / "changelog"
+    changelog_dir = Path(__file__).parent.parent.parent / "changelog"
+    if not changelog_dir.exists():
+        changelog_dir = BASE_DIR / "changelog"
     if not changelog_dir.exists():
         return jsonify({"code": 200, "data": []})
 

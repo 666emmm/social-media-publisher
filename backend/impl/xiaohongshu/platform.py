@@ -7,9 +7,10 @@ login, cookie-check, profile-sync and publish action.
 """
 
 import asyncio
-import logging
+import os
 import os
 import threading
+import time
 from pathlib import Path
 from queue import Queue
 
@@ -20,8 +21,10 @@ from .._browser import create_browser_sync
 from .._browser import create_context as _create_context_async
 from .._utils import scrape_user_profile, save_login_result, parse_schedule_time
 
-logger = logging.getLogger(__name__)
+from util._logger import get_channel_logger
 from ..base_platform import BasePlatform
+
+logger = get_channel_logger("xiaohongshu")
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -240,6 +243,8 @@ class XiaohongshuPlatform(BasePlatform):
         daily_times = kwargs.get("daily_times")
         start_days = kwargs.get("start_days", 0)
         thumbnail_path = kwargs.get("thumbnail_path", "")
+        thumbnail_landscape_path = kwargs.get("thumbnail_landscape_path", "")
+        thumbnail_portrait_path = kwargs.get("thumbnail_portrait_path", "")
         desc = kwargs.get("desc", "")
         schedule_time_str = kwargs.get("schedule_time_str", "")
         ai_content = kwargs.get("ai_content", "")
@@ -247,8 +252,12 @@ class XiaohongshuPlatform(BasePlatform):
         # Resolve file paths
         account_paths = [Path(BASE_DIR / "cookiesFile" / f) for f in account_files]
         file_paths = [Path(BASE_DIR / "videoFile" / f) for f in files]
-        if thumbnail_path:
-            thumbnail_path = str(Path(BASE_DIR / "videoFile" / thumbnail_path))
+
+        # XHS is a portrait-first platform: prefer portrait cover,
+        # then landscape, then generic thumbnail.
+        effective_cover = thumbnail_portrait_path or thumbnail_landscape_path or thumbnail_path
+        if effective_cover:
+            effective_cover = str(Path(BASE_DIR / "videoFile" / effective_cover))
 
         # Parse schedule times
         publish_datetimes = parse_schedule_time(
@@ -271,6 +280,8 @@ class XiaohongshuPlatform(BasePlatform):
                 logger.info(f"[xhs] title: {title}")
                 logger.info(f"[xhs] desc: {desc}")
                 logger.info(f"[xhs] tags: {tags}")
+                logger.info(f"[xhs] cover path: {effective_cover}")
+                logger.info(f"[xhs] raw thumbnail={thumbnail_path}, landscape={thumbnail_landscape_path}, portrait={thumbnail_portrait_path}")
 
                 pub_date = (
                     publish_datetimes
@@ -285,7 +296,7 @@ class XiaohongshuPlatform(BasePlatform):
                         tags=tags,
                         publish_date=pub_date,
                         account_file=str(cookie_path),
-                        thumbnail_path=thumbnail_path,
+                        thumbnail_path=effective_cover,
                         desc=desc,
                         ai_content=ai_content,
                         publish_strategy=strategy,
@@ -334,6 +345,43 @@ async def _publish_single_video(
             await context.close()
     finally:
         await browser.close()
+
+
+# ======================================================================
+# Page readiness detection
+# ======================================================================
+
+async def _wait_for_page_ready(page, timeout: int = 120) -> bool:
+    """Poll until xhs-publish-btn is ready (submit-disabled="false").
+
+    XHS uses closed shadow DOM which cannot be pierced by Playwright
+    locators.  Instead, check the ``submit-disabled`` attribute on the
+    ``<xhs-publish-btn>`` host element — it flips from "true" to "false"
+    once the video has finished server-side processing.
+    """
+    logger.info("[xhs] waiting for page to be fully ready after upload...")
+    start = time.time()
+    last_log = 0
+    while time.time() - start < timeout:
+        el = page.locator("xhs-publish-btn")
+        if await el.count() > 0:
+            disabled = await el.first.get_attribute("submit-disabled")
+            if disabled == "false":
+                elapsed = int(time.time() - start)
+                logger.info(f"[xhs] page ready (submit-disabled=false, waited {elapsed}s)")
+                return True
+        elapsed = int(time.time() - start)
+        if elapsed - last_log >= 15:
+            logger.info(f"[xhs] still waiting for page to be ready... ({elapsed}s)")
+            last_log = elapsed
+        await asyncio.sleep(1)
+    logger.error(f"[xhs] page never became ready after {timeout}s")
+    try:
+        await page.screenshot(path="debug_page_not_ready.png")
+        logger.info("[xhs] saved debug_page_not_ready.png")
+    except Exception:
+        pass
+    return False
 
 
 # ======================================================================
@@ -396,10 +444,6 @@ async def _upload_video_content(
 
                 logger.info("[xhs] still uploading, waiting...")
             else:
-                title_input = page.locator('input[placeholder*="填写标题"]')
-                if await title_input.count() > 0 and await title_input.is_visible():
-                    logger.info("[xhs] title input appeared, continuing")
-                    break
                 logger.info("[xhs] waiting for preview area...")
         except Exception as e:
             logger.info(f"[xhs] upload status check: {e}")
@@ -421,27 +465,80 @@ async def _upload_video_content(
     # --- Set AI content declaration ---
     await _set_content_declaration(page, ai_content)
 
+    # --- Set original declaration (原创声明) ---
+    await _set_original_declaration(page)
+
+    # --- Wait for publish button to hydrate ---
+    await _wait_for_page_ready(page)
+
     # --- Click publish ---
-    while True:
-        try:
-            if publish_strategy == _PUBLISH_STRATEGY_SCHEDULED:
-                await page.locator('button:has-text("定时发布")').click()
-            else:
-                await page.locator('button:has-text("发布")').click()
-            await page.wait_for_url(
-                "https://creator.xiaohongshu.com/publish/success?**",
-                timeout=3000,
-            )
-            logger.info("[xhs] video published successfully")
-            break
-        except Exception:
-            logger.info("[xhs] publish button click, retrying...")
-            await asyncio.sleep(0.5)
+    btn_text = "定时发布" if publish_strategy == _PUBLISH_STRATEGY_SCHEDULED else "发布"
+    await _click_publish_button(page, btn_text)
+
+    # Wait for page navigation after click
+    current_url = page.url
+    await asyncio.sleep(3)
+    new_url = page.url
+    logger.info(f"[xhs] url changed: {current_url} -> {new_url}")
+
+    if "success" in new_url.lower() or "publish/publish" not in new_url:
+        logger.info("[xhs] video published successfully")
+    else:
+        logger.error(f"[xhs] page did not navigate to success: {new_url}")
 
 
 # ======================================================================
 # Individual fill helpers
 # ======================================================================
+
+async def _click_publish_button(page, btn_text: str) -> None:
+    """Click the publish button. Playwright locators pierce shadow DOM by default."""
+    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    await asyncio.sleep(1)
+
+    # xhs-publish-btn uses CLOSED shadow DOM.  CDP's getFlattenedDocument
+    # with pierce=True returns ALL nodes including those inside closed
+    # shadow trees — unlike DOM.querySelector which cannot search inside
+    # closed shadow DOM.
+    cdp = await page.context.new_cdp_session(page)
+    try:
+        await cdp.send("DOM.enable")
+        flattened = await cdp.send("DOM.getFlattenedDocument", {
+            "depth": -1,
+            "pierce": True,
+        })
+        btn_node_id = 0
+        for node in flattened.get("nodes", []):
+            if node.get("localName") != "button":
+                continue
+            attrs = node.get("attributes") or []
+            # attrs is [key, val, key, val, ...]
+            for i in range(0, len(attrs), 2):
+                if attrs[i] == "class" and "bg-red" in (attrs[i + 1] or ""):
+                    btn_node_id = node["nodeId"]
+                    break
+            if btn_node_id:
+                break
+
+        if not btn_node_id:
+            logger.error("[xhs] CDP: publish button not found in flattened DOM")
+            return
+
+        await cdp.send("DOM.scrollIntoViewIfNeeded", {"nodeId": btn_node_id})
+        box_model = await cdp.send("DOM.getBoxModel", {"nodeId": btn_node_id})
+        if not box_model or "model" not in box_model:
+            logger.error("[xhs] CDP: could not get box model for publish button")
+            return
+        quad = box_model["model"]["content"]
+        # content quad: [x1,y1, x2,y2, x3,y3, x4,y4]
+        x = (quad[0] + quad[4]) / 2
+        y = (quad[1] + quad[5]) / 2
+        logger.info(f"[xhs] CDP: clicking publish button at ({x:.0f}, {y:.0f})")
+        await page.mouse.click(x, y)
+        logger.info("[xhs] publish clicked via CDP flattened DOM")
+    finally:
+        await cdp.detach()
+
 
 async def _fill_title(page, title: str) -> None:
     """Fill the title input (max 20 characters)."""
@@ -483,7 +580,12 @@ async def _fill_tags(page, tags: list) -> None:
 
 
 async def _set_thumbnail(page, thumbnail_path: str) -> None:
-    """Upload a custom cover image via the cover modal."""
+    """Upload a custom cover image via the cover modal.
+
+    New XHS UI (2026): the cover modal has a hidden file input directly
+    accessible; there is no '上传封面' tab anymore.  The file input is
+    ``input[type=file][accept*="image"]`` with ``display: none``.
+    """
     if not thumbnail_path:
         return
     if not os.path.exists(thumbnail_path):
@@ -493,53 +595,60 @@ async def _set_thumbnail(page, thumbnail_path: str) -> None:
     logger.info("[xhs] setting cover image")
 
     try:
-        # Click the cover upload area
-        cover_plugin_title = page.locator("div.cover-plugin-title").filter(
-            has_text="设置封面"
-        )
-        cover_upload_dialog = cover_plugin_title.locator(
-            "xpath=ancestor::div[contains(@class, 'cover-plugin-preview')]"
-        ).locator("div.cover > div.default:visible")
-        await cover_upload_dialog.wait_for(state="visible", timeout=30000)
-        await cover_upload_dialog.click(force=True)
-        await page.wait_for_timeout(2000)
+        # The cover editor modal opens only after hovering the cover
+        # preview then clicking the "修改封面" overlay that appears.
+        # Step 1: hover the cover preview to reveal the operator overlay
+        cover_sel = 'div[style*="background-image"]'
+        cover_loc = page.locator(cover_sel).first
+        try:
+            await cover_loc.wait_for(state="attached", timeout=10_000)
+            await cover_loc.hover()
+            await page.wait_for_timeout(1000)
+            logger.info("[xhs] hovered cover preview, looking for operator...")
 
-        # Find the cover modal
+            # Step 2: click the operator overlay
+            op_loc = page.locator("div.operator.pointer").first
+            await op_loc.click(force=True, timeout=5_000)
+            logger.info("[xhs] clicked cover operator overlay")
+        except Exception as e:
+            logger.info(f"[xhs] cover hover/click failed: {e}, skipping")
+            return
+
+        # Find the cover modal — retry once with an extra click if needed
         modal_selectors = [
             "div.d-modal.cover-modal",
             "div.cover-modal",
             "div[class*='cover-modal']",
-            "div[class*='cover-plugin-modal']",
             "div.d-modal",
         ]
         modal = None
-        for sel in modal_selectors:
-            if await page.locator(sel).count() > 0:
-                modal = page.locator(sel).first
+        for attempt in range(2):
+            await page.wait_for_timeout(3000)
+            for sel in modal_selectors:
+                if await page.locator(sel).count() > 0:
+                    modal = page.locator(sel).first
+                    break
+            if modal:
                 break
-
-        if not modal:
-            logger.info("[xhs] cover modal not found, skipping")
-            return
-
-        # Switch to upload cover tab
-        tab_selectors = [
-            "div.d-tabs-header:has-text('上传封面')",
-            ".d-tabs-header-label:has-text('上传封面')",
-            "h6:has-text('上传封面')",
-            "text=上传封面",
-        ]
-        for sel in tab_selectors:
-            count = await modal.locator(sel).count()
-            if count > 0:
+            if attempt == 0:
+                logger.info("[xhs] cover modal not found on attempt 1, retrying...")
                 try:
-                    await modal.locator(sel).first.click(timeout=3000)
-                    await page.wait_for_timeout(1000)
+                    await cover_loc.hover()
+                    await page.wait_for_timeout(500)
+                    await page.locator("div.operator.pointer").first.click(force=True, timeout=5_000)
                 except Exception:
                     pass
-                break
 
-        # Upload file
+        if not modal:
+            logger.info("[xhs] cover modal not found after retries, skipping")
+            try:
+                await page.screenshot(path="debug_cover_modal_missing.png")
+                logger.info("[xhs] saved debug_cover_modal_missing.png")
+            except Exception:
+                pass
+            return
+
+        # Set the file directly on the hidden file input
         file_input = modal.locator('input[type="file"][accept*="image"]').first
         await file_input.wait_for(state="attached", timeout=10000)
         logger.info(f"[xhs] uploading cover: {os.path.basename(thumbnail_path)}")
@@ -617,3 +726,59 @@ async def _set_content_declaration(page, ai_content: str) -> None:
         await asyncio.sleep(1)
     except Exception as exc:
         logger.info(f"[xhs] content declaration failed (non-fatal): {exc}")
+
+
+async def _set_original_declaration(page) -> None:
+    """Enable the 原创声明 (original declaration) switch and accept terms.
+
+    Flow:
+    1. Click the switch next to '原创声明'
+    2. A modal appears with a checkbox '我已阅读并同意 ...'
+    3. Check the checkbox
+    4. Click '声明原创' button
+    """
+    logger.info("[xhs] setting original declaration")
+    try:
+        # Find the 原创声明 switch
+        switch_card = page.locator(".custom-switch-card").filter(
+            has_text="原创声明"
+        )
+        switch = switch_card.locator(".d-switch")
+        if await switch.count() == 0:
+            logger.info("[xhs] original declaration switch not found, skipping")
+            return
+
+        # Check if already enabled (the d-switch-checked class)
+        switch_box = switch.first
+        classes = await switch_box.get_attribute("class") or ""
+        if "d-switch-checked" in classes:
+            logger.info("[xhs] original declaration already enabled")
+            return
+
+        await switch_box.click()
+        await page.wait_for_timeout(1500)
+
+        # Agreement modal should appear
+        modal = page.locator("div.d-modal.d-modal-centered")
+        if await modal.count() == 0:
+            logger.info("[xhs] original declaration modal not found, skipping")
+            return
+        modal = modal.first
+
+        # Check the agreement checkbox
+        checkbox = modal.locator(".d-checkbox-simulator")
+        if await checkbox.count() > 0:
+            await checkbox.first.click()
+            await page.wait_for_timeout(500)
+
+        # Click '声明原创' button
+        confirm_btn = modal.locator('button:has-text("声明原创")')
+        if await confirm_btn.count() > 0:
+            await confirm_btn.first.click()
+            await page.wait_for_timeout(1000)
+            logger.info("[xhs] original declaration set")
+        else:
+            logger.info("[xhs] 声明原创 button not found")
+
+    except Exception as exc:
+        logger.info(f"[xhs] original declaration failed (non-fatal): {exc}")

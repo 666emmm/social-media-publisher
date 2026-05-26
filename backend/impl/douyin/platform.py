@@ -7,10 +7,11 @@ Chromium) with automatic Playwright fallback.
 """
 
 import asyncio
-import logging
 import threading
 from pathlib import Path
 from queue import Queue
+
+from util._logger import get_channel_logger
 
 from conf import BASE_DIR
 
@@ -18,7 +19,7 @@ from .._browser import create_browser_sync
 from .._utils import parse_schedule_time, save_login_result, scrape_user_profile
 from ..base_platform import BasePlatform
 
-logger = logging.getLogger(__name__)
+logger = get_channel_logger("douyin")
 
 DOUYIN_PUBLISH_STRATEGY_IMMEDIATE = "immediate"
 DOUYIN_PUBLISH_STRATEGY_SCHEDULED = "scheduled"
@@ -575,18 +576,21 @@ class DouyinPlatform(BasePlatform):
             "div[class^='semi-upload upload'] >> input.semi-upload-hidden-input"
         )
 
-        if thumbnail_landscape_path:
-            await page.wait_for_timeout(1000)
-            await upload_input.set_input_files(thumbnail_landscape_path)
-            await page.wait_for_timeout(2000)
-            logger.info("Landscape cover uploaded")
-
+        # Douyin is a portrait-first platform: the default (first visible)
+        # tab in the cover dialog is for 竖版 (9:16 portrait) covers.
+        # The tab at index 1 (nth 1) is for 横版 (16:9 landscape) covers.
         if thumbnail_portrait_path:
-            await cover_locator.locator("div[class*='steps'] div").nth(1).click()
             await page.wait_for_timeout(1000)
             await upload_input.set_input_files(thumbnail_portrait_path)
             await page.wait_for_timeout(2000)
-            logger.info("Portrait cover uploaded")
+            logger.info("Portrait cover uploaded (default tab)")
+
+        if thumbnail_landscape_path:
+            await cover_locator.locator("div[class*='steps'] div").nth(1).click()
+            await page.wait_for_timeout(1000)
+            await upload_input.set_input_files(thumbnail_landscape_path)
+            await page.wait_for_timeout(2000)
+            logger.info("Landscape cover uploaded (tab 1)")
 
         await cover_locator.locator('button:visible:has-text("完成")').click()
         logger.info("Cover selection completed")

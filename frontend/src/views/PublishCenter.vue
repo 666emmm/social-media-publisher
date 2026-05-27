@@ -47,7 +47,7 @@
                 <span class="account-name">{{ account.name }}</span>
                 <span :class="['dot', account.status === '正常' ? 'on' : 'off']"></span>
                 <el-icon v-if="hasAccountOverride(account.id)" class="override-icon" title="已自定义配置"><StarFilled /></el-icon>
-                <el-icon v-else class="account-remove" @click.stop="removePublishAccount(account.id)"><Close /></el-icon>
+                <el-icon class="account-remove" @click.stop="removePublishAccount(account.id)"><Close /></el-icon>
               </div>
               <div v-if="group.accounts.filter(a => publishAccountIds.has(a.id)).length === 0" class="no-accounts">暂无账号</div>
             </div>
@@ -1911,20 +1911,18 @@ function formatSize(bytes) {
     }
 
     .account-remove {
-      font-size: 12px;
+      font-size: 16px;
       color: $text-muted;
-      opacity: 0;
+      opacity: 0.6;
       transition: $transition-fast;
       flex-shrink: 0;
-      margin-left: 2px;
+      margin-left: 4px;
+      cursor: pointer;
 
       &:hover {
         color: $danger-color;
+        opacity: 1;
       }
-    }
-
-    &:hover .account-remove {
-      opacity: 1;
     }
 
     &.has-override {

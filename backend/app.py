@@ -885,6 +885,7 @@ if __name__ == "__main__":
     if port == 5409:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(("127.0.0.1", port))
         except OSError:
             port = find_available_port(5409 + 1)

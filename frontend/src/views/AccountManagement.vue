@@ -87,14 +87,14 @@
                 检查
               </template>
             </button>
-            <button class="action-btn sync" @click="handleSyncProfile(account)" :disabled="syncingIds.has(account.id)">
+            <button class="action-btn sync" @click="handleSyncProfile(account)" :disabled="account.status === '异常' || syncingIds.has(account.id)">
               <el-icon v-if="syncingIds.has(account.id)" class="is-loading"><Loading /></el-icon>
               <template v-else>
                 <el-icon><Refresh /></el-icon>
                 同步
               </template>
             </button>
-            <button class="action-btn creator" @click="handleOpenCreatorCenter(account)">
+            <button class="action-btn creator" @click="handleOpenCreatorCenter(account)" :disabled="account.status === '异常'">
               <el-icon><Link /></el-icon>
               创作中心
             </button>

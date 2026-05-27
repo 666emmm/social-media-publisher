@@ -155,9 +155,19 @@ VENV_PIP="$VENV_DIR/bin/pip"
 HASH_FILE="$PROJECT_ROOT/.backend_deps_hash"
 CURRENT_HASH=$(get_dir_hash "backend")
 
-if [[ ! -d "$VENV_DIR" ]]; then
+if [[ ! -d "$VENV_DIR" ]] || [[ ! -f "$VENV_PIP" ]]; then
     print_ok "创建 venv..."
-    python3 -m venv "$VENV_DIR"
+    rm -rf "$VENV_DIR"
+    if ! python3 -m venv "$VENV_DIR" 2>/dev/null; then
+        print_warn "venv 创建失败，尝试安装 python3-venv..."
+        if command -v apt-get &>/dev/null; then
+            PYTHON_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+            sudo apt-get install -y "python${PYTHON_VER}-venv" >/dev/null 2>&1
+        elif command -v dnf &>/dev/null; then
+            sudo dnf install -y python3-venv >/dev/null 2>&1
+        fi
+        python3 -m venv "$VENV_DIR"
+    fi
     print_ok "安装 Python 依赖..."
     "$VENV_PIP" install -r "$BACKEND_DIR/requirements.txt" --quiet
     echo "$CURRENT_HASH" > "$HASH_FILE"

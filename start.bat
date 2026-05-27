@@ -88,7 +88,12 @@ set "CURRENT_HASH="
 for /f "tokens=*" %%i in ('git -C "%PROJECT_ROOT%" log -1 --format^=%%H -- backend 2^>nul') do set "CURRENT_HASH=%%i"
 if "%CURRENT_HASH%"=="" set "CURRENT_HASH=no-git"
 
-if not exist "%VENV_DIR%" (
+:: 检查 venv 是否完整（目录 + pip 都存在）
+set "VENV_OK=0"
+if exist "%VENV_DIR%" if exist "%VENV_PIP%" set "VENV_OK=1"
+
+if "%VENV_OK%"=="0" (
+    if exist "%VENV_DIR%" rmdir /s /q "%VENV_DIR%" >nul 2>&1
     echo   ✓ 创建 venv...
     python -m venv "%VENV_DIR%"
     echo   ✓ 安装 Python 依赖...

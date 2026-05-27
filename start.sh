@@ -251,6 +251,12 @@ fi
 # ============================================================
 print_step "5" "启动服务"
 
+# 确保端口 5409 完全释放
+sleep 1
+
+# 强制后端使用 5409 端口，避免自动回退到其他端口
+export SAU_PORT=5409
+
 cd "$BACKEND_DIR"
 nohup "$VENV_PYTHON" app.py > "$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
@@ -268,11 +274,21 @@ cd "$PROJECT_ROOT"
 # ============================================================
 print_step "6" "等待服务就绪"
 
+# 从日志中获取后端实际端口（后端可能因端口竞争回退到其他端口）
+BACKEND_PORT=5409
 echo -n "  等待后端就绪"
 for i in $(seq 1 30); do
-    if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:5409/api/health" 2>/dev/null | grep -q "200"; then
+    # 检测日志中的实际端口（使用 sed 替代 grep -P，兼容 macOS）
+    if [[ -f "$BACKEND_LOG" ]]; then
+        detected_port=$(sed -n 's/.*Serving on http:\/\/0\.0\.0\.0:\([0-9]*\).*/\1/p' "$BACKEND_LOG" 2>/dev/null | tail -1)
+        if [[ -n "$detected_port" ]]; then
+            BACKEND_PORT="$detected_port"
+        fi
+    fi
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null || true)
+    if [[ "$http_code" == "200" ]]; then
         echo ""
-        print_ok "后端就绪"
+        print_ok "后端就绪 (端口: ${BACKEND_PORT})"
         break
     fi
     if [[ $i -eq 30 ]]; then
@@ -287,7 +303,8 @@ done
 
 echo -n "  等待前端就绪"
 for i in $(seq 1 30); do
-    if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:5173" 2>/dev/null | grep -q "200"; then
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:5173" 2>/dev/null || true)
+    if [[ "$http_code" == "200" ]]; then
         echo ""
         print_ok "前端就绪"
         break
@@ -305,7 +322,7 @@ done
 echo ""
 echo "============================================"
 echo -e "  ${GREEN}前端界面: http://localhost:5173${NC}"
-echo -e "  ${GREEN}后端 API: http://localhost:5409${NC}"
+echo -e "  ${GREEN}后端 API: http://localhost:${BACKEND_PORT}${NC}"
 echo "============================================"
 echo ""
 echo "按 Ctrl+C 停止所有服务"

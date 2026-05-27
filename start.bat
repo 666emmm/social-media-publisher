@@ -272,10 +272,13 @@ echo [5/6] 启动服务...
 :: 确保端口完全释放
 timeout /t 1 /nobreak >nul
 
+:: 启动后端（使用完整路径避免变量展开问题）
 cd /d "%BACKEND_DIR%"
-start "SAU-Backend" /B cmd /c "set SAU_PORT=5409 && "%VENV_PYTHON%" app.py > "%BACKEND_LOG%" 2>&1"
+set "SAU_PORT=5409"
+start "SAU-Backend" /B cmd /c ""%VENV_DIR%\Scripts\python.exe" app.py > "%BACKEND_LOG%" 2>&1"
 echo   √ 后端已启动
 
+:: 启动前端
 cd /d "%FRONTEND_DIR%"
 start "SAU-Frontend" /B cmd /c "npm run dev > "%FRONTEND_LOG%" 2>&1"
 echo   √ 前端已启动

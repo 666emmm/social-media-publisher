@@ -362,8 +362,19 @@ const handleCheckAccount = async (row) => {
 const qrCodeData = ref('')
 const loginStatus = ref('')
 
-const onPlatformSelect = () => {
+const onPlatformSelect = async (value) => {
   accountFormRef.value?.validateField('platform')
+  if (value === '小红书') {
+    try {
+      await ElMessageBox.confirm(
+        '由于小红书反检测机制比较恶心，如果出现被警告的情况！请立即停止使用小红书渠道！',
+        '风险警告',
+        { confirmButtonText: '我已知悉，继续添加', cancelButtonText: '取消', type: 'warning' }
+      )
+    } catch {
+      accountForm.platform = ''
+    }
+  }
 }
 
 const handleAddAccount = () => {

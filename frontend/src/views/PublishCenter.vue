@@ -212,6 +212,12 @@
             <el-button size="small" @click="resetAccountOverride(selectedAccountId)">恢复为渠道默认</el-button>
           </div>
 
+          <!-- 小红书反检测警告 -->
+          <div v-if="selectedPlatform === 'xiaohongshu'" class="xhs-warning">
+            <el-icon><WarningFilled /></el-icon>
+            <span>由于小红书反检测机制比较恶心，如果出现被警告的情况！请立即停止使用小红书渠道！</span>
+          </div>
+
           <!-- 账号级 or 渠道级标题描述 -->
           <div class="platform-title-desc">
             <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
@@ -643,7 +649,7 @@
 
 <script setup>
 import { ref, reactive, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
-import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Check, Close, InfoFilled, Promotion, StarFilled, Delete, Document } from '@element-plus/icons-vue'
+import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Check, Close, InfoFilled, Promotion, StarFilled, Delete, Document, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
@@ -2056,6 +2062,31 @@ function formatSize(bytes) {
 // ========== Config Section ==========
 .config-section {
   margin-bottom: 24px;
+}
+
+.xhs-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: rgba(#ff4d4f, 0.1);
+  border: 2px solid #ff4d4f;
+  border-radius: 8px;
+  color: #ff4d4f;
+  font-size: 14px;
+  font-weight: 600;
+  animation: xhs-pulse 2s ease-in-out infinite;
+
+  .el-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+}
+
+@keyframes xhs-pulse {
+  0%, 100% { border-color: #ff4d4f; }
+  50% { border-color: #ff7875; box-shadow: 0 0 12px rgba(#ff4d4f, 0.3); }
 }
 
 .section-bar {

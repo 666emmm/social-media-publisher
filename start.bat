@@ -341,9 +341,9 @@ echo   后端日志: %BACKEND_LOG%
 echo   前端日志: %FRONTEND_LOG%
 echo.
 
-:: 显示日志查看命令
-echo   查看后端日志: type %BACKEND_LOG%
-echo   查看前端日志: type %FRONTEND_LOG%
+:: 在新窗口中实时显示后端日志
+echo   正在打开后端日志窗口...
+start "SAU-后端日志" cmd /c "powershell -Command \"Get-Content '%BACKEND_LOG%' -Tail 50 -Wait\" & pause"
 echo.
 
 echo 按任意键停止所有服务...

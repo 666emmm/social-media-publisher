@@ -340,13 +340,8 @@ echo.
 echo   查看后端日志: type %BACKEND_LOG%
 echo   查看前端日志: type %FRONTEND_LOG%
 echo.
-echo 按 Y 退出并停止所有服务，按 N 保持运行:
-choice /c YN /m "选择"
-
-:: 停止服务
+echo   停止服务:
+echo     taskkill /F /IM python.exe
+echo     taskkill /F /IM node.exe
 echo.
-echo 正在停止服务...
-taskkill /F /IM python.exe >nul 2>&1
-taskkill /F /IM node.exe >nul 2>&1
-echo 服务已停止
 endlocal

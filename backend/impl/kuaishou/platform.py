@@ -463,47 +463,43 @@ class KuaishouPlatform(BasePlatform):
     async def _set_thumbnail(page, thumbnail_path: str):
         """Upload custom cover image.
 
-        Flow: click cover area -> modal -> "上传封面" tab -> upload ->
-        select 4:3 ratio -> confirm.
+        Flow: hover cover area -> click "封面设置" -> modal ->
+        "上传封面" tab -> upload image -> confirm.
         """
         logger.info("[kuaishou] setting thumbnail")
         try:
-            # 1. Click cover area
+            # 1. Hover over cover area to reveal "封面设置" overlay
             cover_area = page.locator("div[class*='default-cover']").first
-            await cover_area.click()
+            await cover_area.hover()
+            await asyncio.sleep(1)
 
-            # 2. Wait for modal
+            # 2. Click "封面设置" text to open modal
+            cover_editor = page.locator("div[class*='cover-full-editor']:has-text('封面设置')").first
+            await cover_editor.wait_for(state="visible", timeout=10000)
+            await cover_editor.click()
+
+            # 3. Wait for modal
             modal = page.locator('div[role="document"].ant-modal:visible')
             await modal.wait_for(state="visible", timeout=30000)
             await asyncio.sleep(1)
 
-            # 3. Click "上传封面" tab (second header-title-item)
-            upload_tab = modal.locator("div[class*='header-title-item']").nth(1)
+            # 4. Click "上传封面" tab
+            upload_tab = modal.locator("div[class*='header-title-item']:has-text('上传封面')").first
             await upload_tab.wait_for(state="visible", timeout=10000)
             await upload_tab.click()
             await asyncio.sleep(1)
 
-            # 4. Upload image
-            file_input = modal.locator('input[type="file"]')
+            # 5. Find hidden file input and upload image
+            file_input = modal.locator("div[class*='cropper-upload'] input[type='file']")
             await file_input.wait_for(state="attached", timeout=30000)
             await file_input.set_input_files(thumbnail_path)
-            await asyncio.sleep(2)
+            logger.info("[kuaishou] cover image uploaded, waiting...")
+            await asyncio.sleep(3)
 
-            # 5. Select 4:3 ratio (second ratio-item)
-            ratio_4_3 = modal.locator("div[class*='ratio-item']").nth(1)
-            if await ratio_4_3.count():
-                await ratio_4_3.click()
-                await asyncio.sleep(1)
-
-            # 6. Confirm
-            confirm_btn = modal.get_by_role("button", name="确认", exact=True)
-            if await confirm_btn.count():
-                await confirm_btn.click()
-            else:
-                edit_btn = modal.get_by_role("button", name="去编辑", exact=True)
-                if await edit_btn.count():
-                    await edit_btn.click()
-
+            # 6. Click "确认" button
+            confirm_btn = modal.locator("button:has-text('确认')").first
+            await confirm_btn.wait_for(state="visible", timeout=10000)
+            await confirm_btn.click()
             await asyncio.sleep(2)
 
             # 7. Wait for modal to close
@@ -512,7 +508,7 @@ class KuaishouPlatform(BasePlatform):
             except Exception:
                 pass
 
-            logger.info("[kuaishou] thumbnail set")
+            logger.info("[kuaishou] thumbnail set successfully")
         except Exception as exc:
             logger.info(f"[kuaishou] thumbnail failed (non-fatal): {exc}")
 

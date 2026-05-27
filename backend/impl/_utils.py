@@ -325,13 +325,8 @@ async def scrape_baijiahao_profile(page):
 async def scrape_youtube_profile(page):
     """YouTube-specific scraper.
 
-    YouTube Studio uses Polymer Shadow DOM. The channel name appears in
-    ``ytcp-ve`` elements and the avatar uses Google profile image URLs.
-
-    Strategy:
-      1. Try button[id="avatar-button"] + adjacent span for name (Studio header)
-      2. Scan all ``<img>`` for ``ggpht.com`` / ``googleusercontent`` URLs
-      3. Fallback to page title
+    Navigates to YouTube Studio, waits for redirect to the channel page,
+    then extracts the channel name and avatar from the navigation drawer.
 
     Returns:
         tuple[str, str]: (user_name, avatar_url)
@@ -339,40 +334,30 @@ async def scrape_youtube_profile(page):
     name = ""
     avatar = ""
     try:
+        # Wait for redirect to channel-specific URL
+        await page.wait_for_url("**/channel/**", timeout=15000)
         await page.wait_for_load_state('networkidle', timeout=15000)
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
 
-        # Strategy 1: Avatar button in Studio header contains channel info
-        avatar_btn = page.locator('button[id="avatar-button"]')
-        if await avatar_btn.count():
-            # The avatar image is inside the button
-            btn_img = avatar_btn.locator('img')
-            if await btn_img.count():
-                src = (await btn_img.get_attribute('src') or '').strip()
-                if src:
-                    avatar = src
-                alt = (await btn_img.get_attribute('alt') or '').strip()
-                if alt and len(alt) < 50:
-                    name = alt
-            # aria-label often contains "账号: <channel name>"
-            if not name:
-                aria = (await avatar_btn.get_attribute('aria-label') or '').strip()
-                if aria:
-                    # e.g. "账号: MyChannel" or "Account: MyChannel"
-                    for sep in (':', '：'):
-                        if sep in aria:
-                            candidate = aria.split(sep, 1)[1].strip()
-                            if candidate:
-                                name = candidate
-                                break
+        # Extract nickname from navigation drawer
+        name_el = page.locator('div#entity-name').first
+        if await name_el.count():
+            name = (await name_el.text_content() or '').strip()
 
-        # Strategy 2: div#entity-name (present in some Studio views)
-        if not name:
-            name_el = page.locator('div#entity-name').first
-            if await name_el.count():
-                name = (await name_el.text_content() or '').strip()
+        # Extract avatar from navigation drawer
+        avatar_el = page.locator('img.image-thumbnail').first
+        if await avatar_el.count():
+            avatar = (await avatar_el.get_attribute('src') or '').strip()
 
-        # Strategy 3: Scan all images for Google profile URLs
+        # Fallback: avatar button in Studio header
+        if not avatar:
+            avatar_btn = page.locator('button[id="avatar-button"]')
+            if await avatar_btn.count():
+                btn_img = avatar_btn.locator('img')
+                if await btn_img.count():
+                    avatar = (await btn_img.get_attribute('src') or '').strip()
+
+        # Fallback: scan all images for Google profile URLs
         if not avatar:
             all_imgs = page.locator('img')
             count = await all_imgs.count()

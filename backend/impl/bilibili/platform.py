@@ -55,7 +55,7 @@ class BilibiliPlatform(BasePlatform):
     # Login
     # ------------------------------------------------------------------
 
-    async def login(self, id: str, status_queue: Queue) -> None:
+    async def login(self, id: str, status_queue: Queue, account_id=None) -> None:
         """Perform Bilibili login via QR code scan.
 
         Opens ``passport.bilibili.com/login``, finds the QR image via
@@ -128,6 +128,7 @@ class BilibiliPlatform(BasePlatform):
                 platform_name=self.platform_name,
                 status_queue=status_queue,
                 scrape_fn=scrape_bilibili_profile,
+                account_id=account_id,
             )
 
             await page.close()

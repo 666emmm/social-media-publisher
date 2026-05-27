@@ -39,7 +39,7 @@ class KuaishouPlatform(BasePlatform):
     # Login — QR code scan via CloakBrowser
     # ------------------------------------------------------------------
 
-    async def login(self, id: str, status_queue: Queue) -> None:
+    async def login(self, id: str, status_queue: Queue, account_id=None) -> None:
         """Perform Kuaishou login via QR code scan.
 
         Opens the Kuaishou creator platform, clicks through to the QR
@@ -110,6 +110,7 @@ class KuaishouPlatform(BasePlatform):
                 platform_name=self.platform_name,
                 status_queue=status_queue,
                 scrape_fn=scrape_user_profile,
+                account_id=account_id,
             )
         except Exception as exc:
             logger.info(f"[kuaishou] login error: {exc}")

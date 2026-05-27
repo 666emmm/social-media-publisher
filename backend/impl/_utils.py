@@ -471,6 +471,7 @@ async def save_login_result(
     platform_name: str,
     status_queue,
     scrape_fn=None,
+    account_id=None,
 ):
     """Shared post-login flow: scrape profile, save cookie, write DB, send SSE.
 
@@ -487,6 +488,8 @@ async def save_login_result(
             frontend.
         scrape_fn: Optional async ``async (page) -> (name, avatar)`` callable.
             Defaults to :func:`scrape_user_profile` (the generic JS scraper).
+        account_id: Optional existing account ID for re-login. When provided,
+            updates the existing record instead of creating a new one.
     """
     if scrape_fn is None:
         scrape_fn = scrape_user_profile
@@ -496,26 +499,55 @@ async def save_login_result(
     if not user_name:
         user_name = f"{platform_name}用户{int(asyncio.get_event_loop().time())}"
 
-    # 2. Save cookie file
-    uuid_v1 = uuid.uuid1()
-    logger.info(f"UUID v1: {uuid_v1}")
     cookies_dir = Path(BASE_DIR / "cookiesFile")
     cookies_dir.mkdir(exist_ok=True)
-    cookie_filename = f"{uuid_v1}.json"
+    db_path = Path(BASE_DIR / "db" / "database.db")
+
+    if account_id:
+        # Re-login: update existing record's cookie file
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                'SELECT filePath FROM user_info WHERE id = ?', (account_id,)
+            ).fetchone()
+            cookie_filename = row[0] if row else None
+
+        if not cookie_filename:
+            logger.info(f"[login] account {account_id} not found, creating new")
+            account_id = None
+
+    if not account_id:
+        # New login: generate new cookie filename
+        uuid_v1 = uuid.uuid1()
+        logger.info(f"UUID v1: {uuid_v1}")
+        cookie_filename = f"{uuid_v1}.json"
+
+    # 2. Save cookie file
     await context.storage_state(path=cookies_dir / cookie_filename)
 
     # 3. Write to database
-    with sqlite3.connect(Path(BASE_DIR / "db" / "database.db")) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            '''
-            INSERT INTO user_info (type, filePath, userName, status, avatar)
-            VALUES (?, ?, ?, ?, ?)
-            ''',
-            (platform_id, cookie_filename, user_name, 1, avatar_url),
-        )
-        conn.commit()
-        logger.info(f"[login] {platform_name} user record saved")
+    with sqlite3.connect(db_path) as conn:
+        if account_id:
+            conn.execute(
+                '''
+                UPDATE user_info
+                SET userName = ?, status = 1, avatar = ?
+                WHERE id = ?
+                ''',
+                (user_name, avatar_url, account_id),
+            )
+            conn.commit()
+            logger.info(f"[login] account {account_id} updated (re-login)")
+        else:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                INSERT INTO user_info (type, filePath, userName, status, avatar)
+                VALUES (?, ?, ?, ?, ?)
+                ''',
+                (platform_id, cookie_filename, user_name, 1, avatar_url),
+            )
+            conn.commit()
+            logger.info(f"[login] {platform_name} user record saved")
 
     # 4. Send SSE status
     status_queue.put(json.dumps({

@@ -54,7 +54,7 @@ class XiaohongshuPlatform(BasePlatform):
     # login()
     # ------------------------------------------------------------------
 
-    async def login(self, id: str, status_queue: Queue) -> None:
+    async def login(self, id: str, status_queue: Queue, account_id=None) -> None:
         """Perform Xiaohongshu login via QR code scan.
 
         Opens the creator page, switches to QR mode by clicking
@@ -107,6 +107,7 @@ class XiaohongshuPlatform(BasePlatform):
                 platform_id=self.platform_id,
                 platform_name=self.platform_name,
                 status_queue=status_queue,
+                account_id=account_id,
             )
         finally:
             await context.close()

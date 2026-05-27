@@ -76,7 +76,11 @@
         <!-- 卡片底部：操作按钮 -->
         <div class="card-footer">
           <div class="card-actions">
-            <button class="action-btn check" @click="handleCheckAccount(account)" :disabled="checkingIds.has(account.id)">
+            <button v-if="account.status === '异常'" class="action-btn login" @click="handleReLogin(account)">
+              <el-icon><Key /></el-icon>
+              登录
+            </button>
+            <button v-else class="action-btn check" @click="handleCheckAccount(account)" :disabled="checkingIds.has(account.id)">
               <el-icon v-if="checkingIds.has(account.id)" class="is-loading"><Loading /></el-icon>
               <template v-else>
                 <el-icon><Check /></el-icon>
@@ -119,7 +123,7 @@
     <!-- 添加/编辑账号对话框 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="dialogType === 'add' ? '添加账号' : '编辑账号'"
+      :title="dialogType === 'add' ? '添加账号' : (accountForm.id ? '重新登录' : '编辑账号')"
       width="500px"
       :close-on-click-modal="false"
       :close-on-press-escape="!sseConnecting"
@@ -189,7 +193,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { Refresh, CircleCheckFilled, CircleCloseFilled, Loading, Link, Plus, Edit, Delete, Check, Folder } from '@element-plus/icons-vue'
+import { Refresh, CircleCheckFilled, CircleCloseFilled, Loading, Link, Plus, Edit, Delete, Check, Folder, Key } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { accountApi } from '@/api/account'
 import { useAccountStore } from '@/stores/account'
@@ -448,7 +452,7 @@ const handleReLogin = (row) => {
   qrCodeData.value = ''
   loginStatus.value = ''
   dialogVisible.value = true
-  setTimeout(() => connectSSE(row.platform), 300)
+  setTimeout(() => connectSSE(row.platform, row.id), 300)
 }
 
 const syncingIds = reactive(new Set())
@@ -500,7 +504,7 @@ const closeSSEConnection = () => {
   if (eventSource) { eventSource.close(); eventSource = null }
 }
 
-const connectSSE = (platform) => {
+const connectSSE = (platform, accountId) => {
   closeSSEConnection()
   sseConnecting.value = true
   qrCodeData.value = ''
@@ -510,7 +514,10 @@ const connectSSE = (platform) => {
   const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
   // 使用 UUID 作为临时标识，不再需要用户输入名称
   const tempId = crypto.randomUUID()
-  const url = `${baseUrl}/login?type=${type}&id=${encodeURIComponent(tempId)}`
+  let url = `${baseUrl}/login?type=${type}&id=${encodeURIComponent(tempId)}`
+  if (accountId) {
+    url += `&account_id=${encodeURIComponent(accountId)}`
+  }
 
   eventSource = new EventSource(url)
 
@@ -956,6 +963,12 @@ onBeforeUnmount(() => { closeSSEConnection() })
           background: rgba($success-color, 0.1);
           color: $success-color;
           &:hover:not(:disabled) { background: rgba($success-color, 0.2); box-shadow: 0 2px 10px rgba($success-color, 0.2); }
+        }
+
+        &.login {
+          background: rgba($warning-color, 0.1);
+          color: $warning-color;
+          &:hover:not(:disabled) { background: rgba($warning-color, 0.2); box-shadow: 0 2px 10px rgba($warning-color, 0.2); }
         }
 
         &.sync {

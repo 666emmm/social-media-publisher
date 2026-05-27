@@ -104,7 +104,7 @@
             <div class="cover-grid">
               <CoverCard
                 label="竖版封面"
-                ratio-label="9:16"
+                :ratio-label="appStore.portraitRatio"
                 v-model="commonConfig.coverPortrait"
                 :has-video="!!(commonConfig.videoPortrait || commonConfig.videoLandscape)"
                 @edit="openCoverEditor('portrait')"
@@ -112,7 +112,7 @@
               />
               <CoverCard
                 label="横版封面"
-                ratio-label="16:9"
+                :ratio-label="appStore.landscapeRatio"
                 v-model="commonConfig.coverLandscape"
                 :has-video="!!(commonConfig.videoPortrait || commonConfig.videoLandscape)"
                 @edit="openCoverEditor('landscape')"
@@ -128,6 +128,8 @@
             :cover-landscape="commonConfig.coverLandscape"
             :cover-portrait="commonConfig.coverPortrait"
             :materials="materials"
+            :portrait-ratio="appStore.portraitRatio"
+            :landscape-ratio="appStore.landscapeRatio"
             @update:cover-landscape="commonConfig.coverLandscape = $event"
             @update:cover-portrait="commonConfig.coverPortrait = $event"
           />
@@ -378,10 +380,10 @@
         </div>
         <div class="phone-mode-tabs">
           <button :class="['mode-tab', { active: videoModeTab === 'portrait' }]" @click="videoModeTab = 'portrait'">
-            <span class="mode-icon-portrait"></span> 竖版 9:16
+            <span class="mode-icon-portrait"></span> 竖版 {{ appStore.portraitRatio }}
           </button>
           <button :class="['mode-tab', { active: videoModeTab === 'landscape' }]" @click="videoModeTab = 'landscape'">
-            <span class="mode-icon-landscape"></span> 横版 16:9
+            <span class="mode-icon-landscape"></span> 横版 {{ appStore.landscapeRatio }}
           </button>
         </div>
         <div class="phone-preview-area">
@@ -668,6 +670,7 @@ const accountStore = useAccountStore()
 const appStore = useAppStore()
 appStore.loadAutoFillTitle()  // 加载自动填充标题开关状态
 appStore.loadAutoSaveSettings()  // 加载自动保存草稿设置
+appStore.loadCoverRatioSettings()  // 加载封面比例设置
 const route = useRoute()
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
 const authHeaders = computed(() => ({ 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }))

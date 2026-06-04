@@ -35,13 +35,13 @@ export function registerPublishTools(server: McpServer, client: BackendClient): 
       tags: z.array(z.string()).optional().describe('标签列表'),
       description: z.string().optional().describe('视频描述/简介'),
       category: z.string().optional().describe('分类'),
-      // 封面相关
-      thumbnail_material_id: z.string().optional().describe('封面图素材 ID（推荐，从素材库选择封面）'),
-      thumbnail: z.string().optional().describe('封面图本地路径（兼容旧用法）'),
-      thumbnailLandscape_material_id: z.string().optional().describe('横版封面素材 ID（推荐）'),
-      thumbnailLandscape: z.string().optional().describe('横版封面本地路径'),
-      thumbnailPortrait_material_id: z.string().optional().describe('竖版封面素材 ID（推荐）'),
-      thumbnailPortrait: z.string().optional().describe('竖版封面本地路径'),
+      // 封面相关（必须询问用户提供封面图）
+      thumbnail_material_id: z.string().optional().describe('【必问】封面图素材 ID，请从素材库中选择，或让用户提供本地封面图路径'),
+      thumbnail: z.string().optional().describe('封面图本地路径（与 thumbnail_material_id 二选一）'),
+      thumbnailLandscape_material_id: z.string().optional().describe('【必问】横版封面素材 ID，请从素材库中选择，或让用户提供本地封面图路径'),
+      thumbnailLandscape: z.string().optional().describe('横版封面本地路径（与 thumbnailLandscape_material_id 二选一）'),
+      thumbnailPortrait_material_id: z.string().optional().describe('【必问】竖版封面素材 ID，请从素材库中选择，或让用户提供本地封面图路径'),
+      thumbnailPortrait: z.string().optional().describe('竖版封面本地路径（与 thumbnailPortrait_material_id 二选一）'),
       // 定时发布
       enableTimer: z.boolean().optional().describe('是否定时发布（如需定时发布设为 true）'),
       scheduleTime: z.string().optional().describe('定时发布时间，格式 yyyy-MM-dd HH:mm:ss，如 2026-06-05 18:00:00'),
@@ -201,8 +201,8 @@ export function registerPublishTools(server: McpServer, client: BackendClient): 
 - 爱奇艺(iqiyi): creationDeclaration（下拉）+ riskWarning（风险提示）+ enableCashActivity（是否参与打卡）`,
     {
       image_ids: z.array(z.string()).describe('图片素材ID列表'),
-      cover_material_id: z.string().optional().describe('封面图素材 ID（推荐，从素材库选择一张封面图）'),
-      cover_path: z.string().optional().describe('封面图本地路径（兼容，与 cover_material_id 互斥）'),
+      cover_material_id: z.string().optional().describe('【必问】封面图素材 ID，请从素材库中选择一张封面图，或让用户提供本地封面图路径'),
+      cover_path: z.string().optional().describe('封面图本地路径（与 cover_material_id 二选一）'),
       account_configs: z.array(z.object({
         account_id: z.number().describe('账号ID'),
         platform: z.string().describe('平台类型: xiaohongshu/channels/douyin/kuaishou/bilibili/baijiahao/tiktok/youtube/tencent_video/iqiyi'),

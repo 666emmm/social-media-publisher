@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-setlocal
+setlocal EnableDelayedExpansion
 
 :: ============================================================
 :: 旧版数据迁移脚本 — Windows
@@ -24,27 +24,36 @@ echo （例如：C:\Users\foo\AppData\Local\Social Auto Upload Web UI）
 echo.
 
 set "SOURCE="
-set /p "SOURCE=源数据目录: "
+set /p SOURCE="源数据目录: "
+if errorlevel 1 goto :input_error
 
-if "%SOURCE%"=="" (
-    echo [错误] 未输入路径
-    pause
-    exit /b 1
-)
+if "!SOURCE!"=="" goto :input_empty
 
-if not exist "%SOURCE%" (
-    echo [错误] 目录不存在: %SOURCE%
+if not exist "!SOURCE!" (
+    echo [错误] 目录不存在: !SOURCE!
     pause
-    exit /b 1
+    goto :end
 )
 
 echo.
-echo 源目录: %SOURCE%
+echo 源目录: !SOURCE!
 echo 目标目录: %PROJECT_DATA%
 echo.
 echo 提示：先执行 start.bat 启动后端，再运行本脚本。
 echo.
 
-python "%SCRIPT_DIR%\scripts\migrate_legacy_data.py" --source "%SOURCE%" --target "%PROJECT_DATA%" --yes
+python "%SCRIPT_DIR%\scripts\migrate_legacy_data.py" --source "!SOURCE!" --target "%PROJECT_DATA%" --yes
+goto :end
 
+:input_error
+echo [错误] 读取输入失败
+pause
+goto :end
+
+:input_empty
+echo [错误] 未输入路径
+pause
+goto :end
+
+:end
 endlocal

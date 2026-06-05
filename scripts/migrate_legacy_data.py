@@ -213,24 +213,23 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     # 阶段 2: 备份
-    if not args.skip_backup and target.exists():
-        ts = _timestamp()
-        backup_path = target.parent / f"data.bak.{ts}"
-        print(f"[2/5] 备份当前 data → {backup_path.name} ...")
-        if not args.dry_run:
-            try:
-                shutil.copytree(target, backup_path / "data")
-            except OSError as e:
-                print(f"ERROR: 备份失败: {e}", file=sys.stderr)
-                return 2
-            print(f"      ✓ 已备份到 {backup_path}")
-        else:
-            print(f"      ⊘ dry-run 模式，跳过实际备份")
+    print(f"[2/5] 备份当前 data ...")
+    if args.skip_backup:
+        print(f"      ⊘ 已跳过（--skip-backup）")
+    elif not target.exists():
+        print(f"      ⊘ 目标 data 不存在，跳过")
     else:
-        if args.skip_backup:
-            print(f"[2/5] 备份：已跳过（--skip-backup）")
+        try:
+            backup_path = backup_data(target, dry_run=args.dry_run)
+        except OSError as e:
+            print(f"ERROR: 备份失败: {e}", file=sys.stderr)
+            return 2
+        if backup_path is None:
+            print(f"      ⊘ 已跳过")
+        elif args.dry_run:
+            print(f"      ⊘ dry-run 模式，预览路径 {backup_path}")
         else:
-            print(f"[2/5] 备份：目标 data 不存在，跳过")
+            print(f"      ✓ 已备份到 {backup_path}")
 
     # 确保目标子目录存在
     for sub in ["cookies", "cookiesFile", "db", "materials"]:

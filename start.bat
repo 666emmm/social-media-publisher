@@ -13,6 +13,73 @@ set "BACKEND_DIR=%PROJECT_ROOT%\backend"
 set "FRONTEND_DIR=%PROJECT_ROOT%\frontend"
 set "MCP_DIR=%PROJECT_ROOT%\backend-mcp"
 
+:: --- 本地依赖目录（优先使用）---
+if exist "%PROJECT_ROOT%\dependency\bin" (
+    set "PATH=%PROJECT_ROOT%\dependency\bin;%PATH%"
+)
+if exist "%PROJECT_ROOT%\dependency\python" (
+    set "PATH=%PROJECT_ROOT%\dependency\python;%PROJECT_ROOT%\dependency\python\Scripts;%PATH%"
+)
+if exist "%PROJECT_ROOT%\dependency\git\cmd" (
+    set "PATH=%PROJECT_ROOT%\dependency\git\cmd;%PATH%"
+)
+if exist "%PROJECT_ROOT%\dependency\node" (
+    set "PATH=%PROJECT_ROOT%\dependency\node;%PATH%"
+)
+if exist "%PROJECT_ROOT%\dependency\cloakbrowser\chrome.exe" (
+    set "CLOAKBROWSER_BINARY_PATH=%PROJECT_ROOT%\dependency\cloakbrowser\chrome.exe"
+)
+
+:: --- 项目代码管理（git clone / update）---
+set "REPO_URL=https://github.com/DevilJie/social-auto-upload-web-ui.git"
+set "MAIN_BRANCH=master"
+
+if not exist "%BACKEND_DIR%" (
+    :: 首次使用：没有项目代码，从 GitHub 克隆
+    where git >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo   X 未找到 git，无法克隆项目代码
+        pause
+        exit /b 1
+    )
+    echo.
+    echo   首次使用，正在从 GitHub 拉取项目代码...
+    cd /d "%PROJECT_ROOT%"
+    git init
+    git remote add origin "%REPO_URL%"
+    git fetch origin "%MAIN_BRANCH%"
+    git checkout -f "%MAIN_BRANCH%"
+    echo   √ 项目代码拉取完成
+    echo.
+    :: 重新执行项目自带的 start.bat
+    call "%PROJECT_ROOT%\start.bat"
+    exit /b
+)
+
+:: 已有项目代码：检查更新
+if exist "%PROJECT_ROOT%\.git" (
+    where git >nul 2>&1
+    if !errorlevel! equ 0 (
+        cd /d "%PROJECT_ROOT%"
+        git fetch origin "%MAIN_BRANCH%" >nul 2>&1
+        for /f "tokens=*" %%l in ('git rev-parse HEAD 2^>nul') do set "LOCAL_HASH=%%l"
+        for /f "tokens=*" %%r in ('git rev-parse "origin/%MAIN_BRANCH%" 2^>nul') do set "REMOTE_HASH=%%r"
+        if defined REMOTE_HASH (
+            if not "!LOCAL_HASH!"=="!REMOTE_HASH!" (
+                echo.
+                echo   发现新版本！是否更新？ [Y/n]
+                set /p "UPDATE_ANS="
+                if /i not "!UPDATE_ANS!"=="n" (
+                    git pull origin "%MAIN_BRANCH%"
+                    echo   √ 更新完成，重新启动...
+                    call "%PROJECT_ROOT%\start.bat"
+                    exit /b
+                )
+            )
+        )
+    )
+)
+
 :: --- 日志文件 ---
 set "BACKEND_LOG=%PROJECT_ROOT%\backend.log"
 set "FRONTEND_LOG=%PROJECT_ROOT%\frontend.log"

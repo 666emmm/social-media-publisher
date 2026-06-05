@@ -23,6 +23,60 @@ BACKEND_DIR="$PROJECT_ROOT/backend"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 MCP_DIR="$PROJECT_ROOT/backend-mcp"
 
+# --- 本地依赖目录（优先使用）---
+DEP_DIR="$PROJECT_ROOT/dependency"
+DEP_BIN_DIR="$DEP_DIR/bin"
+if [[ -d "$DEP_BIN_DIR" ]]; then
+    export PATH="$DEP_BIN_DIR:$DEP_DIR/python/bin:$DEP_DIR/git/bin:$DEP_DIR/node/bin:$PATH"
+fi
+
+# CloakBrowser: 如果 dependency/cloakbrowser/ 下有 chrome 二进制，优先使用
+CLOAKBROWSER_LOCAL="$DEP_DIR/cloakbrowser"
+if [[ -f "$CLOAKBROWSER_LOCAL/chrome" ]]; then
+    export CLOAKBROWSER_BINARY_PATH="$CLOAKBROWSER_LOCAL/chrome"
+fi
+
+# --- 项目代码管理（git clone / update）---
+REPO_URL="https://github.com/DevilJie/social-auto-upload-web-ui.git"
+MAIN_BRANCH="master"
+
+if [[ ! -d "$BACKEND_DIR" ]]; then
+    # 首次使用：没有项目代码，从 GitHub 克隆
+    if ! command -v git &>/dev/null; then
+        echo -e "${CROSS} 未找到 git，无法克隆项目代码"
+        exit 1
+    fi
+    echo ""
+    echo -e "${CYAN}首次使用，正在从 GitHub 拉取项目代码...${NC}"
+    cd "$PROJECT_ROOT"
+    git init
+    git remote add origin "$REPO_URL"
+    git fetch origin "$MAIN_BRANCH"
+    git checkout -f "$MAIN_BRANCH"
+    echo -e "${CHECK} 项目代码拉取完成"
+    echo ""
+    # 重新执行项目自带的 start.sh
+    exec bash "$PROJECT_ROOT/start.sh"
+fi
+
+# 已有项目代码：检查更新
+if command -v git &>/dev/null && [[ -d "$PROJECT_ROOT/.git" ]]; then
+    cd "$PROJECT_ROOT"
+    git fetch origin "$MAIN_BRANCH" 2>/dev/null || true
+    LOCAL=$(git rev-parse HEAD 2>/dev/null || echo "")
+    REMOTE=$(git rev-parse "origin/$MAIN_BRANCH" 2>/dev/null || echo "")
+    if [[ -n "$REMOTE" && "$LOCAL" != "$REMOTE" ]]; then
+        echo ""
+        echo -e "${CYAN}发现新版本！是否更新？[Y/n]${NC}"
+        read -r answer
+        if [[ ! "$answer" =~ ^[Nn]$ ]]; then
+            git pull origin "$MAIN_BRANCH"
+            echo -e "${CHECK} 更新完成，重新启动..."
+            exec bash "$PROJECT_ROOT/start.sh"
+        fi
+    fi
+fi
+
 # --- 日志文件 ---
 BACKEND_LOG="$PROJECT_ROOT/backend.log"
 FRONTEND_LOG="$PROJECT_ROOT/frontend.log"
@@ -114,11 +168,11 @@ run_with_spinner() {
 kill_port() {
     local port=$1
     local pids
-    pids=$(lsof -ti :"$port" 2>/dev/null || true)
+    pids=$(lsof -P -n -ti :"$port" 2>/dev/null || true)
     if [[ -n "$pids" ]]; then
         echo "$pids" | xargs kill -9 2>/dev/null || true
         sleep 1
-        pids=$(lsof -ti :"$port" 2>/dev/null || true)
+        pids=$(lsof -P -n -ti :"$port" 2>/dev/null || true)
         if [[ -n "$pids" ]]; then
             print_fail "端口 $port 仍被占用，请手动释放后重试"
             exit 1
@@ -147,11 +201,52 @@ check_hash_changed() {
 # ============================================================
 print_step "1" "检查运行时环境"
 
+# --- 检测系统包管理器，用于给出安装提示 ---
+detect_pkg_manager() {
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        echo "brew"
+    elif command -v apt-get &>/dev/null; then
+        echo "apt"
+    elif command -v dnf &>/dev/null; then
+        echo "dnf"
+    elif command -v yum &>/dev/null; then
+        echo "yum"
+    elif command -v pacman &>/dev/null; then
+        echo "pacman"
+    else
+        echo "unknown"
+    fi
+}
+PKG_MGR=$(detect_pkg_manager)
+
+# 根据系统给出安装命令
+install_hint() {
+    local pkg="$1"
+    case "$PKG_MGR" in
+        brew)
+            echo "    安装命令: brew install ${pkg}"
+            ;;
+        apt)
+            echo "    安装命令: sudo apt install ${pkg}"
+            ;;
+        dnf)
+            echo "    安装命令: sudo dnf install ${pkg}"
+            ;;
+        yum)
+            echo "    安装命令: sudo yum install ${pkg}"
+            ;;
+        pacman)
+            echo "    安装命令: sudo pacman -S ${pkg}"
+            ;;
+        *)
+            echo "    请手动安装: ${pkg}"
+            ;;
+    esac
+}
+
 if ! command -v python3 &>/dev/null; then
     print_fail "未找到 python3，请先安装 Python 3.8+"
-    echo "    macOS:         brew install python3"
-    echo "    Ubuntu/Debian: sudo apt install python3 python3-venv"
-    echo "    Fedora:        sudo dnf install python3"
+    install_hint "python3 python3-venv python3-pip"
     exit 1
 fi
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
@@ -159,8 +254,11 @@ print_ok "Python ${PYTHON_VERSION}"
 
 if ! command -v node &>/dev/null; then
     print_fail "未找到 node，请先安装 Node.js 16+"
-    echo "    macOS:         brew install node"
-    echo "    Ubuntu/Debian: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install nodejs"
+    if [[ "$PKG_MGR" == "brew" ]]; then
+        echo "    安装命令: brew install node"
+    else
+        echo "    安装命令: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install nodejs"
+    fi
     exit 1
 fi
 NODE_VERSION=$(node --version 2>&1)
@@ -173,19 +271,15 @@ NPM_VERSION=$(npm --version 2>&1)
 print_ok "Node ${NODE_VERSION} / npm ${NPM_VERSION}"
 
 if ! command -v curl &>/dev/null; then
-    print_fail "未找到 curl，请先安装 curl"
-    echo "    macOS:         brew install curl"
-    echo "    Ubuntu/Debian: sudo apt install curl"
-    echo "    Fedora:        sudo dnf install curl"
+    print_fail "未找到 curl"
+    install_hint "curl"
     exit 1
 fi
 print_ok "curl $(curl --version 2>&1 | head -1 | awk '{print $2}')"
 
 if ! command -v ffmpeg &>/dev/null; then
-    print_fail "未找到 ffmpeg，请先安装 ffmpeg"
-    echo "    macOS:         brew install ffmpeg"
-    echo "    Ubuntu/Debian: sudo apt install ffmpeg"
-    echo "    Fedora:        sudo dnf install ffmpeg"
+    print_fail "未找到 ffmpeg"
+    install_hint "ffmpeg"
     exit 1
 fi
 print_ok "ffmpeg $(ffmpeg -version 2>&1 | head -1 | awk '{print $3}')"
@@ -259,7 +353,9 @@ fi
 
 # 检查 CloakBrowser 二进制文件
 CLOAKBROWSER_DIR="$HOME/.cloakbrowser"
-if ! ls "$CLOAKBROWSER_DIR"/chromium-*/chrome >/dev/null 2>&1; then
+if [[ -n "${CLOAKBROWSER_BINARY_PATH:-}" ]]; then
+    print_ok "CloakBrowser (本地依赖)"
+elif ! ls "$CLOAKBROWSER_DIR"/chromium-*/chrome >/dev/null 2>&1; then
     echo -e "  ${CYAN}📥 首次使用，下载 CloakBrowser 浏览器${NC}"
 
     # 从 Python 获取下载信息
@@ -364,7 +460,7 @@ print_step "5" "启动服务"
 
 # 确保端口完全释放
 for i in $(seq 1 5); do
-    if ! lsof -ti :5409 >/dev/null 2>&1; then
+    if ! lsof -P -n -ti :5409 >/dev/null 2>&1; then
         break
     fi
     sleep 1
@@ -449,7 +545,7 @@ for i in $(seq 1 15); do
         exit 1
     fi
     if [[ "$TRANSPORT_MODE" == "sse" || "$TRANSPORT_MODE" == "both" ]]; then
-        if lsof -ti :5410 >/dev/null 2>&1; then
+        if lsof -P -n -ti :5410 >/dev/null 2>&1; then
             echo ""
             print_ok "MCP 就绪 (SSE 端口 5410)"
             break

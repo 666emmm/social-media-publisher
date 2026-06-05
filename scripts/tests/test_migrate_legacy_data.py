@@ -1,4 +1,5 @@
 """迁移脚本的单元测试。"""
+import os
 import sys
 from pathlib import Path
 
@@ -41,3 +42,32 @@ def test_parse_args_custom(monkeypatch):
     assert args.dry_run is True
     assert args.skip_backup is True
     assert args.yes is True
+
+
+def test_default_target_uses_sau_data_dir_env(monkeypatch, tmp_path):
+    """SAU_DATA_DIR 环境变量被优先使用。"""
+    monkeypatch.setenv("SAU_DATA_DIR", str(tmp_path))
+    assert mld.default_target() == tmp_path
+
+
+def test_default_target_uses_repo_data_dir(monkeypatch):
+    """未设置 SAU_DATA_DIR 时使用 {脚本父目录的父目录}/data。"""
+    monkeypatch.delenv("SAU_DATA_DIR", raising=False)
+    expected = mld.Path(mld.__file__).resolve().parent.parent / "data"
+    assert mld.default_target() == expected
+
+
+def test_default_source_non_windows(monkeypatch):
+    """非 Windows 下默认指向 scripts/legacy_fixture。"""
+    monkeypatch.setattr(mld.sys, "platform", "linux")
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    expected = Path(__file__).resolve().parent.parent / "legacy_fixture"
+    assert mld.default_source() == expected
+
+
+def test_default_source_windows(monkeypatch, tmp_path):
+    """Windows 下默认指向 %LOCALAPPDATA%\\Social Auto Upload Web UI。"""
+    monkeypatch.setattr(mld.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    expected = tmp_path / "Social Auto Upload Web UI"
+    assert mld.default_source() == expected

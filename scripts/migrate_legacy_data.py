@@ -9,8 +9,27 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+
+def default_source() -> Path:
+    """解析旧版数据目录。Windows 下用 %LOCALAPPDATA%，其他平台回退到 fixture。"""
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA")
+        if not base:
+            base = str(Path.home() / "AppData" / "Local")
+        return Path(base) / "Social Auto Upload Web UI"
+    return Path(__file__).resolve().parent / "legacy_fixture"
+
+
+def default_target() -> Path:
+    """解析新版 data 目录。优先 SAU_DATA_DIR，否则 {项目根}/data。"""
+    env = os.environ.get("SAU_DATA_DIR")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parent.parent / "data"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

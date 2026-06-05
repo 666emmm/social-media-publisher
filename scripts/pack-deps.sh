@@ -73,15 +73,27 @@ CB_TMP=$(mktemp -d)
 CB_ARCHIVE_SRC=""
 
 if [[ "$PLATFORM_OS" == "macos" ]]; then
-    # macOS 暂无官方离线包：需要用户把 cloakbrowser-${PLATFORM}.tar.gz
-    # 放到 scripts/ 目录下后再次运行本脚本
-    CB_LOCAL="$SCRIPT_DIR/cloakbrowser-${PLATFORM}.tar.gz"
-    if [[ -f "$CB_LOCAL" ]]; then
+    # macOS 暂无官方离线包：需要用户提供 tar.gz 放到 scripts/ 下。
+    # 支持两种命名：cloakbrowser-macos-{x64,arm64}.tar.gz（项目命名）
+    # 或 cloakbrowser-darwin-{x64,arm64}.tar.gz（Node.js/Python 行业惯例）
+    _mac_arch="${PLATFORM#macos-}"
+    CB_LOCAL=""
+    for _candidate in \
+        "$SCRIPT_DIR/cloakbrowser-${PLATFORM}.tar.gz" \
+        "$SCRIPT_DIR/cloakbrowser-darwin-${_mac_arch}.tar.gz"; do
+        if [[ -f "$_candidate" ]]; then
+            CB_LOCAL="$_candidate"
+            break
+        fi
+    done
+    if [[ -n "$CB_LOCAL" ]]; then
         cp "$CB_LOCAL" "$CB_TMP/cb-archive"
         CB_ARCHIVE_SRC="$CB_LOCAL"
     else
         echo "  [SKIP] macOS 的 CloakBrowser 需要用户提供离线包"
-        echo "         请将 ${CB_LOCAL##*/} 放到 $SCRIPT_DIR/ 后重跑"
+        echo "         请将以下任一文件放到 $SCRIPT_DIR/ 后重跑："
+        echo "           - cloakbrowser-${PLATFORM}.tar.gz"
+        echo "           - cloakbrowser-darwin-${_mac_arch}.tar.gz"
     fi
 else
     CB_VERSION=$(curl -sL "https://api.github.com/repos/CloakHQ/CloakBrowser/releases/latest" \

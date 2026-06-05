@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -69,6 +71,30 @@ def check_backend(api_base: str, timeout: float = 2.0) -> bool:
         return resp.status_code == 200
     except requests.exceptions.RequestException:
         return False
+
+
+def _timestamp() -> str:
+    """返回 YYYYMMDD_HHMMSS 格式时间戳。"""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def backup_data(
+    data_dir: Path,
+    dry_run: bool = False,
+    skip: bool = False,
+) -> Path | None:
+    """把 data 目录整个复制到 data.bak.YYYYMMDD_HHMMSS/。返回备份路径。
+
+    - skip=True  时返回 None（不创建任何目录）
+    - dry_run=True 时返回预期的备份路径但不实际复制
+    """
+    if skip:
+        return None
+    backup_path = data_dir.parent / f"data.bak.{_timestamp()}"
+    if dry_run:
+        return backup_path
+    shutil.copytree(data_dir, backup_path / "data")
+    return backup_path
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

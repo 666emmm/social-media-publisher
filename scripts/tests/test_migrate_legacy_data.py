@@ -154,3 +154,39 @@ def test_is_allowed_ext_rejected():
     assert mld.is_allowed_ext("foo") is False
     assert mld.is_allowed_ext("foo.tmp") is False
     assert mld.is_allowed_ext("foo.db") is False
+
+
+def test_backup_creates_timestamped_copy(monkeypatch, tmp_path):
+    """备份把整个 data 目录复制到 data.bak.YYYYMMDD_HHMMSS/。"""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "cookies").mkdir()
+    (data_dir / "cookies" / "foo.json").write_text("x")
+
+    timestamp = "20260605_153012"
+    monkeypatch.setattr(mld, "_timestamp", lambda: timestamp)
+
+    backup_path = mld.backup_data(data_dir, dry_run=False)
+    assert backup_path == data_dir.parent / f"data.bak.{timestamp}"
+    assert backup_path.exists()
+    assert (backup_path / "data" / "cookies" / "foo.json").read_text() == "x"
+
+
+def test_backup_dry_run_does_not_copy(monkeypatch, tmp_path):
+    """dry-run 模式下不实际复制。"""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "cookies").mkdir()
+    timestamp = "20260605_153012"
+    monkeypatch.setattr(mld, "_timestamp", lambda: timestamp)
+
+    backup_path = mld.backup_data(data_dir, dry_run=True)
+    assert backup_path == data_dir.parent / f"data.bak.{timestamp}"
+    assert not backup_path.exists()
+
+
+def test_backup_skip_returns_none(tmp_path):
+    """skip_backup=True 时返回 None 且不创建目录。"""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    assert mld.backup_data(data_dir, dry_run=False, skip=True) is None

@@ -67,7 +67,7 @@ def check_backend(api_base: str, timeout: float = 2.0) -> bool:
             timeout=timeout,
         )
         return resp.status_code == 200
-    except (requests.exceptions.RequestException, Exception):
+    except requests.exceptions.RequestException:
         return False
 
 

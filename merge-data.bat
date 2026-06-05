@@ -24,7 +24,7 @@ echo （例如：C:\Users\foo\AppData\Local\Social Auto Upload Web UI）
 echo.
 
 set "SOURCE="
-set /p SOURCE="源数据目录: "
+set /p "SOURCE="
 if errorlevel 1 goto :input_error
 
 if "!SOURCE!"=="" goto :input_empty

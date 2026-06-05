@@ -2,11 +2,50 @@
 import os
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 # 把 scripts/ 目录加入 sys.path，便于导入 migrate_legacy_data
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import migrate_legacy_data as mld
+
+
+def _mock_response(status_code: int, body: dict | None = None) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = body or {"code": 200}
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+def test_check_backend_healthy(monkeypatch):
+    monkeypatch.setattr(mld.requests, "get",
+                        lambda *a, **kw: _mock_response(200))
+    assert mld.check_backend("http://127.0.0.1:5409") is True
+
+
+def test_check_backend_unhealthy_status(monkeypatch):
+    """后端返回 500 时视为不健康。"""
+    resp = _mock_response(500)
+    resp.raise_for_status = MagicMock(side_effect=Exception("HTTP 500"))
+    monkeypatch.setattr(mld.requests, "get", lambda *a, **kw: resp)
+    assert mld.check_backend("http://127.0.0.1:5409") is False
+
+
+def test_check_backend_connection_refused(monkeypatch):
+    """连接被拒绝时视为不健康。"""
+    def fake_get(*a, **kw):
+        raise mld.requests.exceptions.ConnectionError("refused")
+    monkeypatch.setattr(mld.requests, "get", fake_get)
+    assert mld.check_backend("http://127.0.0.1:5409") is False
+
+
+def test_check_backend_timeout(monkeypatch):
+    """超时视为不健康。"""
+    def fake_get(*a, **kw):
+        raise mld.requests.exceptions.Timeout("timeout")
+    monkeypatch.setattr(mld.requests, "get", fake_get)
+    assert mld.check_backend("http://127.0.0.1:5409") is False
 
 
 def test_parse_args_defaults(monkeypatch):

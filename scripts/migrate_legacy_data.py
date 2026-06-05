@@ -14,6 +14,8 @@ import re
 import sys
 from pathlib import Path
 
+import requests
+
 
 def default_source() -> Path:
     """解析旧版数据目录。Windows 下用 %LOCALAPPDATA%，其他平台回退到 fixture。"""
@@ -51,6 +53,22 @@ def strip_uuid_prefix(name: str) -> str:
 def is_allowed_ext(filename: str) -> bool:
     """判断文件扩展名是否在新版素材库白名单内。"""
     return Path(filename).suffix.lower() in ALLOWED_EXTS
+
+
+def check_backend(api_base: str, timeout: float = 2.0) -> bool:
+    """探测后端健康状态。返回 True 表示可访问。
+
+    使用 /api/materials/list 端点做轻量级 ping。
+    """
+    try:
+        resp = requests.get(
+            f"{api_base}/api/materials/list",
+            params={"page": 1, "page_size": 1},
+            timeout=timeout,
+        )
+        return resp.status_code == 200
+    except (requests.exceptions.RequestException, Exception):
+        return False
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

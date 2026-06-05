@@ -476,3 +476,67 @@ def test_main_dry_run_no_modifications(monkeypatch, tmp_path):
     assert rc == 0
     # 目标 cookies 目录被创建但不包含 a.json
     assert not (target / "cookies" / "a.json").exists()
+
+
+def test_integration_against_legacy_fixture(monkeypatch, tmp_path, capsys):
+    """端到端：用真实 legacy_fixture 跑完整流程。"""
+    fixture_root = Path(__file__).resolve().parent.parent / "legacy_fixture"
+    target = tmp_path / "data"
+    target.mkdir()
+
+    monkeypatch.setattr(mld, "check_backend", lambda api: True)
+    upload_calls: list = []
+    monkeypatch.setattr(mld, "upload_material",
+                        lambda p, api_base, dry_run=False, timeout=300.0: upload_calls.append(p.name) or True)
+    monkeypatch.setattr(mld, "_timestamp", lambda: "20260605_153012")
+
+    monkeypatch.setattr(sys, "argv", [
+        "migrate_legacy_data.py",
+        "--source", str(fixture_root),
+        "--target", str(target),
+        "--yes",
+    ])
+
+    rc = mld.main()
+    assert rc == 0
+
+    # 拷贝内容
+    assert (target / "cookies" / "foo.json").exists()
+    assert (target / "cookiesFile" / "xhs.json").exists()
+    assert (target / "db" / "database.db").exists()
+
+    # 上传白名单文件
+    upload_names = [Path(p).name for p in upload_calls]
+    assert "11111111-2222-3333-4444-555555555555_test1.mp4" in upload_names
+    assert "66666666-7777-8888-9999-000000000000_test2.png" in upload_names
+    assert ".DS_Store" not in upload_names  # 被跳过
+
+    # 报告输出
+    out = capsys.readouterr().out
+    assert "迁移报告" in out
+    assert "videoFile/    成功 2" in out
+    assert "跳过 1" in out
+
+
+def test_integration_idempotent_dry_run(monkeypatch, tmp_path):
+    """连跑两次 dry-run 不修改任何文件。"""
+    fixture_root = Path(__file__).resolve().parent.parent / "legacy_fixture"
+    target = tmp_path / "data"
+    target.mkdir()
+
+    monkeypatch.setattr(mld, "check_backend", lambda api: True)
+    monkeypatch.setattr(mld, "upload_material", lambda *a, **kw: True)
+
+    for _ in range(2):
+        monkeypatch.setattr(sys, "argv", [
+            "migrate_legacy_data.py",
+            "--source", str(fixture_root),
+            "--target", str(target),
+            "--dry-run",
+            "--yes",
+        ])
+        rc = mld.main()
+        assert rc == 0
+
+    # dry-run 不应该产生任何 cookies/foo.json
+    assert not (target / "cookies" / "foo.json").exists()

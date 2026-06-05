@@ -13,6 +13,7 @@ import mimetypes
 import os
 import re
 import shutil
+import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -46,6 +47,113 @@ UUID_PREFIX = re.compile(
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".m4v", ".wmv", ".mpeg", ".mpg"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg"}
 ALLOWED_EXTS = VIDEO_EXTS | IMAGE_EXTS
+
+
+# drafts / materials 表的期望列定义，与 backend/init_db.py 保持一致。
+# 旧版数据库缺这些列时迁移后会补齐；旧列（不在 EXPECTED_* 中）保留不动。
+EXPECTED_DRAFTS_COLUMNS: list[tuple[str, str]] = [
+    ("id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
+    ("type", "TEXT DEFAULT 'video'"),
+    ("title", "TEXT DEFAULT ''"),
+    ("cover_path", "TEXT DEFAULT ''"),
+    ("draft_data", "TEXT DEFAULT '{}'"),
+    ("channels_summary", "TEXT DEFAULT '[]'"),
+    ("video_duration", "REAL DEFAULT 0"),
+    ("video_file_size", "INTEGER DEFAULT 0"),
+    ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+    ("updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+]
+
+EXPECTED_MATERIALS_COLUMNS: list[tuple[str, str]] = [
+    ("id", "TEXT PRIMARY KEY"),
+    ("original_filename", "TEXT NOT NULL"),
+    ("stored_path", "TEXT NOT NULL"),
+    ("file_type", "TEXT NOT NULL"),
+    ("mime_type", "TEXT"),
+    ("file_size", "INTEGER DEFAULT 0"),
+    ("storage_type", "TEXT NOT NULL DEFAULT 'local'"),
+    ("width", "INTEGER DEFAULT 0"),
+    ("height", "INTEGER DEFAULT 0"),
+    ("duration", "REAL DEFAULT 0"),
+    ("thumbnail_path", "TEXT DEFAULT ''"),
+    ("upload_time", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
+]
+
+
+def _table_exists(cursor: sqlite3.Cursor, table: str) -> bool:
+    cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    )
+    return cursor.fetchone() is not None
+
+
+def _get_existing_columns(cursor: sqlite3.Cursor, table: str) -> set[str]:
+    cursor.execute(f"PRAGMA table_info({table})")
+    return {row[1] for row in cursor.fetchall()}
+
+
+def align_table_schema(
+    cursor: sqlite3.Cursor,
+    table: str,
+    expected: list[tuple[str, str]],
+) -> tuple[str, list[str]]:
+    """缺表建表 + 缺列补列。返回 (status, info)。
+
+    status:
+      - "created":  表不存在，已创建
+      - "added":    表存在，补齐了部分列（info 是补齐的列名列表）
+      - "unchanged": 表存在且 schema 已对齐
+
+    SQLite 限制：表有数据时，ALTER TABLE ADD COLUMN 不允许 DEFAULT <非常量>
+    （如 CURRENT_TIMESTAMP）。遇到这种情况退化用空默认补列（NULL）。
+    """
+    if not _table_exists(cursor, table):
+        cols_sql = ", ".join(f"{name} {definition}" for name, definition in expected)
+        cursor.execute(f"CREATE TABLE {table} ({cols_sql})")
+        return "created", [name for name, _ in expected]
+
+    existing = _get_existing_columns(cursor, table)
+    added: list[str] = []
+    for col_name, col_def in expected:
+        if col_name in existing:
+            continue
+        try:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+        except sqlite3.OperationalError as e:
+            if "non-constant default" not in str(e):
+                raise
+            # 退化：去掉 DEFAULT 子句，用 NULL 默认补列
+            fallback_def = re.sub(r"\s+DEFAULT\s+\S+", "", col_def, flags=re.IGNORECASE).strip()
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {fallback_def}")
+        added.append(col_name)
+    return ("added", added) if added else ("unchanged", [])
+
+
+def align_db_tables(db_path: Path, dry_run: bool = False) -> None:
+    """打开 db_path，对齐 drafts 和 materials 表结构。dry_run=True 时只打印不修改。"""
+    expectations: list[tuple[str, list[tuple[str, str]]]] = [
+        ("drafts", EXPECTED_DRAFTS_COLUMNS),
+        ("materials", EXPECTED_MATERIALS_COLUMNS),
+    ]
+    if dry_run:
+        for table, _ in expectations:
+            print(f"      ⊘ dry-run: 将对齐 {table} 表结构")
+        return
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cursor = conn.cursor()
+        for table, expected in expectations:
+            status, info = align_table_schema(cursor, table, expected)
+            if status == "created":
+                print(f"      ✓ {table}: 表不存在已创建（{len(info)} 列）")
+            elif status == "added":
+                print(f"      ✓ {table}: 补齐列 {', '.join(info)}")
+            else:
+                print(f"      ⊘ {table}: schema 已对齐")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def strip_uuid_prefix(name: str) -> str:
@@ -255,6 +363,17 @@ def main(argv: list[str] | None = None) -> int:
         copy_stats[sub] = (copied, failed)
         marker = "⊘" if args.dry_run else "✓"
         print(f"      {marker} {sub + '/':<14}复制 {copied} 个文件" + (f", 失败 {failed}" if failed else ""))
+
+    # 阶段 4.5: 修正 db 中 drafts / materials 表结构（缺表建表，缺列补列）
+    db_file = target / "db" / "database.db"
+    if db_file.exists():
+        print(f"[4.5/5] 修正 drafts / materials 表结构...")
+        try:
+            align_db_tables(db_file, dry_run=args.dry_run)
+        except sqlite3.Error as e:
+            print(f"      ⚠ 表结构修正失败: {e}", file=sys.stderr)
+    else:
+        print(f"[4.5/5] ⊘ db/database.db 不存在，跳过表结构修正")
 
     # 阶段 5: 迁移素材
     print(f"[5/5] 迁移素材库 (videoFile/)...")

@@ -400,7 +400,7 @@ if not exist "%FRONTEND_DIR%\node_modules" (
     echo     安装前端依赖，请稍候...
     echo.
     cd /d "%FRONTEND_DIR%"
-    call npm install --prefer-offline
+    call npm install --prefer-offline --registry=https://registry.npmmirror.com
     echo.
     echo !CURRENT_HASH!> "%HASH_FILE%"
     echo   √ 前端依赖就绪
@@ -417,7 +417,7 @@ if not exist "%FRONTEND_DIR%\node_modules" (
         echo     检测到变更，更新前端依赖，请稍候...
         echo.
         cd /d "%FRONTEND_DIR%"
-        call npm install --prefer-offline
+        call npm install --prefer-offline --registry=https://registry.npmmirror.com
         echo.
         echo !CURRENT_HASH!> "%HASH_FILE%"
         echo   √ 依赖更新完成
@@ -434,7 +434,7 @@ if not exist "%MCP_DIR%\node_modules" (
     echo     安装 MCP 依赖，请稍候...
     echo.
     cd /d "%MCP_DIR%"
-    call npm install --prefer-offline
+    call npm install --prefer-offline --registry=https://registry.npmmirror.com
     echo.
     echo !CURRENT_HASH!> "%HASH_FILE%"
     echo   √ MCP 依赖就绪
@@ -451,7 +451,7 @@ if not exist "%MCP_DIR%\node_modules" (
         echo     检测到变更，更新 MCP 依赖，请稍候...
         echo.
         cd /d "%MCP_DIR%"
-        call npm install --prefer-offline
+        call npm install --prefer-offline --registry=https://registry.npmmirror.com
         echo.
         echo !CURRENT_HASH!> "%HASH_FILE%"
         echo   √ 依赖更新完成

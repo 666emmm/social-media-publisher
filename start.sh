@@ -443,11 +443,11 @@ HASH_FILE="$PROJECT_ROOT/.frontend_deps_hash"
 CURRENT_HASH=$(get_dir_hash "frontend")
 
 if [[ ! -d "$FRONTEND_DIR/node_modules" ]]; then
-    run_with_spinner "安装前端依赖（首次安装，请稍候）" bash -c "cd '$FRONTEND_DIR' && npm install --prefer-offline 2>&1 | tail -1"
+    run_with_spinner "安装前端依赖（首次安装，请稍候）" bash -c "cd '$FRONTEND_DIR' && npm install --prefer-offline --registry=https://registry.npmmirror.com 2>&1 | tail -1"
     echo "$CURRENT_HASH" > "$HASH_FILE"
     print_ok "前端依赖就绪"
 elif check_hash_changed "$HASH_FILE" "$CURRENT_HASH"; then
-    run_with_spinner "检测到变更，更新前端依赖" bash -c "cd '$FRONTEND_DIR' && npm install --prefer-offline 2>&1 | tail -1"
+    run_with_spinner "检测到变更，更新前端依赖" bash -c "cd '$FRONTEND_DIR' && npm install --prefer-offline --registry=https://registry.npmmirror.com 2>&1 | tail -1"
     echo "$CURRENT_HASH" > "$HASH_FILE"
     print_ok "依赖更新完成"
 else
@@ -459,11 +459,11 @@ HASH_FILE="$PROJECT_ROOT/.mcp_deps_hash"
 MCP_CURRENT_HASH=$(get_dir_hash "backend-mcp")
 
 if [[ ! -d "$MCP_DIR/node_modules" ]]; then
-    run_with_spinner "安装 MCP 依赖（首次安装，请稍候）" bash -c "cd '$MCP_DIR' && npm install --prefer-offline 2>&1 | tail -1"
+    run_with_spinner "安装 MCP 依赖（首次安装，请稍候）" bash -c "cd '$MCP_DIR' && npm install --prefer-offline --registry=https://registry.npmmirror.com 2>&1 | tail -1"
     echo "$MCP_CURRENT_HASH" > "$HASH_FILE"
     print_ok "MCP 依赖就绪"
 elif check_hash_changed "$HASH_FILE" "$MCP_CURRENT_HASH"; then
-    run_with_spinner "检测到变更，更新 MCP 依赖" bash -c "cd '$MCP_DIR' && npm install --prefer-offline 2>&1 | tail -1"
+    run_with_spinner "检测到变更，更新 MCP 依赖" bash -c "cd '$MCP_DIR' && npm install --prefer-offline --registry=https://registry.npmmirror.com 2>&1 | tail -1"
     echo "$MCP_CURRENT_HASH" > "$HASH_FILE"
     print_ok "依赖更新完成"
 else

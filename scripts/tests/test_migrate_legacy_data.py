@@ -484,6 +484,13 @@ def test_integration_against_legacy_fixture(monkeypatch, tmp_path, capsys):
     target = tmp_path / "data"
     target.mkdir()
 
+    # 计算 fixture 中白名单/非白名单文件数（.DS_Store 可能在 .gitignore 下被
+    # 本地存在但不被 git 跟踪，断言需对该情况保持鲁棒）
+    vf = fixture_root / "videoFile"
+    fixture_files = [p for p in vf.rglob("*") if p.is_file()]
+    expected_allowed = sum(1 for p in fixture_files if mld.is_allowed_ext(p.name))
+    expected_skipped = len(fixture_files) - expected_allowed
+
     monkeypatch.setattr(mld, "check_backend", lambda api: True)
     upload_calls: list = []
     monkeypatch.setattr(mld, "upload_material",
@@ -514,8 +521,8 @@ def test_integration_against_legacy_fixture(monkeypatch, tmp_path, capsys):
     # 报告输出
     out = capsys.readouterr().out
     assert "迁移报告" in out
-    assert "videoFile/    成功 2" in out
-    assert "跳过 1" in out
+    assert f"videoFile/    成功 {expected_allowed}" in out
+    assert f"跳过 {expected_skipped}" in out
 
 
 def test_integration_idempotent_dry_run(monkeypatch, tmp_path):

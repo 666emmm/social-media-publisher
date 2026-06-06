@@ -7,7 +7,7 @@ export function listFeedback({ status, includeAll = false, page = 1, pageSize = 
   } else if (includeAll) {
     params.include_all = 'true'
   }
-  return http.get('/api/feedback/list', { params })
+  return http.get('/api/feedback/list', params)
 }
 
 export function submitFeedback(formData) {

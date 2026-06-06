@@ -32,10 +32,15 @@
           <el-tag :type="statusTagType(fb.status)" size="small">
             {{ statusLabel(fb.status) }}
           </el-tag>
-          <span class="vote-count" @click.stop="handleVote(fb)">
+          <button
+            :class="['vote-btn', { voted: votedIds.has(fb.id) }]"
+            :disabled="votedIds.has(fb.id)"
+            @click.stop="handleVote(fb)"
+          >
             <el-icon><CaretTop /></el-icon>
-            {{ fb.vote_count || 0 }}
-          </span>
+            <span>{{ votedIds.has(fb.id) ? '已支持' : '我也支持' }}</span>
+            <span class="vote-num">{{ fb.vote_count || 0 }}</span>
+          </button>
         </div>
         <div class="card-content">{{ truncate(fb.content, 80) }}</div>
         <div class="card-meta">
@@ -90,15 +95,15 @@
           />
         </div>
         <div class="drawer-vote">
-          <el-button
-            type="primary"
+          <button
+            :class="['vote-btn', { voted: votedIds.has(currentFb.id) }]"
             :disabled="votedIds.has(currentFb.id)"
             @click="handleVote(currentFb)"
           >
             <el-icon><CaretTop /></el-icon>
-            {{ votedIds.has(currentFb.id) ? '已支持' : '+1 支持' }}
-            <span v-if="currentFb.vote_count" class="vote-num">{{ currentFb.vote_count }}</span>
-          </el-button>
+            <span>{{ votedIds.has(currentFb.id) ? '已支持' : '我也支持' }}</span>
+            <span class="vote-num">{{ currentFb.vote_count || 0 }}</span>
+          </button>
         </div>
       </div>
     </el-drawer>
@@ -403,20 +408,48 @@ onMounted(async () => {
   margin-bottom: 12px;
 }
 
-.vote-count {
+.vote-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #ef4444;
-  font-size: 13px;
-  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid $border;
+  background: rgba(255, 255, 255, 0.04);
+  color: $text-primary;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 12px;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  font-family: inherit;
 
-  &:hover {
-    background: rgba(239, 68, 68, 0.1);
+  &:hover:not(:disabled) {
+    border-color: $brand-start;
+    color: $brand-start;
+    background: rgba($brand-start, 0.1);
+    transform: translateY(-1px);
+  }
+
+  &:disabled,
+  &.voted {
+    border-color: $brand-start;
+    background: linear-gradient(135deg, $brand-start, $brand-end);
+    color: #fff;
+    cursor: default;
+  }
+
+  .vote-num {
+    padding: 0 6px;
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 18px;
+    text-align: center;
+  }
+
+  &:not(.voted) .vote-num {
+    background: rgba(255, 255, 255, 0.08);
   }
 }
 
@@ -494,13 +527,10 @@ onMounted(async () => {
 .drawer-vote {
   padding-top: 12px;
   border-top: 1px solid $border;
-}
 
-.vote-num {
-  margin-left: 6px;
-  padding: 0 8px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  font-size: 12px;
+  .vote-btn {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
 }
 </style>

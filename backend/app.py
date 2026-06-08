@@ -631,18 +631,20 @@ def postVideoBatch():
 
 # ── Publish history tracking ────────────────────────────────
 
-def _record_publish(task_id, platform, account_name, video_path, title, description, tags, status, started_at, finished_at=None, error_message=""):
+def _record_publish(task_id, platform, account_name, video_path, title, description, tags, status, started_at, finished_at=None, error_message="", account_configs=None):
     try:
         with sqlite3.connect(str(DB_PATH)) as conn:
             conn.execute(
                 """INSERT INTO publish_tasks
                    (id, platform, account_name, video_path, title, description,
                     tags, status, retry_count, max_retries, error_message,
-                    publish_url, created_at, started_at, finished_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 3, ?, '', ?, ?, ?)""",
+                    publish_url, created_at, started_at, finished_at,
+                    thumbnail_path, account_configs)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 3, ?, '', ?, ?, ?, ?, ?)""",
                 (task_id, platform, account_name, video_path, title, description,
                  json.dumps(tags, ensure_ascii=False), status, error_message,
-                 started_at, started_at, finished_at)
+                 started_at, started_at, finished_at, '',
+                 json.dumps(account_configs or {}, ensure_ascii=False))
             )
     except Exception as e:
         logger.info(f"[History] 记录发布失败: {e}")
@@ -709,6 +711,7 @@ def _before_publish():
             tags=data.get('tags', []),
             status='running',
             started_at=now,
+            account_configs={data.get('type'): {**{k: v for k, v in data.items() if k not in ('fileList', 'accountList', 'type', 'title', 'description', 'tags', 'thumbnail', 'thumbnailLandscape', 'thumbnailPortrait')}, 'title': data.get('title'), 'description': data.get('description'), 'tags': data.get('tags')}},
         )
         g.publish_task_id = task_id
         g.publish_start_time = now

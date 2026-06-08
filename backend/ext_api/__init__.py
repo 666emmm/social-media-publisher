@@ -79,6 +79,23 @@ def _to_beijing_time(utc_str):
         return utc_str
 
 
+def _resolve_cover_url(material_id: str) -> str:
+    """解析 material_id → /api/materials/file/{stored_path} URL。失败返回空串。"""
+    if not material_id:
+        return ''
+    try:
+        conn = _db_conn()
+        row = conn.execute(
+            "SELECT stored_path FROM materials WHERE id = ?", (material_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            return ''
+        return f"/api/materials/file/{row['stored_path']}"
+    except Exception:
+        return ''
+
+
 # ========== 任务管理 ==========
 
 @ext_api.route('/tasks', methods=['GET'])
@@ -346,6 +363,8 @@ def get_history():
                 'description': b.get('description', ''),
                 'landscape_cover_material_id': b.get('landscape_cover_material_id', ''),
                 'portrait_cover_material_id': b.get('portrait_cover_material_id', ''),
+                'cover_url': _resolve_cover_url(b.get('landscape_cover_material_id', ''))
+                            or _resolve_cover_url(b.get('portrait_cover_material_id', '')),
                 'account_count': b.get('account_count', 0),
                 'success_count': b.get('success_count', 0),
                 'failed_count': b.get('failed_count', 0),

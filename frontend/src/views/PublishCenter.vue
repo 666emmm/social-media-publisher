@@ -37,6 +37,9 @@
             <el-icon><Document /></el-icon>
             {{ currentDraftId ? '更新草稿' : '保存草稿' }}
           </button>
+          <el-button :icon="MagicStick" @click="oneClickDialogOpen = true">
+            一键填写
+          </el-button>
           <button class="publish-btn" @click="publishAll" :disabled="publishing">
             {{ publishing ? '发布中...' : '一键发布' }}
           </button>
@@ -479,12 +482,19 @@
       :current-account="currentPublishingAccount"
       @cancel="cancelBatch"
     />
+
+    <OneClickFillDialog
+      v-model="oneClickDialogOpen"
+      type="video"
+      :current-platforms="Object.keys(platformConfigs)"
+      @pick="handleOneClickFill"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, nextTick, watch, onMounted } from 'vue'
-import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Promotion, Delete, Document, WarningFilled } from '@element-plus/icons-vue'
+import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Promotion, Delete, Document, WarningFilled, MagicStick } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
@@ -500,6 +510,7 @@ import BatchPublishDialog from '@/components/BatchPublishDialog.vue'
 import CoverCard from '@/components/CoverCard.vue'
 import CoverEditorDialog from '@/components/CoverEditorDialog.vue'
 import MaterialSelectDialog from '@/components/MaterialSelectDialog.vue'
+import OneClickFillDialog from '@/components/OneClickFillDialog.vue'
 import DouyinActivitySelect from '@/components/douyin/ActivitySelect.vue'
 import DouyinHotspotSelect from '@/components/douyin/HotspotSelect.vue'
 import DouyinTagSelect from '@/components/douyin/TagSelect.vue'
@@ -822,6 +833,7 @@ const videoUploadTarget = ref('landscape')
 const materialSelectRef = ref(null)
 const materialLibraryMode = ref('video')
 const materialLibraryCoverTarget = ref('landscape')
+const oneClickDialogOpen = ref(false)
 const materialLibraryVideoTarget = ref('landscape')
 const batchPublishDialogVisible = ref(false)
 
@@ -1412,6 +1424,7 @@ async function publishAll() {
         enableCashActivity: platformSettings.enableCashActivity || false,
         audience: platformSettings.audience || 'not_kids',
         alteredContent: platformSettings.alteredContent || false,
+        accountConfigs: { [group.id]: platformSettings },
       }
 
       await http.post('/postVideo', publishData)
@@ -1449,6 +1462,25 @@ async function publishAll() {
 function cancelBatch() {
   isCancelled.value = true
   ElMessage.info('正在取消发布...')
+}
+
+function handleOneClickFill(record) {
+  const histConfigs = record.account_configs || {}
+  let filled = 0
+  for (const key of Object.keys(platformConfigs)) {
+    if (histConfigs[key] && typeof histConfigs[key] === 'object') {
+      platformConfigs[key] = {
+        ...platformConfigs[key],
+        ...histConfigs[key],
+      }
+      filled++
+    }
+  }
+  if (filled > 0) {
+    ElMessage.success(`已从历史填充 ${filled} 个平台配置`)
+  } else {
+    ElMessage.warning('当前会话没有与历史记录匹配的平台')
+  }
 }
 
 // ========== Utility ==========

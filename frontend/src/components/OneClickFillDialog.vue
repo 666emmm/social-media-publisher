@@ -83,7 +83,7 @@ async function load() {
   loading.value = true
   try {
     const res = await http.get('/api/v2/publish-templates', {
-      params: { type: props.type, page: page.value, page_size: pageSize.value }
+      type: props.type, page: page.value, page_size: pageSize.value
     })
     const items = res.data?.list || []
     for (const item of items) {
@@ -92,7 +92,7 @@ async function load() {
       } else if (item.type === 'image' && item.first_image_id) {
         try {
           const m = await http.get('/api/materials/list', {
-            params: { id: item.first_image_id, page: 1, page_size: 1 }
+            id: item.first_image_id, page: 1, page_size: 1
           })
           const mat = m.data?.list?.[0]
           if (mat) {

@@ -195,6 +195,13 @@ def migrate_database():
     except sqlite3.OperationalError:
         pass  # 列已存在
 
+    # publish_tasks 添加 account_configs 列（一键填写用）
+    try:
+        cursor.execute('ALTER TABLE publish_tasks ADD COLUMN account_configs TEXT DEFAULT "{}"')
+        logger.info("已添加 publish_tasks.account_configs 列")
+    except sqlite3.OperationalError:
+        pass  # 列已存在
+
     # image_drafts 添加 draft_data 列（支持完整状态存储）
     try:
         cursor.execute('ALTER TABLE image_drafts ADD COLUMN draft_data TEXT DEFAULT "{}"')

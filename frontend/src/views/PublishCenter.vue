@@ -1464,12 +1464,14 @@ function cancelBatch() {
 
 function handleOneClickFill(record) {
   const histConfigs = record.account_configs || {}
+  // 新逻辑：直接用历史的全部平台配置（覆盖或新增），不再做交集
   let filled = 0
-  for (const key of Object.keys(platformConfigs)) {
-    if (histConfigs[key] && typeof histConfigs[key] === 'object') {
+  for (const [key, cfg] of Object.entries(histConfigs)) {
+    if (cfg && typeof cfg === 'object') {
+      // 覆盖已有或新增（Vue 3 reactive 对象新增 key 也会触发响应式）
       platformConfigs[key] = {
         ...platformConfigs[key],
-        ...histConfigs[key],
+        ...cfg,
       }
       filled++
     }
@@ -1477,7 +1479,7 @@ function handleOneClickFill(record) {
   if (filled > 0) {
     ElMessage.success(`已从历史填充 ${filled} 个平台配置`)
   } else {
-    ElMessage.warning('当前会话没有与历史记录匹配的平台')
+    ElMessage.warning('历史记录没有可填充的平台配置')
   }
 }
 

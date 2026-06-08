@@ -683,19 +683,32 @@ function handleOneClickFill(record) {
     return
   }
 
-  const histMap = new Map(histConfigs.map(c => [Number(c.account_id), c]))
+  // 新逻辑：直接用历史的全部账号配置（覆盖或新增），不再做交集
   let filled = 0
+  let skipped = 0
 
-  for (const accountId of publishAccountIds) {
-    const hist = histMap.get(accountId)
+  for (const hist of histConfigs) {
     if (!hist || typeof hist !== 'object') continue
 
+    const accountId = Number(hist.account_id)
+    if (!accountId) continue
+
     const account = accountStore.accounts.find(a => a.id === accountId)
-    if (!account) continue
+    if (!account) {
+      // 历史里有但账号已被删除：跳过
+      skipped++
+      continue
+    }
 
     const platformKey = getPlatformKeyByName(account.platform)
     const panel = getPanel(platformKey)
-    if (!panel) continue
+    if (!panel) {
+      skipped++
+      continue
+    }
+
+    // 把账号加入当前选择
+    publishAccountIds.add(accountId)
 
     const configs = panel.getConfigs()
     const newOverrides = { ...configs.accountOverrides }
@@ -712,9 +725,14 @@ function handleOneClickFill(record) {
   }
 
   if (filled > 0) {
-    ElMessage.success(`已从历史填充 ${filled} 个账号配置`)
+    const msg = skipped > 0
+      ? `已从历史填充 ${filled} 个账号配置（${skipped} 个已删除账号跳过）`
+      : `已从历史填充 ${filled} 个账号配置`
+    ElMessage.success(msg)
+  } else if (skipped > 0) {
+    ElMessage.warning(`历史中 ${skipped} 个账号已不存在，无法填充`)
   } else {
-    ElMessage.warning('当前账号与历史记录没有交集')
+    ElMessage.warning('历史记录没有可填充的账号配置')
   }
 }
 

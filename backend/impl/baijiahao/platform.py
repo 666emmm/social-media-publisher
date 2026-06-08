@@ -305,6 +305,19 @@ class BaijiahaoPlatform(BasePlatform):
                     timeout=60000,
                 )
 
+                # 注册上传完成请求监听器（必须在 set_input_files 之前注册，
+                # 否则可能错过在表单填充期间触发的完成请求）
+                upload_done = asyncio.Event()
+
+                def _on_bjh_request(request):
+                    if (
+                        "materialui/video/compuploadvideo" in request.url
+                        and not upload_done.is_set()
+                    ):
+                        upload_done.set()
+
+                page.on("request", _on_bjh_request)
+
                 # Upload video file
                 video_input = page.locator(
                     "input[type='file'][accept*='.mp4']"
@@ -329,8 +342,10 @@ class BaijiahaoPlatform(BasePlatform):
                 logger.info("正在填充标题和话题...")
                 await self._add_title_tags(page, title, desc, tags)
 
-                # Wait for video upload to complete
-                upload_status = await self._wait_for_upload(page)
+                # Wait for video upload to complete (network signal)
+                upload_status = await self._wait_for_upload(
+                    page, upload_done
+                )
                 if not upload_status:
                     logger.error("发现上传出错了... 文件:%s", file_path)
                     raise Exception("Video upload failed")
@@ -421,30 +436,36 @@ class BaijiahaoPlatform(BasePlatform):
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _wait_for_upload(page) -> bool:
-        """Poll until the video upload completes or fails.
+    async def _wait_for_upload(
+        page, upload_done: asyncio.Event, timeout_s: int = 600
+    ) -> bool:
+        """Wait for the authoritative upload-complete HTTP request.
+
+        The caller must have registered a ``page.on("request")`` listener
+        that sets ``upload_done`` when ``/materialui/video/compuploadvideo``
+        is observed (registered BEFORE ``set_input_files`` so the request
+        is not missed during form filling).
+
+        DOM-based polling is unreliable — the cover overlay can flip
+        states before the server has actually finished ingesting the
+        file, leading to a publish click while the video is still
+        uploading. The completion HTTP request is the source of truth.
 
         Returns True on success, False on failure.
         """
-        while True:
+        try:
+            await asyncio.wait_for(upload_done.wait(), timeout=timeout_s)
+            logger.info("视频上传完毕（检测到 compuploadvideo 请求）")
+            return True
+        except asyncio.TimeoutError:
             upload_failed = await page.locator(
                 'div .cover-overlay:has-text("上传失败")'
             ).count()
             if upload_failed:
                 logger.error("发现上传出错了...")
                 return False
-
-            uploading = await page.locator(
-                'div .cover-overlay:has-text("上传中")'
-            ).count()
-            if uploading:
-                logger.info("正在上传视频中...")
-                await asyncio.sleep(2)
-                continue
-
-            if not uploading and not upload_failed:
-                logger.info("视频上传完毕")
-                return True
+            logger.error("等待视频上传完成超时（%d 秒）", timeout_s)
+            return False
 
     # ------------------------------------------------------------------
     # Helper: fill title and tags (Baijiahao uses description field)

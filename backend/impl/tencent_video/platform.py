@@ -300,6 +300,19 @@ class TencentVideoPlatform(BasePlatform):
                 await page.goto(_PUBLISH_URL)
                 await page.wait_for_load_state("networkidle")
 
+                # 注册上传完成请求监听器（必须在 set_input_files 之前注册）
+                upload_done = asyncio.Event()
+
+                def _on_tx_request(request):
+                    if (
+                        "trpc.creator_center.backend.VideoFusion/UploadNotify"
+                        in request.url
+                        and not upload_done.is_set()
+                    ):
+                        upload_done.set()
+
+                page.on("request", _on_tx_request)
+
                 # Step 1: Upload video file via input[type=file]
                 logger.info("Uploading video file: %s (exists=%s)", file_path, os.path.exists(file_path))
                 file_input = page.locator('input[type="file"]').first
@@ -319,6 +332,19 @@ class TencentVideoPlatform(BasePlatform):
                 )
                 logger.info("Video upload complete, publish form ready")
                 await asyncio.sleep(2)
+
+                # Step 2.5: 等待真正的上传完成 HTTP 请求（formTitle 只是
+                # UI 提示，不是后端完成的权威信号）
+                try:
+                    await asyncio.wait_for(upload_done.wait(), timeout=600)
+                    logger.info(
+                        "视频上传完成（检测到 UploadNotify 请求）"
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(
+                        "等待视频上传完成超时（600 秒），未检测到 UploadNotify"
+                    )
+                    raise Exception("视频上传超时")
 
                 # Step 3: Fill title
                 await self._fill_title(page, title or desc)

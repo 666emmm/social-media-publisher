@@ -486,7 +486,6 @@
     <OneClickFillDialog
       v-model="oneClickDialogOpen"
       type="video"
-      :current-platforms="Object.keys(platformConfigs)"
       @pick="handleOneClickFill"
     />
   </div>
@@ -1424,7 +1423,6 @@ async function publishAll() {
         enableCashActivity: platformSettings.enableCashActivity || false,
         audience: platformSettings.audience || 'not_kids',
         alteredContent: platformSettings.alteredContent || false,
-        accountConfigs: { [group.id]: platformSettings },
       }
 
       await http.post('/postVideo', publishData)

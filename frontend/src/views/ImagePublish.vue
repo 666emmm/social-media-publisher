@@ -272,7 +272,6 @@
     <OneClickFillDialog
       v-model="oneClickDialogOpen"
       type="image"
-      :current-platforms="Array.from(publishAccountIds)"
       @pick="handleOneClickFill"
     />
   </div>

@@ -715,7 +715,7 @@ def _before_publish():
             tags=data.get('tags', []),
             status='running',
             started_at=now,
-            account_configs={PLATFORM_ID_TO_KEY.get(data.get('type'), str(data.get('type'))): {**{k: v for k, v in data.items() if k not in ('fileList', 'accountList', 'type', 'title', 'description', 'tags', 'thumbnail', 'thumbnailLandscape', 'thumbnailPortrait')}, 'title': data.get('title'), 'description': data.get('description'), 'tags': data.get('tags')}},
+            account_configs={PLATFORM_ID_TO_KEY.get(data.get('type'), str(data.get('type'))): {k: v for k, v in data.items() if k not in ('fileList', 'accountList', 'type', 'thumbnail', 'thumbnailLandscape', 'thumbnailPortrait')}},
         )
         g.publish_task_id = task_id
         g.publish_start_time = now

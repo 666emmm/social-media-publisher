@@ -393,25 +393,25 @@ def get_stats():
     try:
         conn = _db_conn()
 
-        # 总体统计
-        total = conn.execute("SELECT COUNT(*) FROM publish_tasks").fetchone()[0]
-        success = conn.execute("SELECT COUNT(*) FROM publish_tasks WHERE status='success'").fetchone()[0]
-        failed = conn.execute("SELECT COUNT(*) FROM publish_tasks WHERE status='failed'").fetchone()[0]
-        running = conn.execute("SELECT COUNT(*) FROM publish_tasks WHERE status IN ('pending','queued','running')").fetchone()[0]
+        # 总体统计（读 publish_batches：每次"发布"= 1 个 batch）
+        total = conn.execute("SELECT COUNT(*) FROM publish_batches").fetchone()[0]
+        success = conn.execute("SELECT COUNT(*) FROM publish_batches WHERE status='success'").fetchone()[0]
+        failed = conn.execute("SELECT COUNT(*) FROM publish_batches WHERE status='failed'").fetchone()[0]
+        running = conn.execute("SELECT COUNT(*) FROM publish_batches WHERE status IN ('pending','queued','running')").fetchone()[0]
 
-        # 按平台统计
+        # 按平台统计（明细行才有 platform 字段，从 publish_details 聚合）
         platform_rows = conn.execute(
-            "SELECT platform, COUNT(*) as count FROM publish_tasks GROUP BY platform"
+            "SELECT platform, COUNT(*) as count FROM publish_details GROUP BY platform"
         ).fetchall()
         by_platform = {row['platform']: row['count'] for row in platform_rows}
 
-        # 最近7天趋势
+        # 最近7天趋势（以 batch 的 created_at 为口径）
         trend = []
         for i in range(6, -1, -1):
             date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
             next_date = (datetime.now() - timedelta(days=i-1)).strftime('%Y-%m-%d') if i > 0 else (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
             count = conn.execute(
-                "SELECT COUNT(*) FROM publish_tasks WHERE created_at >= ? AND created_at < ?",
+                "SELECT COUNT(*) FROM publish_batches WHERE created_at >= ? AND created_at < ?",
                 (date, next_date)
             ).fetchone()[0]
             trend.append({"date": date, "count": count})
@@ -419,7 +419,7 @@ def get_stats():
         # 本月发布数
         month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime('%Y-%m-%d')
         monthly_total = conn.execute(
-            "SELECT COUNT(*) FROM publish_tasks WHERE created_at >= ?", (month_start,)
+            "SELECT COUNT(*) FROM publish_batches WHERE created_at >= ?", (month_start,)
         ).fetchone()[0]
 
         # 账号统计

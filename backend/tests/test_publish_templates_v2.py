@@ -8,19 +8,66 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-_tmpdir = tempfile.mkdtemp()
-os.environ['SAU_DATA_DIR'] = _tmpdir
-DB_PATH = Path(_tmpdir) / "db" / "database.db"
+
+_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS publish_batches (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    video_material_id TEXT DEFAULT '',
+    image_material_ids TEXT DEFAULT '[]',
+    landscape_cover_material_id TEXT DEFAULT '',
+    portrait_cover_material_id TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    account_count INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    schedule_time TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS publish_details (
+    id TEXT PRIMARY KEY,
+    batch_id TEXT NOT NULL,
+    account_id INTEGER,
+    account_name TEXT NOT NULL DEFAULT '',
+    platform TEXT NOT NULL DEFAULT '',
+    account_configs TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending',
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 3,
+    error_message TEXT NOT NULL DEFAULT '',
+    publish_url TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP,
+    FOREIGN KEY (batch_id) REFERENCES publish_batches(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS materials (
+    id TEXT PRIMARY KEY,
+    original_filename TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    mime_type TEXT,
+    file_size INTEGER,
+    storage_type TEXT NOT NULL DEFAULT 'local',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
 
 
-def _setup():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    from init_db import init_database
-    init_database()
-    conn = sqlite3.connect(str(DB_PATH))
+def _setup(db_path: Path):
+    """建 schema 并塞测试数据。不能调 init_db.init_database()，因为 init_db.DB_PATH 在 import 时已绑定。"""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(_SCHEMA_SQL)
     # 1 个视频 batch：1 个 detail 带 account_configs
     conn.execute("INSERT INTO publish_batches (id, type, title, status, account_count, success_count, created_at) VALUES ('bv1', 'video', '可复用视频', 'success', 1, 1, '2026-06-01')")
     conn.execute("INSERT INTO publish_details (id, batch_id, account_name, platform, account_configs, status) VALUES ('dv1', 'bv1', '账号A', '抖音', '{\"title\":\"可复用视频\",\"description\":\"描述\",\"tags\":[\"标签1\"]}', 'success')")
@@ -45,9 +92,21 @@ def _setup():
 class TestPublishTemplatesV2(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        _setup()
+        # 临时数据目录 + DB 路径都建在 setUpClass 里，避免模块级 setup 污染其他测试
+        cls._tmpdir = tempfile.mkdtemp()
+        os.environ['SAU_DATA_DIR'] = cls._tmpdir
+        cls.DB_PATH = Path(cls._tmpdir) / "db" / "database.db"
+        _setup(cls.DB_PATH)
         from ext_api import app
         cls.client = app.test_client()
+
+    def setUp(self):
+        # 强制 ext_api._db_conn() 用测试 DB（ext_api.DB_PATH 在 import 时已绑定）
+        self._db_path_patch = patch('ext_api.DB_PATH', self.DB_PATH)
+        self._db_path_patch.start()
+
+    def tearDown(self):
+        self._db_path_patch.stop()
 
     def test_video_type_returns_video_batches(self):
         resp = self.client.get('/api/v2/publish-templates?type=video')

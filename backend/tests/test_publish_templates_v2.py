@@ -30,6 +30,14 @@ def _setup():
     # 1 个失败的 batch：不应被返回
     conn.execute("INSERT INTO publish_batches (id, type, title, status, account_count, success_count, created_at) VALUES ('bx1', 'video', '失败视频', 'failed', 1, 0, '2026-06-03')")
     conn.execute("INSERT INTO publish_details (id, batch_id, account_name, platform, account_configs, status) VALUES ('dx1', 'bx1', '账号C', '抖音', '{}', 'failed')")
+    # material 行：让 cover material_id 解析得到 stored_path
+    conn.execute(
+        "INSERT INTO materials (id, original_filename, stored_path, file_type, mime_type, file_size, storage_type) "
+        "VALUES ('mat-cover-1', 'cover.jpg', 'materials/2026/06/01/cover.jpg', 'image', 'image/jpeg', 12345, 'local')"
+    )
+    conn.execute(
+        "UPDATE publish_batches SET landscape_cover_material_id = 'mat-cover-1' WHERE id = 'bv1'"
+    )
     conn.commit()
     conn.close()
 
@@ -71,6 +79,12 @@ class TestPublishTemplatesV2(unittest.TestCase):
     def test_missing_type_returns_400(self):
         resp = self.client.get('/api/v2/publish-templates')
         self.assertEqual(resp.status_code, 400)
+
+    def test_video_thumbnail_path_resolves_to_material_stored_path(self):
+        """thumbnail_path 应该是 material_id 解析后的 stored_path，不是 raw UUID"""
+        resp = self.client.get('/api/v2/publish-templates?type=video')
+        items = resp.get_json()['data']['list']
+        self.assertEqual(items[0]['thumbnail_path'], 'materials/2026/06/01/cover.jpg')
 
 
 if __name__ == '__main__':

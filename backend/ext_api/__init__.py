@@ -804,7 +804,6 @@ def get_publish_templates():
 
     Query: type=video|image (必填), page=1, page_size=20
     """
-    import json as _json
     type_ = request.args.get('type', '').strip()
     if type_ not in ('video', 'image'):
         return jsonify({"code": 400, "msg": "type 必须是 video 或 image"}), 400
@@ -840,6 +839,24 @@ def get_publish_templates():
                          WHERE d.batch_id = b.id AND d.account_configs != '{}')""",
         (type_,)
     ).fetchone()[0]
+
+    # 解析 cover material_id → stored_path（thumbnail_path 必须是真实文件路径，
+    # 前端 OneClickFillDialog 会拼到 /uploads/<path> 上）
+    cover_ids = [
+        r['landscape_cover_material_id'] or r['portrait_cover_material_id'] or ''
+        for r in rows
+    ]
+    cover_ids = [cid for cid in cover_ids if cid]
+    if cover_ids:
+        placeholders = ','.join('?' * len(cover_ids))
+        cover_rows = conn.execute(
+            f"SELECT id, stored_path FROM materials WHERE id IN ({placeholders})",
+            cover_ids
+        ).fetchall()
+        cover_path_map = {r['id']: r['stored_path'] for r in cover_rows}
+    else:
+        cover_path_map = {}
+
     conn.close()
 
     items = []
@@ -859,16 +876,28 @@ def get_publish_templates():
         ).fetchall()
         dconn.close()
 
-        configs = _json.loads((first_detail['account_configs'] if first_detail else None) or '{}')
+        configs = json.loads((first_detail['account_configs'] if first_detail else None) or '{}')
         channels = [{'platform': p['platform']} for p in all_platforms if p['platform']]
+
+        # cover 优先 landscape，回落 portrait；material_id 解析到 stored_path
+        cover_id = r['landscape_cover_material_id'] or r['portrait_cover_material_id'] or ''
+        thumbnail_path = cover_path_map.get(cover_id, '')
+
+        # image_material_ids 是 JSON 数组字符串，取第一个元素作为 first_image_id
+        img_ids_raw = r['image_material_ids'] or '[]'
+        try:
+            img_ids_list = json.loads(img_ids_raw)
+            first_image_id = img_ids_list[0] if img_ids_list else None
+        except (json.JSONDecodeError, TypeError):
+            first_image_id = None
 
         items.append({
             "id": r['id'],
             "type": r['type'],
             "title": r['title'] or '',
             "description": r['description'] or '',
-            "thumbnail_path": r['landscape_cover_material_id'] or r['portrait_cover_material_id'] or '',
-            "first_image_id": (r['image_material_ids'] or '[]'),
+            "thumbnail_path": thumbnail_path,
+            "first_image_id": first_image_id,
             "video_material_id": r['video_material_id'] or '',
             "channels": channels,
             "account_configs": configs,

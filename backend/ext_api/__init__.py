@@ -83,7 +83,7 @@ def _to_beijing_time(utc_str):
 
 @ext_api.route('/tasks', methods=['GET'])
 def get_tasks():
-    """获取任务列表（支持分页、状态过滤）"""
+    """获取任务列表（读 publish_details，每行 = 1 个账号 × 1 个平台）"""
     status = request.args.get('status')
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('pageSize', 20))
@@ -94,13 +94,19 @@ def get_tasks():
         where = ""
         params = []
         if status and status != 'all':
-            where = "WHERE status = ?"
+            where = "WHERE d.status = ?"
             params.append(status)
 
-        total = conn.execute(f"SELECT COUNT(*) FROM publish_tasks {where}", params).fetchone()[0]
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM publish_details d {where}", params
+        ).fetchone()[0]
 
         rows = conn.execute(
-            f"SELECT * FROM publish_tasks {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f"""SELECT d.*, b.title AS batch_title, b.type AS batch_type
+                FROM publish_details d
+                LEFT JOIN publish_batches b ON d.batch_id = b.id
+                {where}
+                ORDER BY d.created_at DESC LIMIT ? OFFSET ?""",
             params + [page_size, offset]
         ).fetchall()
 
@@ -108,9 +114,9 @@ def get_tasks():
         for row in rows:
             d = dict(row)
             try:
-                d['tags'] = json.loads(d.get('tags', '[]'))
+                d['account_configs'] = json.loads(d.get('account_configs', '{}'))
             except json.JSONDecodeError:
-                d['tags'] = []
+                d['account_configs'] = {}
             tasks.append(d)
 
         conn.close()
@@ -152,20 +158,26 @@ def create_task():
     return jsonify({"code": 200, "data": {"id": task.id, "status": task.status}})
 
 
-@ext_api.route('/tasks/<task_id>', methods=['GET'])
-def get_task(task_id):
-    """获取单个任务详情"""
+@ext_api.route('/tasks/<detail_id>', methods=['GET'])
+def get_task(detail_id):
+    """获取单个任务（按 publish_details.id 查）"""
     try:
         conn = _db_conn()
-        row = conn.execute("SELECT * FROM publish_tasks WHERE id = ?", (task_id,)).fetchone()
+        row = conn.execute(
+            """SELECT d.*, b.title AS batch_title, b.type AS batch_type
+               FROM publish_details d
+               LEFT JOIN publish_batches b ON d.batch_id = b.id
+               WHERE d.id = ?""",
+            (detail_id,)
+        ).fetchone()
         conn.close()
         if not row:
             return jsonify({"code": 404, "msg": "任务不存在"}), 404
         d = dict(row)
         try:
-            d['tags'] = json.loads(d.get('tags', '[]'))
+            d['account_configs'] = json.loads(d.get('account_configs', '{}'))
         except json.JSONDecodeError:
-            d['tags'] = []
+            d['account_configs'] = {}
         return jsonify({"code": 200, "data": d})
     except Exception as e:
         return jsonify({"code": 500, "msg": str(e)}), 500

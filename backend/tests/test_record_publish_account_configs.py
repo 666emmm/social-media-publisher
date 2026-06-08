@@ -1,4 +1,9 @@
-"""_record_publish 接受 account_configs 参数并写入 publish_tasks.account_configs。"""
+"""_record_publish 接受 account_configs 参数并写入 publish_tasks.account_configs。
+
+注意：_record_publish 仍写旧的 publish_tasks 表（Task 6 会重构成 publish_batches +
+publish_details），所以这两个测试必须保留旧的 publish_tasks schema 才能通过。
+Task 6 会同步重写这两个测试。
+"""
 import json
 import sys
 import tempfile

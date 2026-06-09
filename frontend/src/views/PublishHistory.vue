@@ -198,7 +198,15 @@ function getCfgField(d, field) {
 
 function getCoverUrl(d) {
   const cfg = d.account_configs || {}
-  return cfg.coverLandscape?.url || cfg.coverPortrait?.url || d.cover_url || ''
+  // 优先 per-account coverLandscape / coverPortrait (dict 含 stored_path)
+  const stored = cfg.coverLandscape?.stored_path || cfg.coverPortrait?.stored_path
+  if (stored) {
+    // 去掉可能的前导 'uploads/' 重复
+    const cleaned = stored.replace(/^uploads\//, '')
+    return `http://${window.location.hostname}:5409/uploads/${cleaned}`
+  }
+  // 兜底批次封面
+  return d.cover_url || ''
 }
 
 const batches = ref([])

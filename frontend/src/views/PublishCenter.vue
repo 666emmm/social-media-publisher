@@ -1488,10 +1488,28 @@ function handleOneClickFill(record) {
       filled++
     }
   }
+  // 复原账号选择：清空当前选中，按历史 channels 自动勾选对应平台下的所有账号
+  publishAccountIds.clear()
+  let selectedAccounts = 0
+  const channels = record.channels || []
+  for (const ch of channels) {
+    const group = accountGroups.value.find(g => g.name === ch.platform)
+    if (!group) continue
+    for (const acc of group.accounts) {
+      if (acc.id != null) {
+        publishAccountIds.add(acc.id)
+        selectedAccounts++
+      }
+    }
+  }
   if (filled > 0) {
-    ElMessage.success(`已从历史填充 ${filled} 个平台配置`)
+    ElMessage.success(`已从历史填充 ${filled} 个平台配置${selectedAccounts > 0 ? `，已选中 ${selectedAccounts} 个账号` : ''}`)
   } else {
-    ElMessage.warning('历史记录没有可填充的平台配置')
+    if (selectedAccounts > 0) {
+      ElMessage.success(`已选中 ${selectedAccounts} 个账号`)
+    } else {
+      ElMessage.warning('历史记录没有可填充的平台配置')
+    }
   }
 }
 

@@ -75,8 +75,7 @@ function formatRelativeTime(iso) {
 
 function buildVideoCoverUrl(thumbPath) {
   if (!thumbPath) return ''
-  const cleanPath = thumbPath.replace(/^uploads\//, '')
-  return `${window.location.protocol}//${window.location.hostname}:5409/uploads/${cleanPath}`
+  return `${window.location.protocol}//${window.location.hostname}:5409/api/materials/file/${thumbPath}`
 }
 
 async function load() {
@@ -95,7 +94,7 @@ async function load() {
           const mat = m.data
           if (mat) {
             item.coverSrc = mat.stored_path
-              ? `${window.location.protocol}//${window.location.hostname}:5409/${mat.stored_path.replace(/^\/+/, '')}`
+              ? `${window.location.protocol}//${window.location.hostname}:5409/api/materials/file/${mat.stored_path.replace(/^\/+/, '')}`
               : mat.url || ''
           } else {
             item.coverSrc = ''

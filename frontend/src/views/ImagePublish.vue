@@ -908,18 +908,38 @@ async function publishAll() {
 
     const panel = getPanel(groupKey)
     if (panel) {
-      // 备份 panel 原状态，把父组件 4 级合并结果注入 panel，再发布；发布后恢复原 panel 状态
+      // 备份 panel 原状态（含 platformConfig 中的平台特定字段如 selectedMusic / hotspotId / mini_link / activities 等）
       const originalConfigs = panel.getConfigs()
+      const originalPlatformConfig = originalConfigs.platformConfig || {}
+      const originalAccountOverrides = originalConfigs.accountOverrides || {}
+
+      // 选择性更新 platformConfig 的 9 个标准字段，保留其他平台特定字段不被覆盖
+      const STANDARD_FIELDS = [
+        'title', 'description', 'tags', 'images', 'coverImage',
+        'enableTimer', 'scheduleTime', 'aiContent', 'isOriginal'
+      ]
+      const updatedPlatformConfig = { ...originalPlatformConfig }
+      for (const field of STANDARD_FIELDS) {
+        if (field in merged) {
+          updatedPlatformConfig[field] = Array.isArray(merged[field])
+            ? [...merged[field]]
+            : merged[field]
+        }
+      }
+
+      // 注入 panel：platformConfig 保留所有平台特定字段 + 9 标准字段已更新；
+      // accountOverrides[id] = merged（含平台特定字段）让 publish 链路拿到完整配置
       panel.restoreConfigs(
-        merged,
-        { ...originalConfigs.accountOverrides, [account.id]: merged }
+        updatedPlatformConfig,
+        { ...originalAccountOverrides, [account.id]: merged }
       )
       try {
         await panel.publish(account.id, account.name, commonData, publishExtra)
       } finally {
+        // 恢复原 panel 状态（restoreConfigs 是整体重置，所以必须用完整备份）
         panel.restoreConfigs(
-          originalConfigs.platformConfig,
-          originalConfigs.accountOverrides
+          originalPlatformConfig,
+          originalAccountOverrides
         )
       }
     }

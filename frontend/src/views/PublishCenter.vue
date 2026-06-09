@@ -760,6 +760,35 @@ function onAccountCheckChange(checked) {
   }
 }
 
+// ========== 4 级优先级合并（spec §3.3） ==========
+// accountOv > platformOv > platformDefault > common
+function resolveAccountConfig(platformKey, accountId) {
+  const accountOv = (accountChecked[accountId] && accountOverrides[accountId]) || null
+  const platformOv = (platformChecked[platformKey] && platformOverrides[platformKey]) || null
+  const platformDefault = platformConfigs[platformKey] || null
+  return mergeConfig(commonConfig, platformDefault, platformOv, accountOv)
+}
+
+function mergeConfig(common, platformDefault, platformOv, accountOv) {
+  return {
+    // 文本字段走 platformDefault 兜底（commonConfig 不存文本）
+    title: accountOv?.title ?? platformOv?.title ?? platformDefault?.title ?? '',
+    description: accountOv?.description ?? platformOv?.description ?? platformDefault?.description ?? '',
+    tags: accountOv?.tags ?? platformOv?.tags ?? platformDefault?.tags ?? [],
+    // 视频/封面走 commonConfig 兜底
+    coverLandscape: accountOv?.coverLandscape ?? platformOv?.coverLandscape ?? common.coverLandscape,
+    coverPortrait:  accountOv?.coverPortrait  ?? platformOv?.coverPortrait  ?? common.coverPortrait,
+    videoLandscape: accountOv?.videoLandscape ?? platformOv?.videoLandscape ?? common.videoLandscape,
+    videoPortrait:  accountOv?.videoPortrait  ?? platformOv?.videoPortrait  ?? common.videoPortrait,
+    // 平台特有字段走 platformDefault 兜底
+    videoFormat: accountOv?.videoFormat ?? platformOv?.videoFormat ?? platformDefault?.videoFormat ?? 'portrait',
+    enableTimer: accountOv?.enableTimer ?? platformOv?.enableTimer ?? platformDefault?.enableTimer ?? 0,
+    scheduleTime: accountOv?.scheduleTime ?? platformOv?.scheduleTime ?? platformDefault?.scheduleTime ?? '',
+    aiContent: accountOv?.aiContent ?? platformOv?.aiContent ?? platformDefault?.aiContent ?? '',
+    isOriginal: accountOv?.isOriginal ?? platformOv?.isOriginal ?? platformDefault?.isOriginal ?? false,
+  }
+}
+
 function addPlatformTag() {
   const v = (platformOverrides[selectedPlatform.value]?.tagInput || '').trim()
   if (!v) return
@@ -1554,21 +1583,15 @@ async function publishAll() {
 
   for (const group of accountGroups.value) {
     if (group.accounts.length === 0) continue
-    const pSettings = platformConfigs[group.key] || {}
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      const accountOverride = accountOverrides[account.id]
-      const mergedSettings = accountOverride && Object.keys(accountOverride).length > 0
-        ? { ...pSettings, ...Object.fromEntries(
-            Object.entries(accountOverride).filter(([_, v]) => v !== undefined && v !== '' && v !== false)
-          )}
-        : { ...pSettings }
+      const merged = resolveAccountConfig(group.key, account.id)
       const platformKey = group.key
       const declFields = DECLARATION_PLATFORMS[platformKey]
       if (!declFields) continue
       const fields = Array.isArray(declFields) ? declFields : [declFields]
       for (const field of fields) {
-        const value = mergedSettings[field]
+        const value = merged[field]
         const isEmpty = Array.isArray(value)
           ? value.length === 0
           : (typeof value === 'boolean' ? value === null || value === undefined : (!value && value !== 0))
@@ -1587,13 +1610,10 @@ async function publishAll() {
   const accountsWithoutTitle = []
   for (const group of accountGroups.value) {
     if (group.accounts.length === 0) continue
-    const pSettings = platformConfigs[group.key] || {}
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      const accountOverride = accountOverrides[account.id]
-      const mergedTitle = (accountOverride && accountOverride.title)
-        || pSettings.title
-      if (!mergedTitle || !mergedTitle.trim()) {
+      const merged = resolveAccountConfig(group.key, account.id)
+      if (!merged.title || !merged.title.trim()) {
         accountsWithoutTitle.push(`${account.name}(${group.name})`)
       }
     }
@@ -1606,13 +1626,10 @@ async function publishAll() {
   const accountsWithoutVideoFormat = []
   for (const group of accountGroups.value) {
     if (group.accounts.length === 0) continue
-    const pSettings = platformConfigs[group.key] || {}
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      const accountOverride = accountOverrides[account.id]
-      const mergedFormat = (accountOverride && accountOverride.videoFormat)
-        || pSettings.videoFormat
-      if (!mergedFormat) {
+      const merged = resolveAccountConfig(group.key, account.id)
+      if (!merged.videoFormat) {
         accountsWithoutVideoFormat.push(`${account.name}(${group.name})`)
       }
     }
@@ -1642,16 +1659,13 @@ async function publishAll() {
   const allTasks = []
   for (const group of accountGroups.value) {
     if (group.accounts.length === 0) continue
-    const pSettings = platformConfigs[group.key] || {}
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      const accountOverride = accountOverrides[account.id]
-      const mergedSettings = accountOverride && Object.keys(accountOverride).length > 0
-        ? { ...pSettings, ...Object.fromEntries(
-            Object.entries(accountOverride).filter(([_, v]) => v !== undefined && v !== '' && v !== false)
-          )}
-        : { ...pSettings }
-      allTasks.push({ account, group, platformSettings: mergedSettings })
+      // 4 级优先级合并：accountOv > platformOv > platformDefault > common
+      const merged = resolveAccountConfig(group.key, account.id)
+      // 平台特有字段（mergeConfig 未覆盖的）仍取 platformConfigs 兜底
+      const pSettings = platformConfigs[group.key] || {}
+      allTasks.push({ account, group, merged, platformSettings: pSettings })
     }
   }
 
@@ -1678,19 +1692,19 @@ async function publishAll() {
       continue
     }
 
-    const { account, group, platformSettings } = allTasks[i]
+    const { account, group, merged, platformSettings } = allTasks[i]
     currentPublishingAccount.value = account.name
     publishProgress.value = Math.floor((i / allTasks.length) * 100)
 
-    const videoFormat = platformSettings.videoFormat || ''
+    const videoFormat = merged.videoFormat || ''
 
     let selectedVideo
     if (videoFormat === 'portrait') {
-      selectedVideo = commonConfig.videoPortrait
+      selectedVideo = merged.videoPortrait || commonConfig.videoPortrait
     } else if (videoFormat === 'landscape') {
-      selectedVideo = commonConfig.videoLandscape
+      selectedVideo = merged.videoLandscape || commonConfig.videoLandscape
     } else {
-      selectedVideo = commonConfig.videoLandscape || commonConfig.videoPortrait
+      selectedVideo = merged.videoLandscape || commonConfig.videoLandscape || merged.videoPortrait || commonConfig.videoPortrait
     }
 
     if (!selectedVideo) {
@@ -1703,25 +1717,28 @@ async function publishAll() {
       }
 
     try {
-      const tags = platformSettings.tags || []
+      const tags = merged.tags || []
+      // 封面走 4 级合并（merged.coverLandscape/Portrait），common 兜底
+      const thumbnailLandscapeMaterial = merged.coverLandscape || commonConfig.coverLandscape
+      const thumbnailPortraitMaterial = merged.coverPortrait || commonConfig.coverPortrait
 
       const publishData = {
         type: group.id,
-        title: platformSettings.title,
-        description: platformSettings.description || '',
+        title: merged.title,
+        description: merged.description || '',
         tags: tags,
         activities: platformSettings.activityId || [],
         fileList: [selectedVideo.stored_path],
         videoFormat: videoFormat,
         accountList: [account.filePath],
-        thumbnailLandscape: commonConfig.coverLandscape ? commonConfig.coverLandscape.stored_path : '',
-        thumbnailPortrait: commonConfig.coverPortrait ? commonConfig.coverPortrait.stored_path : '',
-        enableTimer: platformSettings.scheduleTime ? 1 : 0,
-        scheduleTime: platformSettings.scheduleTime || '',
+        thumbnailLandscape: thumbnailLandscapeMaterial ? thumbnailLandscapeMaterial.stored_path : '',
+        thumbnailPortrait: thumbnailPortraitMaterial ? thumbnailPortraitMaterial.stored_path : '',
+        enableTimer: merged.scheduleTime ? 1 : 0,
+        scheduleTime: merged.scheduleTime || '',
         videosPerDay: 1,
         dailyTimes: ['10:00'],
         startDays: 0,
-        category: platformSettings.zone || (platformSettings.isOriginal ? 1 : 0),
+        category: platformSettings.zone || (merged.isOriginal ? 1 : 0),
         // Douyin-specific fields
         hotspot: platformSettings.hotspotId || '',
         tag_type: platformSettings.tagType || '',
@@ -1730,7 +1747,7 @@ async function publishAll() {
         mix_id: platformSettings.mixId || '',
         // Other platform fields
         isDraft: platformSettings.isDraft || false,
-        aiContent: platformSettings.aiContent || '',
+        aiContent: merged.aiContent || '',
         creationDeclaration: Array.isArray(platformSettings.creationDeclaration)
           ? platformSettings.creationDeclaration.join(',')
           : platformSettings.creationDeclaration || '',
@@ -1744,6 +1761,11 @@ async function publishAll() {
         landscapeCoverMaterialId,
         portraitCoverMaterialId,
         accountId: account.id,
+        // Task 7：透传 4 级合并后的素材对象（供后端持久化到 account_configs JSON，符合 spec §3.3）
+        coverLandscape: thumbnailLandscapeMaterial,
+        coverPortrait: thumbnailPortraitMaterial,
+        videoLandscape: merged.videoLandscape,
+        videoPortrait: merged.videoPortrait,
       }
 
       await http.post('/postVideo', publishData)

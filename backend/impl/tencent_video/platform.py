@@ -314,7 +314,25 @@ class TencentVideoPlatform(BasePlatform):
                 page.on("request", _on_tx_request)
 
                 # Step 1: Upload video file via input[type=file]
+                # [FIX 2026-06-10] 腾讯视频 SPA：networkidle 后还要等表单 JS 渲染完毕
+                # 之前在 networkidle 后直接找 input，找不到（form 还没渲染）
                 logger.info("Uploading video file: %s (exists=%s)", file_path, os.path.exists(file_path))
+                # 先等 publish form 渲染：找"上传视频"或上传区域的提示文字
+                try:
+                    await page.wait_for_selector(
+                        'text=上传视频, input[type="file"], [dt-mpid*="upload"], div[class*="uploadArea"], div[class*="Upload"]',
+                        timeout=15000,
+                    )
+                    logger.info("Publish form rendered, input area found")
+                except Exception as e:
+                    logger.warning("[DEBUG] Publish form wait timeout: %s", e)
+
+                # 用 attached 状态找 input（不要求 visible，hidden 的也行）
+                await page.wait_for_selector(
+                    'input[type="file"]',
+                    state='attached',
+                    timeout=15000,
+                )
                 file_input = page.locator('input[type="file"]').first
                 input_count = await page.locator('input[type="file"]').count()
                 logger.info("Found %d file input(s) on page", input_count)

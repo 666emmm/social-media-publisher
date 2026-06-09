@@ -623,6 +623,13 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     scheduleTime: accountOv?.scheduleTime ?? platformOv?.scheduleTime ?? platformDefault?.scheduleTime ?? '',
     aiContent: accountOv?.aiContent ?? platformOv?.aiContent ?? platformDefault?.aiContent ?? '',
     isOriginal: accountOv?.isOriginal ?? platformOv?.isOriginal ?? platformDefault?.isOriginal ?? false,
+    // 平台作品声明 / 风险提示 / 活动等（来自 platformConfigs 渠道默认，覆写区不覆盖）
+    creationDeclaration: platformDefault?.creationDeclaration,
+    riskWarning: platformDefault?.riskWarning,
+    enableCashActivity: platformDefault?.enableCashActivity,
+    supplementaryDeclaration: platformDefault?.supplementaryDeclaration,
+    audience: platformDefault?.audience,
+    alteredContent: platformDefault?.alteredContent,
   }
 }
 
@@ -1460,13 +1467,14 @@ async function publishAll() {
         // Other platform fields
         isDraft: platformSettings.isDraft || false,
         aiContent: merged.aiContent || '',
-        creationDeclaration: Array.isArray(platformSettings.creationDeclaration)
-          ? platformSettings.creationDeclaration.join(',')
-          : platformSettings.creationDeclaration || '',
-        riskWarning: platformSettings.riskWarning || '',
-        enableCashActivity: platformSettings.enableCashActivity || false,
-        audience: platformSettings.audience || 'not_kids',
-        alteredContent: platformSettings.alteredContent || false,
+        // creationDeclaration 走 merged（已含 platformDefault 兜底）
+        creationDeclaration: Array.isArray(merged.creationDeclaration)
+          ? merged.creationDeclaration.join(',')
+          : merged.creationDeclaration || '',
+        riskWarning: merged.riskWarning || '',
+        enableCashActivity: merged.enableCashActivity || false,
+        audience: merged.audience || 'not_kids',
+        alteredContent: merged.alteredContent || false,
         // Task 12：本次一键发布的批次与素材 ID
         batchId,
         videoMaterialId,

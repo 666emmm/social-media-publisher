@@ -37,5 +37,15 @@ def compute_personalized(account_configs: dict, batch_row: dict) -> bool:
         if cfg_image_ids != batch_image_ids:
             return True
 
+    # 图文封面（与 batch 第一张图对比；coverImage 独立 override 时算个性化）
+    cover_img_id = (cfg.get('coverImage') or {}).get('id')
+    if cover_img_id:
+        try:
+            batch_image_ids = json.loads(batch.get('image_material_ids') or '[]')
+        except (json.JSONDecodeError, TypeError):
+            batch_image_ids = []
+        if batch_image_ids and cover_img_id != batch_image_ids[0]:
+            return True
+
     # 标签、平台特有字段：不存公共值，跳过
     return False

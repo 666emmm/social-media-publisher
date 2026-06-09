@@ -329,6 +329,19 @@ class TestComputePersonalized(unittest.TestCase):
         batch = {"title": "t", "description": "d"}
         self.assertFalse(compute_personalized(cfg, batch))
 
+    def test_personalized_true_when_image_cover_differs_from_first(self):
+        """图文 coverImage 与 batch 首图不同 → personalized"""
+        from ext_api._personalized import compute_personalized
+        cfg = {"images": [{"id": "i1"}, {"id": "i2"}], "coverImage": {"id": "i3"}}
+        batch = {"image_material_ids": '["i1","i2"]'}
+        self.assertTrue(compute_personalized(cfg, batch))
+
+    def test_personalized_false_when_image_cover_matches_first(self):
+        from ext_api._personalized import compute_personalized
+        cfg = {"images": [{"id": "i1"}, {"id": "i2"}], "coverImage": {"id": "i1"}}
+        batch = {"image_material_ids": '["i1","i2"]'}
+        self.assertFalse(compute_personalized(cfg, batch))
+
 
 if __name__ == "__main__":
     unittest.main()

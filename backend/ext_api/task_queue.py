@@ -55,6 +55,17 @@ class PublishTask:
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
 
+    # 新增：个性化配置字段
+    video_landscape: dict | None = None
+    video_portrait: dict | None = None
+    cover_landscape: dict | None = None
+    cover_portrait: dict | None = None
+    video_format: str | None = None
+    enable_timer: int | None = None
+    schedule_time: str | None = None
+    ai_content: str | None = None
+    is_original: bool | None = None
+
     def to_dict(self):
         d = asdict(self)
         d['tags'] = json.dumps(self.tags, ensure_ascii=False)
@@ -90,6 +101,27 @@ class PublishTask:
             started_at=row_dict.get('started_at'),
             finished_at=row_dict.get('finished_at'),
         )
+
+
+def _build_account_configs(task: 'PublishTask') -> dict:
+    """构造写入 publish_details.account_configs 的 dict。
+    含全 per-platform form 字段，让历史卡片能完整还原发布时的内容。"""
+    return {
+        'title': task.title,
+        'description': task.description,
+        'tags': task.tags,
+        'thumbnail_path': task.thumbnail_path,
+        'platform_type': task.platform_type,
+        'videoLandscape': task.video_landscape,
+        'videoPortrait': task.video_portrait,
+        'coverLandscape': task.cover_landscape,
+        'coverPortrait': task.cover_portrait,
+        'videoFormat': task.video_format,
+        'enableTimer': task.enable_timer,
+        'scheduleTime': task.schedule_time,
+        'aiContent': task.ai_content,
+        'isOriginal': task.is_original,
+    }
 
 
 class TaskQueue:
@@ -297,13 +329,7 @@ class TaskQueue:
                      task.created_at, task.created_at)
                 )
                 # account_configs：把 task 字段打包成 JSON
-                cfg = {
-                    'title': task.title,
-                    'description': task.description,
-                    'tags': task.tags,
-                    'thumbnail_path': task.thumbnail_path,
-                    'platform_type': task.platform_type,
-                }
+                cfg = _build_account_configs(task)
                 conn.execute(
                     """INSERT INTO publish_details
                        (id, batch_id, account_id, account_name, platform, account_configs,

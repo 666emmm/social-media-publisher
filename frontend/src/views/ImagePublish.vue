@@ -149,6 +149,114 @@
             <span class="hint">{{ selectedAccountId ? '仅对该账号生效' : '对该分组所有未自定义的账号生效' }}</span>
           </div>
 
+          <!-- ===== 平台级个性化覆写区 ===== -->
+          <div v-if="currentPlatformConfig" class="config-section platform-override-section">
+            <div class="section-bar">
+              <div class="bar" :style="{ background: currentPlatformConfig.color }"></div>
+              <span class="section-label">{{ currentPlatformConfig.name }} 渠道个性化</span>
+              <el-checkbox v-model="platformChecked[selectedPlatform]" @change="onPlatformCheckChange">
+                使用个性化配置
+              </el-checkbox>
+            </div>
+            <div v-show="platformChecked[selectedPlatform]" class="override-body">
+              <div class="form-field">
+                <div class="field-head"><span>渠道标题</span></div>
+                <el-input v-model="platformOverrides[selectedPlatform].title" placeholder="渠道标题" maxlength="100" />
+              </div>
+              <div class="form-field">
+                <div class="field-head"><span>渠道描述</span></div>
+                <el-input v-model="platformOverrides[selectedPlatform].description" type="textarea" :rows="3" placeholder="渠道描述" maxlength="2000" />
+              </div>
+              <div class="form-field">
+                <div class="field-head"><span>渠道标签</span></div>
+                <el-input
+                  :model-value="platformOverrides[selectedPlatform].tagInput || ''"
+                  @update:model-value="v => platformOverrides[selectedPlatform].tagInput = v"
+                  @keyup.enter="addPlatformTag"
+                  placeholder="输入标签后回车"
+                  clearable
+                />
+                <div v-if="platformOverrides[selectedPlatform].tags?.length" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                  <el-tag
+                    v-for="(t, i) in platformOverrides[selectedPlatform].tags"
+                    :key="i"
+                    closable
+                    @close="platformOverrides[selectedPlatform].tags.splice(i, 1)"
+                    size="small"
+                  >#{{ t }}</el-tag>
+                </div>
+              </div>
+              <div class="form-field">
+                <div class="field-head"><span>渠道图片</span></div>
+                <ImageUploader
+                  v-model="platformOverrides[selectedPlatform].images"
+                  :max-count="35"
+                  :visible-rows="2"
+                  :columns="5"
+                />
+              </div>
+              <div class="form-field">
+                <div class="field-head"><span>渠道封面</span></div>
+                <ImageCoverUpload v-model="platformOverrides[selectedPlatform].coverImage" />
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== 账号级个性化覆写区 ===== -->
+          <div v-if="selectedAccountId" class="config-section account-override-section">
+            <div class="section-bar">
+              <div class="bar" :style="{ background: currentPlatformConfig.color }"></div>
+              <span class="section-label">{{ getAccountDisplayName(selectedAccountId) }} 账号个性化</span>
+              <el-checkbox
+                v-model="accountChecked[selectedAccountId]"
+                :disabled="!platformChecked[selectedPlatform]"
+                @change="onAccountCheckChange"
+              >使用个性化配置</el-checkbox>
+            </div>
+            <div v-show="accountChecked[selectedAccountId]" class="override-body">
+              <div class="form-field">
+                <div class="field-head"><span>账号标题</span></div>
+                <el-input v-model="accountOverrides[selectedAccountId].title" placeholder="账号标题" maxlength="100" />
+              </div>
+              <div class="form-field">
+                <div class="field-head"><span>账号描述</span></div>
+                <el-input v-model="accountOverrides[selectedAccountId].description" type="textarea" :rows="3" placeholder="账号描述" maxlength="2000" />
+              </div>
+              <div class="form-field">
+                <div class="field-head"><span>账号标签</span></div>
+                <el-input
+                  :model-value="accountOverrides[selectedAccountId].tagInput || ''"
+                  @update:model-value="v => accountOverrides[selectedAccountId].tagInput = v"
+                  @keyup.enter="addAccountTag"
+                  placeholder="输入标签后回车"
+                  clearable
+                />
+                <div v-if="accountOverrides[selectedAccountId].tags?.length" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                  <el-tag
+                    v-for="(t, i) in accountOverrides[selectedAccountId].tags"
+                    :key="i"
+                    closable
+                    @close="accountOverrides[selectedAccountId].tags.splice(i, 1)"
+                    size="small"
+                  >#{{ t }}</el-tag>
+                </div>
+              </div>
+              <div class="form-field">
+                <div class="field-head"><span>账号图片</span></div>
+                <ImageUploader
+                  v-model="accountOverrides[selectedAccountId].images"
+                  :max-count="35"
+                  :visible-rows="2"
+                  :columns="5"
+                />
+              </div>
+              <div class="form-field">
+                <div class="field-head"><span>账号封面</span></div>
+                <ImageCoverUpload v-model="accountOverrides[selectedAccountId].coverImage" />
+              </div>
+            </div>
+          </div>
+
           <DouyinImagePublishPanel
             ref="douyinPanelRef"
             :account-id="selectedPlatform === 'douyin' ? selectedAccountId : null"
@@ -283,7 +391,7 @@ import {
   Upload, ArrowDown, ArrowRight, Picture, PictureFilled,
   Promotion, Document, FullScreen, MagicStick
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
 import { accountApi } from '@/api/account'
@@ -357,6 +465,34 @@ const commonConfig = reactive({
   coverImage: null,
 })
 
+// ========== 平台/账号级覆写（spec §3.4） ==========
+const platformOverrides = reactive({})         // { [platformKey]: { title, description, tags, images, coverImage, ... } }
+const platformChecked = reactive({})           // { [platformKey]: boolean }
+const accountOverrides = reactive({})          // { [accountId]: { title, description, tags, images, coverImage, ... } }
+const accountChecked = reactive({})            // { [accountId]: boolean }
+
+function hasPlatformOverrideContent(platformKey) {
+  const ov = platformOverrides[platformKey]
+  if (!ov) return false
+  return !!(
+    ov.title || ov.description ||
+    (ov.tags && ov.tags.length > 0) ||
+    (ov.images && ov.images.length > 0) ||
+    ov.coverImage
+  )
+}
+
+function hasAccountOverrideContent(accountId) {
+  const ov = accountOverrides[accountId]
+  if (!ov) return false
+  return !!(
+    ov.title || ov.description ||
+    (ov.tags && ov.tags.length > 0) ||
+    (ov.images && ov.images.length > 0) ||
+    ov.coverImage
+  )
+}
+
 const currentPreviewIndex = ref(0)
 
 // ========== Auto-save ==========
@@ -388,11 +524,99 @@ function onPublishResult({ accountName, status, message }) {
 }
 
 function hasAccountOverride(accountId) {
+  // Task 10：新增覆写层勾选 + panel 内部 accountOverrides 任一为真都算
+  if (accountChecked[accountId] && hasAccountOverrideContent(accountId)) return true
   for (const key of ['douyin', 'xiaohongshu', 'kuaishou']) {
     const panel = getPanel(key)
     if (panel && panel.hasAccountOverride(accountId)) return true
   }
   return false
+}
+
+// ========== Override Section: Interaction ==========
+
+function onPlatformCheckChange(checked) {
+  if (!checked && hasPlatformOverrideContent(selectedPlatform.value)) {
+    ElMessageBox.confirm(
+      '取消个性化配置后，本渠道的覆写将丢失，恢复使用公共默认，是否继续？',
+      '确认取消', { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
+    ).then(() => {
+      delete platformOverrides[selectedPlatform.value]
+    }).catch(() => {
+      platformChecked[selectedPlatform.value] = true
+    })
+  } else if (checked) {
+    platformOverrides[selectedPlatform.value] = {
+      title: '', description: '', tags: [], tagInput: '',
+      images: [], coverImage: null,
+    }
+  }
+}
+
+function onAccountCheckChange(checked) {
+  if (!checked && hasAccountOverrideContent(selectedAccountId.value)) {
+    ElMessageBox.confirm(
+      '取消个性化配置后，本账号的覆写将丢失，恢复使用渠道默认，是否继续？',
+      '确认取消', { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
+    ).then(() => {
+      delete accountOverrides[selectedAccountId.value]
+    }).catch(() => {
+      accountChecked[selectedAccountId.value] = true
+    })
+  } else if (checked) {
+    accountOverrides[selectedAccountId.value] = {
+      title: '', description: '', tags: [], tagInput: '',
+      images: [], coverImage: null,
+    }
+  }
+}
+
+function addPlatformTag() {
+  const v = (platformOverrides[selectedPlatform.value]?.tagInput || '').trim()
+  if (!v) return
+  if (!platformOverrides[selectedPlatform.value].tags) platformOverrides[selectedPlatform.value].tags = []
+  if (platformOverrides[selectedPlatform.value].tags.includes(v)) {
+    ElMessage.warning('标签已存在')
+    return
+  }
+  platformOverrides[selectedPlatform.value].tags.push(v)
+  platformOverrides[selectedPlatform.value].tagInput = ''
+}
+
+function addAccountTag() {
+  const v = (accountOverrides[selectedAccountId.value]?.tagInput || '').trim()
+  if (!v) return
+  if (!accountOverrides[selectedAccountId.value].tags) accountOverrides[selectedAccountId.value].tags = []
+  if (accountOverrides[selectedAccountId.value].tags.includes(v)) {
+    ElMessage.warning('标签已存在')
+    return
+  }
+  accountOverrides[selectedAccountId.value].tags.push(v)
+  accountOverrides[selectedAccountId.value].tagInput = ''
+}
+
+// ========== 4 级优先级合并（spec §3.3 / §3.4） ==========
+// accountOv > platformOv > platformDefault > common
+function resolveAccountConfig(platformKey, accountId) {
+  const accountOv = (accountChecked[accountId] && accountOverrides[accountId]) || null
+  const platformOv = (platformChecked[platformKey] && platformOverrides[platformKey]) || null
+  // 注意：plan 写的是 getConfig()，实际 panel 暴露的是 getConfigs() 返回 { platformConfig, accountOverrides }
+  const platformDefault = getPanel(platformKey)?.getConfigs?.()?.platformConfig || null
+  return mergeConfig(commonConfig, platformDefault, platformOv, accountOv)
+}
+
+function mergeConfig(common, platformDefault, platformOv, accountOv) {
+  return {
+    title: accountOv?.title ?? platformOv?.title ?? platformDefault?.title ?? '',
+    description: accountOv?.description ?? platformOv?.description ?? platformDefault?.description ?? '',
+    tags: accountOv?.tags ?? platformOv?.tags ?? platformDefault?.tags ?? [],
+    images: accountOv?.images ?? platformOv?.images ?? platformDefault?.images ?? common.images,
+    coverImage: accountOv?.coverImage ?? platformOv?.coverImage ?? platformDefault?.coverImage ?? common.coverImage,
+    enableTimer: accountOv?.enableTimer ?? platformOv?.enableTimer ?? platformDefault?.enableTimer ?? 0,
+    scheduleTime: accountOv?.scheduleTime ?? platformOv?.scheduleTime ?? platformDefault?.scheduleTime ?? '',
+    aiContent: accountOv?.aiContent ?? platformOv?.aiContent ?? platformDefault?.aiContent ?? '',
+    isOriginal: accountOv?.isOriginal ?? platformOv?.isOriginal ?? platformDefault?.isOriginal ?? false,
+  }
 }
 
 // ========== Batch sync ==========
@@ -552,13 +776,13 @@ function onMaterialSelected(material) {
 async function saveDraft() {
   try {
     const allPlatformConfigs = {}
-    const allAccountOverrides = {}
+    const panelAccountOverrides = {}
     for (const key of ['douyin', 'xiaohongshu', 'kuaishou']) {
       const panel = getPanel(key)
       if (panel) {
         const configs = panel.getConfigs()
         allPlatformConfigs[key] = configs.platformConfig
-        Object.assign(allAccountOverrides, configs.accountOverrides)
+        Object.assign(panelAccountOverrides, configs.accountOverrides)
       }
     }
 
@@ -568,7 +792,13 @@ async function saveDraft() {
         coverImage: commonConfig.coverImage || null,
       },
       platformConfigs: allPlatformConfigs,
-      accountOverrides: allAccountOverrides,
+      // Task 10：保留 panel 内部 accountOverrides（旧草稿兼容），独立 key 避免与 spec §3.4 的 accountOverrides 冲突
+      panelAccountOverrides,
+      // Task 10：spec §3.4 新增 4 个键（覆写层）
+      platformOverrides: JSON.parse(JSON.stringify(platformOverrides)),
+      accountOverrides: JSON.parse(JSON.stringify(accountOverrides)),
+      platformChecked: { ...platformChecked },
+      accountChecked: { ...accountChecked },
       publishAccountIds: [...publishAccountIds],
       selectedPlatform: selectedPlatform.value,
       selectedAccountId: selectedAccountId.value,
@@ -602,6 +832,23 @@ async function publishAll() {
     return
   }
 
+  // Task 10：用 4 级合并后的数据校验（标题必须存在）
+  const accountsWithoutTitle = []
+  for (const group of imageAccountGroups.value) {
+    if (group.accounts.length === 0) continue
+    for (const account of group.accounts) {
+      if (!publishAccountIds.has(account.id)) continue
+      const merged = resolveAccountConfig(group.key, account.id)
+      if (!merged.title || !merged.title.trim()) {
+        accountsWithoutTitle.push(`${account.name}(${group.name})`)
+      }
+    }
+  }
+  if (accountsWithoutTitle.length > 0) {
+    ElMessage.error(`以下账号未设置标题：${accountsWithoutTitle.join('、')}`)
+    return
+  }
+
   for (const group of imageAccountGroups.value) {
     if (group.accounts.length === 0) continue
     const panel = getPanel(group.key)
@@ -628,14 +875,14 @@ async function publishAll() {
   const coverMaterialId = commonConfig.coverImage?.id || ''
   const publishExtra = { batchId, landscapeCoverMaterialId: coverMaterialId, portraitCoverMaterialId: coverMaterialId }
 
-  const commonData = { images: commonConfig.images, coverImage: commonConfig.coverImage }
-
+  // Task 10：4 级合并为每个账号生成 merged commonData（images / coverImage 走合并后值）
   const allTasks = []
   for (const group of imageAccountGroups.value) {
     if (group.accounts.length === 0) continue
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      allTasks.push({ account, groupKey: group.key })
+      const merged = resolveAccountConfig(group.key, account.id)
+      allTasks.push({ account, groupKey: group.key, merged })
     }
   }
 
@@ -651,9 +898,14 @@ async function publishAll() {
       publishResults.value.push({ label: allTasks[i].account.name, status: 'cancelled', message: '已取消' })
       continue
     }
-    const { account, groupKey } = allTasks[i]
+    const { account, groupKey, merged } = allTasks[i]
     currentPublishingAccount.value = account.name
     publishProgress.value = Math.floor((i / allTasks.length) * 100)
+
+    // merged 出的 images / coverImage 走 commonData（panel 默认使用 commonData）
+    // title/description/tags 走 panel 自身的 merged（panel.getMergedConfig）
+    // platformConfig（aiContent/isOriginal 等）也走 panel 自身
+    const commonData = { images: merged.images, coverImage: merged.coverImage }
 
     const panel = getPanel(groupKey)
     if (panel) {
@@ -769,8 +1021,10 @@ function migrateOldDraftFormat(dd) {
     delete dd.douyinSelections
   }
 
-  if (dd.accountOverrides) {
-    for (const override of Object.values(dd.accountOverrides)) {
+  // 旧草稿 accountOverrides 实际是 panel 的；新草稿拆成 panelAccountOverrides + accountOverrides
+  const oldOverrideSource = dd.panelAccountOverrides || dd.accountOverrides
+  if (oldOverrideSource) {
+    for (const override of Object.values(oldOverrideSource)) {
       delete override.coverImage
     }
   }
@@ -822,18 +1076,38 @@ async function loadDraft(draftId) {
 
     await nextTick()
 
+    // Task 10：恢复 spec §3.4 的 4 个新键（先恢复 override 层，再恢复 panel 状态）
+    if (dd.platformOverrides) {
+      Object.keys(platformOverrides).forEach(k => delete platformOverrides[k])
+      Object.assign(platformOverrides, dd.platformOverrides)
+    }
+    if (dd.accountOverrides) {
+      Object.keys(accountOverrides).forEach(k => delete accountOverrides[k])
+      Object.assign(accountOverrides, dd.accountOverrides)
+    }
+    if (dd.platformChecked) {
+      Object.keys(platformChecked).forEach(k => delete platformChecked[k])
+      Object.assign(platformChecked, dd.platformChecked)
+    }
+    if (dd.accountChecked) {
+      Object.keys(accountChecked).forEach(k => delete accountChecked[k])
+      Object.assign(accountChecked, dd.accountChecked)
+    }
+
     if (dd.platformConfigs) {
+      // 兼容：旧草稿的 accountOverrides 是 panel 的；新草稿改名为 panelAccountOverrides
+      const panelOverridesSource = dd.panelAccountOverrides || dd.accountOverrides
       for (const [key, val] of Object.entries(dd.platformConfigs)) {
         const panel = getPanel(key)
         if (panel && val) {
           const ownOverrides = {}
-          if (dd.accountOverrides) {
+          if (panelOverridesSource) {
             const ownAccountIds = new Set(
               accountStore.accounts
                 .filter(a => getPlatformKeyByName(a.platform) === key)
                 .map(a => a.id)
             )
-            for (const [accId, accOverride] of Object.entries(dd.accountOverrides)) {
+            for (const [accId, accOverride] of Object.entries(panelOverridesSource)) {
               if (ownAccountIds.has(Number(accId))) {
                 ownOverrides[accId] = accOverride
               }

@@ -250,6 +250,23 @@ def list_files():
     })
 
 
+@materials_bp.route("/<material_id>", methods=["GET"])
+def get_material(material_id: str):
+    from storage import get_storage_by_type
+    conn = _get_db()
+    row = conn.execute("SELECT * FROM materials WHERE id = ?", (material_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"code": 404, "msg": "素材不存在"}), 404
+    item = dict(row)
+    storage = get_storage_by_type(item.get("storage_type", "local"))
+    item["url"] = storage.get_url(item["stored_path"])
+    item["thumbnail_url"] = (
+        storage.get_url(item["thumbnail_path"]) if item.get("thumbnail_path") else None
+    )
+    return jsonify({"code": 200, "data": item})
+
+
 @materials_bp.route("/<material_id>", methods=["DELETE"])
 def delete(material_id):
     """删除素材"""

@@ -37,6 +37,9 @@
             <el-icon><Document /></el-icon>
             {{ currentDraftId ? '更新草稿' : '保存草稿' }}
           </button>
+          <el-button :icon="MagicStick" @click="oneClickDialogOpen = true">
+            一键填写
+          </el-button>
           <button class="publish-btn" @click="publishAll" :disabled="publishing">
             {{ publishing ? '发布中...' : '一键发布' }}
           </button>
@@ -479,12 +482,18 @@
       :current-account="currentPublishingAccount"
       @cancel="cancelBatch"
     />
+
+    <OneClickFillDialog
+      v-model="oneClickDialogOpen"
+      type="video"
+      @pick="handleOneClickFill"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, nextTick, watch, onMounted } from 'vue'
-import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Promotion, Delete, Document, WarningFilled } from '@element-plus/icons-vue'
+import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Promotion, Delete, Document, WarningFilled, MagicStick } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
@@ -492,7 +501,7 @@ import { materialsApi } from '@/api/materials'
 import { getFileUrl } from '@/utils/storage'
 import { http } from '@/utils/request'
 import { accountApi } from '@/api/account'
-import { platformList, getPlatformByKey, platformKeyToId } from '@/config/platforms'
+import { platformList, getPlatformByKey, platformKeyToId, platformNameToKey } from '@/config/platforms'
 
 import AccountSidebar from '@/components/AccountSidebar.vue'
 import AccountSelectDialog from '@/components/AccountSelectDialog.vue'
@@ -500,6 +509,7 @@ import BatchPublishDialog from '@/components/BatchPublishDialog.vue'
 import CoverCard from '@/components/CoverCard.vue'
 import CoverEditorDialog from '@/components/CoverEditorDialog.vue'
 import MaterialSelectDialog from '@/components/MaterialSelectDialog.vue'
+import OneClickFillDialog from '@/components/OneClickFillDialog.vue'
 import DouyinActivitySelect from '@/components/douyin/ActivitySelect.vue'
 import DouyinHotspotSelect from '@/components/douyin/HotspotSelect.vue'
 import DouyinTagSelect from '@/components/douyin/TagSelect.vue'
@@ -822,6 +832,7 @@ const videoUploadTarget = ref('landscape')
 const materialSelectRef = ref(null)
 const materialLibraryMode = ref('video')
 const materialLibraryCoverTarget = ref('landscape')
+const oneClickDialogOpen = ref(false)
 const materialLibraryVideoTarget = ref('landscape')
 const batchPublishDialogVisible = ref(false)
 
@@ -1335,6 +1346,12 @@ async function publishAll() {
     }
   }
 
+  // 生成本次一键发布的 batchId 与素材 ID（一次发布，跨账号复用）
+  const batchId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2))
+  const videoMaterialId = commonConfig.videoLandscape?.id || commonConfig.videoPortrait?.id || ''
+  const landscapeCoverMaterialId = commonConfig.coverLandscape?.id || ''
+  const portraitCoverMaterialId = commonConfig.coverPortrait?.id || ''
+
   if (allTasks.length === 0) {
     ElMessage.warning('没有可发布的账号')
     publishing.value = false
@@ -1412,6 +1429,12 @@ async function publishAll() {
         enableCashActivity: platformSettings.enableCashActivity || false,
         audience: platformSettings.audience || 'not_kids',
         alteredContent: platformSettings.alteredContent || false,
+        // Task 12：本次一键发布的批次与素材 ID
+        batchId,
+        videoMaterialId,
+        landscapeCoverMaterialId,
+        portraitCoverMaterialId,
+        accountId: account.id,
       }
 
       await http.post('/postVideo', publishData)
@@ -1449,6 +1472,45 @@ async function publishAll() {
 function cancelBatch() {
   isCancelled.value = true
   ElMessage.info('正在取消发布...')
+}
+
+function handleOneClickFill(record) {
+  const histConfig = record.account_configs || {}
+  const channels = record.channels || []
+  // 1. 复原账号选择：清空当前选中，按历史 channels 自动勾选对应平台下的所有账号
+  publishAccountIds.clear()
+  let selectedAccounts = 0
+  for (const ch of channels) {
+    const group = accountGroups.value.find(g => g.name === ch.platform)
+    if (!group) continue
+    for (const acc of group.accounts) {
+      if (acc.id != null) {
+        publishAccountIds.add(acc.id)
+        selectedAccounts++
+      }
+    }
+  }
+  // 2. 把历史的单份配置应用到所有涉及的平台（覆盖现有平台配置）
+  // 注意：channels[].platform 是中文名（如 "抖音"），platformConfigs 的 key 是英文（如 "douyin"）
+  let filled = 0
+  for (const ch of channels) {
+    const key = platformNameToKey[ch.platform]
+    if (!key) continue
+    platformConfigs[key] = {
+      ...platformConfigs[key],
+      ...histConfig,
+    }
+    filled++
+  }
+  if (filled > 0) {
+    ElMessage.success(`已从历史填充 ${filled} 个平台配置${selectedAccounts > 0 ? `，已选中 ${selectedAccounts} 个账号` : ''}`)
+  } else {
+    if (selectedAccounts > 0) {
+      ElMessage.success(`已选中 ${selectedAccounts} 个账号`)
+    } else {
+      ElMessage.warning('历史记录没有可填充的平台配置')
+    }
+  }
 }
 
 // ========== Utility ==========

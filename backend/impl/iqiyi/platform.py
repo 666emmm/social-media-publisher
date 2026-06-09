@@ -342,14 +342,27 @@ class IqiyiPlatform(BasePlatform):
                 await page.goto(_PUBLISH_URL)
                 await page.wait_for_load_state("networkidle")
 
+                # 注册上传完成请求监听器（必须在 set_input_files 之前注册）
+                upload_done = asyncio.Event()
+
+                def _on_iqiyi_request(request):
+                    if (
+                        "mp-api.iqiyi.com/v-tool/api/1.0/upload/record"
+                        in request.url
+                        and not upload_done.is_set()
+                    ):
+                        upload_done.set()
+
+                page.on("request", _on_iqiyi_request)
+
                 # Step 1: Upload video file via input[type=file]
                 logger.info("Uploading video file: %s", file_path)
                 file_input = page.locator('input[type="file"]').first
                 await file_input.set_input_files(file_path)
                 logger.info("Video file set, waiting for upload to complete...")
 
-                # Step 1.5: 等待视频上传到服务器完成（"上传过程中"提示先出现后消失）
-                await self._wait_video_upload_complete(page)
+                # Step 1.5: 等待视频上传到服务器完成（监听 /upload/record 请求）
+                await self._wait_video_upload_complete(page, upload_done)
                 await asyncio.sleep(2)
 
                 # Step 2: Wait for the publish form to appear after upload
@@ -421,31 +434,29 @@ class IqiyiPlatform(BasePlatform):
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _wait_video_upload_complete(page, timeout_ms: int = 600000) -> None:
+    async def _wait_video_upload_complete(
+        page,
+        upload_done: asyncio.Event,
+        timeout_ms: int = 600000,
+    ) -> None:
         """等待视频上传到服务器完成。
 
-        通过文本内容（不用 class）定位"上传过程中"提示：
-          - 该提示出现 → 确认上传已开始
-          - 该提示消失 → 确认上传已结束
+        监听 ``/v-tool/api/1.0/upload/record`` HTTP 请求被触发
+        （caller 负责在 ``set_input_files`` 之前注册监听器）。这是
+        服务端确认上传完成的权威信号——DOM 提示可能提前消失，不能
+        作为完成依据。
         """
-        uploading_tip = "上传过程中请不要删除/移动文件"
-        tip_locator = page.get_by_text(uploading_tip, exact=True).first
-
         try:
-            await tip_locator.wait_for(state="visible", timeout=30000)
-            logger.info("检测到'上传过程中'提示，开始等待上传完成...")
-        except Exception:
-            logger.warning(
-                "未检测到'上传过程中'提示（可能上传极快或已结束），"
-                "跳过等待"
+            await asyncio.wait_for(
+                upload_done.wait(), timeout=timeout_ms / 1000
             )
-            return
-
-        try:
-            await tip_locator.wait_for(state="hidden", timeout=timeout_ms)
-            logger.info("'上传过程中'提示已消失，视频上传完成")
-        except Exception as e:
-            logger.error("等待视频上传完成超时: %s", e)
+            logger.info(
+                "检测到 /upload/record 请求，视频上传完成"
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "等待 /upload/record 请求超时（%d ms）", timeout_ms
+            )
             raise
 
     # ------------------------------------------------------------------

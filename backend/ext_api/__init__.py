@@ -79,11 +79,35 @@ def _to_beijing_time(utc_str):
         return utc_str
 
 
+def _resolve_cover_url(material_id: str) -> str:
+    """解析 material_id → /api/materials/file/{stored_path} URL。失败返回空串。"""
+    if not material_id:
+        return ''
+    try:
+        conn = _db_conn()
+        row = conn.execute(
+            "SELECT stored_path FROM materials WHERE id = ?", (material_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            return ''
+        return f"/api/materials/file/{row['stored_path']}"
+    except Exception:
+        return ''
+
+
+def _resolve_cover_from_path(stored_path: str) -> str:
+    """直接用 stored_path 构造 /api/materials/file/{path} URL。空串返回空。"""
+    if not stored_path:
+        return ''
+    return f"/api/materials/file/{stored_path}"
+
+
 # ========== 任务管理 ==========
 
 @ext_api.route('/tasks', methods=['GET'])
 def get_tasks():
-    """获取任务列表（支持分页、状态过滤）"""
+    """获取任务列表（读 publish_details，每行 = 1 个账号 × 1 个平台）"""
     status = request.args.get('status')
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('pageSize', 20))
@@ -94,13 +118,19 @@ def get_tasks():
         where = ""
         params = []
         if status and status != 'all':
-            where = "WHERE status = ?"
+            where = "WHERE d.status = ?"
             params.append(status)
 
-        total = conn.execute(f"SELECT COUNT(*) FROM publish_tasks {where}", params).fetchone()[0]
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM publish_details d {where}", params
+        ).fetchone()[0]
 
         rows = conn.execute(
-            f"SELECT * FROM publish_tasks {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f"""SELECT d.*, b.title AS batch_title, b.type AS batch_type
+                FROM publish_details d
+                LEFT JOIN publish_batches b ON d.batch_id = b.id
+                {where}
+                ORDER BY d.created_at DESC LIMIT ? OFFSET ?""",
             params + [page_size, offset]
         ).fetchall()
 
@@ -108,9 +138,9 @@ def get_tasks():
         for row in rows:
             d = dict(row)
             try:
-                d['tags'] = json.loads(d.get('tags', '[]'))
+                d['account_configs'] = json.loads(d.get('account_configs', '{}'))
             except json.JSONDecodeError:
-                d['tags'] = []
+                d['account_configs'] = {}
             tasks.append(d)
 
         conn.close()
@@ -152,20 +182,26 @@ def create_task():
     return jsonify({"code": 200, "data": {"id": task.id, "status": task.status}})
 
 
-@ext_api.route('/tasks/<task_id>', methods=['GET'])
-def get_task(task_id):
-    """获取单个任务详情"""
+@ext_api.route('/tasks/<detail_id>', methods=['GET'])
+def get_task(detail_id):
+    """获取单个任务（按 publish_details.id 查）"""
     try:
         conn = _db_conn()
-        row = conn.execute("SELECT * FROM publish_tasks WHERE id = ?", (task_id,)).fetchone()
+        row = conn.execute(
+            """SELECT d.*, b.title AS batch_title, b.type AS batch_type
+               FROM publish_details d
+               LEFT JOIN publish_batches b ON d.batch_id = b.id
+               WHERE d.id = ?""",
+            (detail_id,)
+        ).fetchone()
         conn.close()
         if not row:
             return jsonify({"code": 404, "msg": "任务不存在"}), 404
         d = dict(row)
         try:
-            d['tags'] = json.loads(d.get('tags', '[]'))
+            d['account_configs'] = json.loads(d.get('account_configs', '{}'))
         except json.JSONDecodeError:
-            d['tags'] = []
+            d['account_configs'] = {}
         return jsonify({"code": 200, "data": d})
     except Exception as e:
         return jsonify({"code": 500, "msg": str(e)}), 500
@@ -248,15 +284,13 @@ def queue_status():
 
 @ext_api.route('/history', methods=['GET'])
 def get_history():
-    """发布历史记录（支持日期范围、平台、状态过滤）"""
-    # 平台 key → 中文名映射
-    platform_key_map = {
-        'xiaohongshu': '小红书', 'channels': '视频号', 'douyin': '抖音',
-        'kuaishou': '快手', 'bilibili': 'B站',
-    }
+    """获取发布历史（按批次分组），支持分页、平台/状态/类型过滤
 
-    platform = request.args.get('platform')
+    Query: type=video|image (可选), page=1, pageSize=20
+    """
+    type_ = request.args.get('type')
     status = request.args.get('status')
+    platform = request.args.get('platform')  # 暂未使用，留扩展
     time_range = request.args.get('timeRange')
     start_date = request.args.get('startDate')
     end_date = request.args.get('endDate')
@@ -264,7 +298,6 @@ def get_history():
     page_size = int(request.args.get('pageSize', 20))
     offset = (page - 1) * page_size
 
-    # 将 timeRange 转换为实际日期范围
     if time_range and not start_date:
         now = datetime.now()
         if time_range == 'today':
@@ -274,16 +307,11 @@ def get_history():
         elif time_range == '30days':
             start_date = (now - timedelta(days=30)).strftime('%Y-%m-%d')
 
-    # 将平台 key 转换为中文名
-    if platform and platform in platform_key_map:
-        platform = platform_key_map[platform]
-
     conditions = []
     params = []
-
-    if platform:
-        conditions.append("platform = ?")
-        params.append(platform)
+    if type_ in ('video', 'image'):
+        conditions.append("type = ?")
+        params.append(type_)
     if status:
         conditions.append("status = ?")
         params.append(status)
@@ -293,37 +321,84 @@ def get_history():
     if end_date:
         conditions.append("created_at <= ?")
         params.append(end_date)
-
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     try:
         conn = _db_conn()
-        total = conn.execute(f"SELECT COUNT(*) FROM publish_tasks {where}", params).fetchone()[0]
-
+        total = conn.execute(f"SELECT COUNT(*) FROM publish_batches {where}", params).fetchone()[0]
         rows = conn.execute(
-            f"SELECT * FROM publish_tasks {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f"SELECT * FROM publish_batches {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
             params + [page_size, offset]
         ).fetchall()
+        batches = [dict(r) for r in rows]
 
-        records = [dict(row) for row in rows]
-        for r in records:
-            try:
-                r['tags'] = json.loads(r.get('tags', '[]'))
-            except json.JSONDecodeError:
-                r['tags'] = []
-            # 为前端补充 duration 字段（秒数）
-            if r.get('started_at') and r.get('finished_at'):
+        # 拿当前页所有 batch_id 的明细，一次 IN 查询
+        if batches:
+            batch_ids = [b['id'] for b in batches]
+            placeholders = ','.join('?' * len(batch_ids))
+            detail_rows = conn.execute(
+                f"SELECT * FROM publish_details WHERE batch_id IN ({placeholders}) ORDER BY created_at ASC",
+                batch_ids
+            ).fetchall()
+            details_by_batch: dict[str, list] = {}
+            for d in detail_rows:
+                dd = dict(d)
                 try:
-                    started = datetime.fromisoformat(r['started_at'])
-                    finished = datetime.fromisoformat(r['finished_at'])
-                    r['duration'] = int((finished - started).total_seconds())
-                except (ValueError, TypeError):
-                    r['duration'] = None
-            else:
-                r['duration'] = None
+                    dd['account_configs'] = json.loads(dd.get('account_configs', '{}'))
+                except json.JSONDecodeError:
+                    dd['account_configs'] = {}
+                # 计算 duration
+                if dd.get('started_at') and dd.get('finished_at'):
+                    try:
+                        s = datetime.fromisoformat(dd['started_at'])
+                        f = datetime.fromisoformat(dd['finished_at'])
+                        dd['duration'] = int((f - s).total_seconds())
+                    except (ValueError, TypeError):
+                        dd['duration'] = None
+                else:
+                    dd['duration'] = None
+                details_by_batch.setdefault(dd['batch_id'], []).append(dd)
+        else:
+            details_by_batch = {}
+
+        items = []
+        for b in batches:
+            batch_details = details_by_batch.get(b['id'], [])
+            # 兜底：当 batch 列上的 material_id 都为空（封面是从视频抽帧得到的，没有 materials.id）时，
+            # 从第一个 detail 的 account_configs 里取 thumbnailLandscape / thumbnailPortrait。
+            fallback_cover_url = ''
+            if batch_details:
+                first_cfg = batch_details[0].get('account_configs') or {}
+                fallback_cover_url = (
+                    _resolve_cover_from_path(first_cfg.get('thumbnailLandscape', ''))
+                    or _resolve_cover_from_path(first_cfg.get('thumbnailPortrait', ''))
+                )
+            items.append({
+                'id': b['id'],
+                'type': b['type'],
+                'title': b.get('title', ''),
+                'description': b.get('description', ''),
+                'landscape_cover_material_id': b.get('landscape_cover_material_id', ''),
+                'portrait_cover_material_id': b.get('portrait_cover_material_id', ''),
+                'cover_url': _resolve_cover_url(b.get('landscape_cover_material_id', ''))
+                            or _resolve_cover_url(b.get('portrait_cover_material_id', ''))
+                            or fallback_cover_url,
+                'account_count': b.get('account_count', 0),
+                'success_count': b.get('success_count', 0),
+                'failed_count': b.get('failed_count', 0),
+                'status': b.get('status', 'pending'),
+                'schedule_time': b.get('schedule_time', ''),
+                'created_at': _to_beijing_time(b.get('created_at')),
+                'started_at': _to_beijing_time(b.get('started_at')),
+                'finished_at': _to_beijing_time(b.get('finished_at')),
+                'items': batch_details,
+            })
 
         conn.close()
-        return jsonify({"code": 200, "data": {"items": records, "total": total, "page": page, "pageSize": page_size}})
+        return jsonify({
+            "code": 200,
+            "data": {"items": items, "total": total, "page": page, "pageSize": page_size}
+        })
     except Exception as e:
         return jsonify({"code": 500, "msg": str(e)}), 500
 
@@ -336,25 +411,25 @@ def get_stats():
     try:
         conn = _db_conn()
 
-        # 总体统计
-        total = conn.execute("SELECT COUNT(*) FROM publish_tasks").fetchone()[0]
-        success = conn.execute("SELECT COUNT(*) FROM publish_tasks WHERE status='success'").fetchone()[0]
-        failed = conn.execute("SELECT COUNT(*) FROM publish_tasks WHERE status='failed'").fetchone()[0]
-        running = conn.execute("SELECT COUNT(*) FROM publish_tasks WHERE status IN ('pending','queued','running')").fetchone()[0]
+        # 总体统计（读 publish_batches：每次"发布"= 1 个 batch）
+        total = conn.execute("SELECT COUNT(*) FROM publish_batches").fetchone()[0]
+        success = conn.execute("SELECT COUNT(*) FROM publish_batches WHERE status='success'").fetchone()[0]
+        failed = conn.execute("SELECT COUNT(*) FROM publish_batches WHERE status='failed'").fetchone()[0]
+        running = conn.execute("SELECT COUNT(*) FROM publish_batches WHERE status IN ('pending','queued','running')").fetchone()[0]
 
-        # 按平台统计
+        # 按平台统计（明细行才有 platform 字段，从 publish_details 聚合）
         platform_rows = conn.execute(
-            "SELECT platform, COUNT(*) as count FROM publish_tasks GROUP BY platform"
+            "SELECT platform, COUNT(*) as count FROM publish_details GROUP BY platform"
         ).fetchall()
         by_platform = {row['platform']: row['count'] for row in platform_rows}
 
-        # 最近7天趋势
+        # 最近7天趋势（以 batch 的 created_at 为口径）
         trend = []
         for i in range(6, -1, -1):
             date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
             next_date = (datetime.now() - timedelta(days=i-1)).strftime('%Y-%m-%d') if i > 0 else (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
             count = conn.execute(
-                "SELECT COUNT(*) FROM publish_tasks WHERE created_at >= ? AND created_at < ?",
+                "SELECT COUNT(*) FROM publish_batches WHERE created_at >= ? AND created_at < ?",
                 (date, next_date)
             ).fetchone()[0]
             trend.append({"date": date, "count": count})
@@ -362,7 +437,7 @@ def get_stats():
         # 本月发布数
         month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime('%Y-%m-%d')
         monthly_total = conn.execute(
-            "SELECT COUNT(*) FROM publish_tasks WHERE created_at >= ?", (month_start,)
+            "SELECT COUNT(*) FROM publish_batches WHERE created_at >= ?", (month_start,)
         ).fetchone()[0]
 
         # 账号统计
@@ -768,3 +843,140 @@ def get_changelog():
 
     files.sort(key=lambda x: x['date'], reverse=True)
     return jsonify({"code": 200, "data": files})
+
+
+# ========== 一键填写模板 ==========
+
+@ext_api.route('/publish-templates', methods=['GET'])
+def get_publish_templates():
+    """一键填写：从历史成功/部分成功批次里取可复用的 per-channel 配置。
+
+    Query: type=video|image (必填), page=1, page_size=20
+    """
+    type_ = request.args.get('type', '').strip()
+    if type_ not in ('video', 'image'):
+        return jsonify({"code": 400, "msg": "type 必须是 video 或 image"}), 400
+
+    try:
+        page = int(request.args.get('page', 1))
+        page_size = min(int(request.args.get('page_size', 20)), 100)
+    except ValueError:
+        return jsonify({"code": 400, "msg": "page / page_size 必须是整数"}), 400
+
+    offset = (page - 1) * page_size
+    conn = _db_conn()
+
+    # 主查询：所有有 detail 带 account_configs 的成功/部分成功 batch
+    rows = conn.execute(
+        """SELECT b.id, b.type, b.title, b.description,
+                  b.landscape_cover_material_id, b.portrait_cover_material_id,
+                  b.video_material_id, b.image_material_ids,
+                  b.created_at
+           FROM publish_batches b
+           WHERE b.type = ?
+             AND b.status IN ('success', 'partial')
+             AND EXISTS (SELECT 1 FROM publish_details d
+                         WHERE d.batch_id = b.id AND d.account_configs != '{}')
+           ORDER BY b.created_at DESC
+           LIMIT ? OFFSET ?""",
+        (type_, page_size, offset)
+    ).fetchall()
+    total = conn.execute(
+        """SELECT COUNT(*) FROM publish_batches b
+           WHERE b.type = ? AND b.status IN ('success', 'partial')
+             AND EXISTS (SELECT 1 FROM publish_details d
+                         WHERE d.batch_id = b.id AND d.account_configs != '{}')""",
+        (type_,)
+    ).fetchone()[0]
+
+    # 解析 cover material_id → stored_path（thumbnail_path 必须是真实文件路径，
+    # 前端 OneClickFillDialog 会拼到 /uploads/<path> 上）
+    cover_ids = [
+        r['landscape_cover_material_id'] or r['portrait_cover_material_id'] or ''
+        for r in rows
+    ]
+    cover_ids = [cid for cid in cover_ids if cid]
+    if cover_ids:
+        placeholders = ','.join('?' * len(cover_ids))
+        cover_rows = conn.execute(
+            f"SELECT id, stored_path FROM materials WHERE id IN ({placeholders})",
+            cover_ids
+        ).fetchall()
+        cover_path_map = {r['id']: r['stored_path'] for r in cover_rows}
+    else:
+        cover_path_map = {}
+
+    conn.close()
+
+    items = []
+    for r in rows:
+        # 拿第一个 detail 的 account_configs（用作可复用模板）
+        # 单次小查询，按 batch_id 升序拿第一条
+        dconn = _db_conn()
+        first_detail = dconn.execute(
+            "SELECT account_configs, platform FROM publish_details WHERE batch_id = ? "
+            "AND account_configs != '{}' ORDER BY created_at ASC LIMIT 1",
+            (r['id'],)
+        ).fetchone()
+        # 拿所有 platform 作 channels 列表
+        all_platforms = dconn.execute(
+            "SELECT DISTINCT platform FROM publish_details WHERE batch_id = ?",
+            (r['id'],)
+        ).fetchall()
+        dconn.close()
+
+        configs = json.loads((first_detail['account_configs'] if first_detail else None) or '{}')
+        channels = [{'platform': p['platform']} for p in all_platforms if p['platform']]
+
+        # cover 优先 landscape，回落 portrait；material_id 解析到 stored_path
+        cover_id = r['landscape_cover_material_id'] or r['portrait_cover_material_id'] or ''
+        thumbnail_path = cover_path_map.get(cover_id, '')
+
+        # image_material_ids 是 JSON 数组字符串，取第一个元素作为 first_image_id
+        img_ids_raw = r['image_material_ids'] or '[]'
+        try:
+            img_ids_list = json.loads(img_ids_raw)
+            first_image_id = img_ids_list[0] if img_ids_list else None
+        except (json.JSONDecodeError, TypeError):
+            first_image_id = None
+
+        items.append({
+            "id": r['id'],
+            "type": r['type'],
+            "title": r['title'] or '',
+            "description": r['description'] or '',
+            "thumbnail_path": thumbnail_path,
+            "first_image_id": first_image_id,
+            "video_material_id": r['video_material_id'] or '',
+            "channels": channels,
+            "account_configs": configs,
+            "created_at": r['created_at'],
+        })
+
+    return jsonify({
+        "code": 200,
+        "data": {
+            "list": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    })
+
+
+# ========== 测试用 Flask app ==========
+# 测试代码（test_publish_templates.py）通过 `ext_api.app.test_request_context()` 推请求上下文调用
+# 路由函数。这个独立 Flask app 让 Blueprint 可独立测试，不污染 backend/app.py 的主 app。
+from flask import Flask
+app = Flask(__name__)
+app.register_blueprint(ext_api)
+
+
+# ========== 解决 `import ext_api` 与 `import ext_api.__init__` 是不同模块对象的问题 ==========
+# Python 在 `import ext_api` 时把 `__init__.py` 注册为 `sys.modules['ext_api']`，
+# 但 `import ext_api.__init__` 会把同一个文件再注册为 `sys.modules['ext_api.__init__']`。
+# 两个条目指向不同 module 对象，导致测试中 patch `_db_conn` 不生效（route 函数的
+# __globals__ 仍指向 `ext_api`，而 patch 修改的是 `ext_api.__init__`）。
+# 这里把 `ext_api.__init__` 重定向到 `ext_api`，让两种 import 路径拿到同一个对象。
+import sys as _sys
+_sys.modules.setdefault('ext_api.__init__', _sys.modules[__name__])

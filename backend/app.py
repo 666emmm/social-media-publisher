@@ -153,6 +153,10 @@ def _get_db_path():
 
 DB_PATH = _get_db_path()
 PLATFORM_MAP = {1: "小红书", 2: "视频号", 3: "抖音", 4: "快手", 5: "B站", 6: "百家号", 7: "TikTok", 8: "YouTube", 9: "腾讯视频", 10: "爱奇艺"}
+PLATFORM_ID_TO_KEY = {
+    1: 'xiaohongshu', 2: 'channels', 3: 'douyin', 4: 'kuaishou', 5: 'bilibili',
+    6: 'baijiahao', 7: 'tiktok', 8: 'youtube', 9: 'tencent_video', 10: 'iqiyi',
+}
 
 
 def _get_account_record(account_id):
@@ -631,29 +635,76 @@ def postVideoBatch():
 
 # ── Publish history tracking ────────────────────────────────
 
-def _record_publish(task_id, platform, account_name, video_path, title, description, tags, status, started_at, finished_at=None, error_message=""):
+def _record_publish(batch_id, detail_id, platform, account_name, account_id,
+                    video_path, title, description, tags, status, started_at,
+                    account_configs, video_material_id='',
+                    landscape_cover_material_id='',
+                    portrait_cover_material_id=''):
+    """插 1 行 publish_batches（如果不存在）+ 1 行 publish_details"""
     try:
         with sqlite3.connect(str(DB_PATH)) as conn:
+            # batch 用 INSERT OR IGNORE，多次同 batchId 调用只插一次
             conn.execute(
-                """INSERT INTO publish_tasks
-                   (id, platform, account_name, video_path, title, description,
-                    tags, status, retry_count, max_retries, error_message,
-                    publish_url, created_at, started_at, finished_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 3, ?, '', ?, ?, ?)""",
-                (task_id, platform, account_name, video_path, title, description,
-                 json.dumps(tags, ensure_ascii=False), status, error_message,
-                 started_at, started_at, finished_at)
+                """INSERT OR IGNORE INTO publish_batches
+                   (id, type, title, description, video_material_id,
+                    landscape_cover_material_id, portrait_cover_material_id,
+                    account_count, status, created_at, updated_at)
+                   VALUES (?, 'video', ?, ?, ?, ?, ?, 0, 'pending', ?, ?)""",
+                (batch_id, title, description, video_material_id,
+                 landscape_cover_material_id, portrait_cover_material_id,
+                 started_at, started_at)
+            )
+            conn.execute(
+                """INSERT INTO publish_details
+                   (id, batch_id, account_id, account_name, platform, account_configs,
+                    status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (detail_id, batch_id, account_id, account_name, platform,
+                 json.dumps(account_configs, ensure_ascii=False), status, started_at)
             )
     except Exception as e:
         logger.info(f"[History] 记录发布失败: {e}")
 
 
-def _update_publish_result(task_id, status, finished_at, error_message=""):
+def _update_publish_result(detail_id, status, finished_at, error_message=""):
+    """更新 1 行 publish_details + 聚合 publish_batches 状态"""
     try:
         with sqlite3.connect(str(DB_PATH)) as conn:
             conn.execute(
-                "UPDATE publish_tasks SET status=?, finished_at=?, error_message=? WHERE id=?",
-                (status, finished_at, error_message, task_id)
+                "UPDATE publish_details SET status=?, finished_at=?, error_message=? WHERE id=?",
+                (status, finished_at, error_message, detail_id)
+            )
+            # 拿 batch_id
+            row = conn.execute(
+                "SELECT batch_id FROM publish_details WHERE id=?", (detail_id,)
+            ).fetchone()
+            if not row:
+                return
+            batch_id = row[0]
+            # 聚合：算 success/failed 数量，更新 batch 状态
+            counts = conn.execute(
+                """SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success_n,
+                    SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed_n
+                   FROM publish_details WHERE batch_id=?""",
+                (batch_id,)
+            ).fetchone()
+            total, succ, fail = counts[0], counts[1] or 0, counts[2] or 0
+            if total == 0:
+                batch_status = 'pending'
+            elif fail == 0:
+                batch_status = 'success'
+            elif succ == 0:
+                batch_status = 'failed'
+            else:
+                batch_status = 'partial'
+            conn.execute(
+                """UPDATE publish_batches
+                   SET status=?, success_count=?, failed_count=?, account_count=?,
+                       finished_at=?, updated_at=?
+                   WHERE id=?""",
+                (batch_status, succ, fail, total, finished_at, finished_at, batch_id)
             )
     except Exception as e:
         logger.info(f"[History] 更新发布结果失败: {e}")
@@ -689,19 +740,32 @@ def _before_publish():
         if not data:
             return
         now = datetime.now().isoformat()
-        task_id = str(uuid.uuid4())
+        batch_id = data.get('batchId') or str(uuid.uuid4())
+        detail_id = str(uuid.uuid4())
         platform_type = data.get('type', 0)
         account_list = data.get('accountList', [])
         file_list = data.get('fileList', [])
 
         account_name = ''
+        account_id = data.get('accountId')
         if account_list:
             account_path = account_list[0]
-            account_name = Path(account_path).stem or account_path
+            account_name = data.get('accountName') or Path(account_path).stem or account_path
+
+        # account_configs 存：除了 fileList/accountList/type/thumbnail/scheduleTime/batchId/accountId/accountName 之外的所有字段
+        # 注意：videoMaterialId/landscapeCoverMaterialId/portraitCoverMaterialId 既写 batch 列，也写进 JSON（让 JSON 自包含）
+        # 注意：thumbnailLandscape/thumbnailPortrait（抽帧封面路径）也存进 JSON，
+        # 供 /api/v2/history 的 _resolve_cover_url 在 material_id 缺失时回退使用
+        excluded = {'fileList', 'accountList', 'type', 'thumbnail',
+                    'scheduleTime', 'batchId',
+                    'accountId', 'accountName'}
+        account_configs = {k: v for k, v in data.items() if k not in excluded}
 
         _record_publish(
-            task_id=task_id,
+            batch_id=batch_id,
+            detail_id=detail_id,
             platform=PLATFORM_MAP.get(platform_type, '未知'),
+            account_id=account_id,
             account_name=account_name,
             video_path=file_list[0] if file_list else '',
             title=data.get('title', ''),
@@ -709,24 +773,28 @@ def _before_publish():
             tags=data.get('tags', []),
             status='running',
             started_at=now,
+            account_configs=account_configs,
+            video_material_id=data.get('videoMaterialId', ''),
+            landscape_cover_material_id=data.get('landscapeCoverMaterialId', ''),
+            portrait_cover_material_id=data.get('portraitCoverMaterialId', ''),
         )
-        g.publish_task_id = task_id
+        g.publish_detail_id = detail_id
         g.publish_start_time = now
 
 
 @app.after_request
 def _after_publish(response):
-    if request.path == '/postVideo' and hasattr(g, 'publish_task_id'):
+    if request.path == '/postVideo' and hasattr(g, 'publish_detail_id'):
         now = datetime.now().isoformat()
         if response.status_code == 200:
             try:
                 resp_data = json.loads(response.get_data(as_text=True))
                 if resp_data.get('code') == 200:
-                    _update_publish_result(g.publish_task_id, 'success', now)
+                    _update_publish_result(g.publish_detail_id, 'success', now)
                 else:
-                    _update_publish_result(g.publish_task_id, 'failed', now, resp_data.get('msg', ''))
+                    _update_publish_result(g.publish_detail_id, 'failed', now, resp_data.get('msg', ''))
             except (json.JSONDecodeError, ValueError):
-                _update_publish_result(g.publish_task_id, 'success', now)
+                _update_publish_result(g.publish_detail_id, 'success', now)
         else:
             error_msg = ''
             try:
@@ -734,7 +802,7 @@ def _after_publish(response):
                 error_msg = resp_data.get('msg', '')
             except (json.JSONDecodeError, ValueError):
                 error_msg = f'HTTP {response.status_code}'
-            _update_publish_result(g.publish_task_id, 'failed', now, error_msg)
+            _update_publish_result(g.publish_detail_id, 'failed', now, error_msg)
     return response
 
 

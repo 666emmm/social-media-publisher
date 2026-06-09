@@ -220,6 +220,17 @@ def clear_cache():
         else:
             results['logs'] = {'cleared': 0, 'unit': 'files'}
 
+    if 's3_videos' in targets:
+        s3_cache_dir = os.path.join(str(BASE_DIR), 's3_video_cache')
+        if os.path.isdir(s3_cache_dir):
+            file_count = sum(len(files) for _, _, files in os.walk(s3_cache_dir))
+            shutil.rmtree(s3_cache_dir)
+            os.makedirs(s3_cache_dir, exist_ok=True)
+            results['s3_videos'] = {'cleared': file_count, 'unit': 'files'}
+        else:
+            os.makedirs(s3_cache_dir, exist_ok=True)
+            results['s3_videos'] = {'cleared': 0, 'unit': 'files'}
+
     return jsonify({"code": 200, "data": results})
 
 
@@ -278,6 +289,20 @@ def system_info():
                         except OSError:
                             pass
 
+    # Calculate s3_video_cache size
+    s3_cache_dir = os.path.join(str(BASE_DIR), 's3_video_cache')
+    s3_cache_size = 0
+    s3_cache_count = 0
+    if os.path.isdir(s3_cache_dir):
+        for dirpath, _, filenames in os.walk(s3_cache_dir):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                try:
+                    s3_cache_size += os.path.getsize(fp)
+                    s3_cache_count += 1
+                except OSError:
+                    pass
+
     return jsonify({
         "code": 200,
         "data": {
@@ -285,6 +310,7 @@ def system_info():
             "cache": {
                 "frames": {"count": frames_count, "size": frames_size},
                 "logs": {"count": logs_count, "size": logs_size, "oldCount": logs_old_count},
+                "s3_videos": {"count": s3_cache_count, "size": s3_cache_size},
             },
         },
     })

@@ -37,6 +37,9 @@
             <el-icon><Document /></el-icon>
             {{ currentDraftId ? '更新草稿' : '保存草稿' }}
           </button>
+          <el-button :icon="MagicStick" @click="oneClickDialogOpen = true" :disabled="publishAccountIds.size === 0">
+            一键填写
+          </el-button>
           <button class="publish-btn" @click="publishAll" :disabled="publishing">
             {{ publishing ? '发布中...' : '一键发布' }}
           </button>
@@ -264,6 +267,13 @@
       :current-account="currentPublishingAccount"
       @cancel="cancelBatch"
     />
+
+    <!-- One-click Fill Dialog -->
+    <OneClickFillDialog
+      v-model="oneClickDialogOpen"
+      type="image"
+      @pick="handleOneClickFill"
+    />
   </div>
 </template>
 
@@ -271,7 +281,7 @@
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import {
   Upload, ArrowDown, ArrowRight, Picture, PictureFilled,
-  Promotion, Document, FullScreen
+  Promotion, Document, FullScreen, MagicStick
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
@@ -291,6 +301,7 @@ import ImageCarousel from '@/components/ImageCarousel.vue'
 import ImagePreviewDialog from '@/components/ImagePreviewDialog.vue'
 import MaterialSelectDialog from '@/components/MaterialSelectDialog.vue'
 import ImageCoverUpload from '@/components/ImageCoverUpload.vue'
+import OneClickFillDialog from '@/components/OneClickFillDialog.vue'
 import { useAutoSave } from '@/composables/useAutoSave'
 
 import DouyinImagePublishPanel from '@/components/douyin/ImagePublishPanel.vue'
@@ -421,6 +432,7 @@ if (firstGroup) {
 // ========== Dialog State ==========
 const accountDialogVisible = ref(false)
 const batchPublishDialogVisible = ref(false)
+const oneClickDialogOpen = ref(false)
 
 // Refs
 const imageUploaderRef = ref(null)
@@ -611,6 +623,11 @@ async function publishAll() {
   currentPublishingAccount.value = ''
   batchPublishDialogVisible.value = true
 
+  // Task 13：生成本次一键发布的 batchId + 封面素材 ID（一次发布，跨账号复用）
+  const batchId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2))
+  const coverMaterialId = commonConfig.coverImage?.id || ''
+  const publishExtra = { batchId, landscapeCoverMaterialId: coverMaterialId, portraitCoverMaterialId: coverMaterialId }
+
   const commonData = { images: commonConfig.images, coverImage: commonConfig.coverImage }
 
   const allTasks = []
@@ -640,7 +657,7 @@ async function publishAll() {
 
     const panel = getPanel(groupKey)
     if (panel) {
-      await panel.publish(account.id, account.name, commonData)
+      await panel.publish(account.id, account.name, commonData, publishExtra)
     }
   }
 
@@ -661,6 +678,67 @@ async function publishAll() {
 function cancelBatch() {
   isCancelled.value = true
   ElMessage.info('正在取消发布...')
+}
+
+// ========== One-click fill ==========
+function handleOneClickFill(record) {
+  const histConfigs = record.account_configs || []
+  if (histConfigs.length === 0) {
+    ElMessage.warning('历史记录中没有账号配置')
+    return
+  }
+
+  // 新逻辑：直接用历史的全部账号配置（覆盖或新增），不再做交集
+  let filled = 0
+  let skipped = 0
+
+  for (const hist of histConfigs) {
+    if (!hist || typeof hist !== 'object') continue
+
+    const accountId = Number(hist.account_id)
+    if (!accountId) continue
+
+    const account = accountStore.accounts.find(a => a.id === accountId)
+    if (!account) {
+      // 历史里有但账号已被删除：跳过
+      skipped++
+      continue
+    }
+
+    const platformKey = getPlatformKeyByName(account.platform)
+    const panel = getPanel(platformKey)
+    if (!panel) {
+      skipped++
+      continue
+    }
+
+    // 把账号加入当前选择
+    publishAccountIds.add(accountId)
+
+    const configs = panel.getConfigs()
+    const newOverrides = { ...configs.accountOverrides }
+    const existing = newOverrides[accountId] || {}
+    newOverrides[accountId] = {
+      ...existing,
+      title: hist.title ?? existing.title ?? '',
+      description: hist.description ?? existing.description ?? '',
+      tags: hist.tags ?? existing.tags ?? [],
+      aiContent: hist.aiContent ?? existing.aiContent ?? '',
+    }
+    panel.restoreConfigs(configs.platformConfig, newOverrides)
+    filled++
+  }
+
+  if (filled > 0) {
+    const msg = skipped > 0
+      ? `已从历史填充 ${filled} 个账号配置（${skipped} 个已删除账号跳过）`
+      : `已从历史填充 ${filled} 个账号配置`
+    ElMessage.success(msg)
+  } else if (skipped > 0) {
+    ElMessage.warning(`历史中 ${skipped} 个账号已不存在，无法填充`)
+  } else {
+    ElMessage.warning('历史记录没有可填充的账号配置')
+  }
 }
 
 // ========== Old Draft Migration ==========

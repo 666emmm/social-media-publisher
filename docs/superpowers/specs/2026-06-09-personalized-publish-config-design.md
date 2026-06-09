@@ -80,12 +80,12 @@
 
 ### 2.3 草稿 JSON 扩展
 
-`drafts.data` 和 `image_drafts.data` 增加 4 个键：
+**视频草稿**（`drafts.data`）和**图文草稿**（`image_drafts.data`）**都**增加 4 个键：
 
 ```json
 {
   "commonConfig": { ... },                       // 现有
-  "platformConfigs": { "douyin": { ... } },     // 现有（per-platform 标题描述标签等）
+  "platformConfigs": { "douyin": { ... } },     // 现有（per-platform 标题描述标签等）——视频草稿有
   "platformOverrides": {                         // 新增：渠道级覆写完整对象
     "douyin": { "title": "...", "videoLandscape": {...}, "coverLandscape": {...}, ... }
   },
@@ -97,6 +97,8 @@
 }
 ```
 
+**`platformConfigs` 字段在视频草稿里有，图文草稿里没有**（ImagePublish 没有 `platformConfigs` state）。草稿后端透传时不需要区分，统一存读。
+
 ## 3. 前端改动
 
 ### 3.1 涉及文件
@@ -104,10 +106,10 @@
 | 文件 | 改动 |
 |---|---|
 | `frontend/src/views/PublishCenter.vue` | 加平台/账号级复选框 + 覆写区；改造 `publishAll` / `saveDraft` / `loadDraft` |
-| `frontend/src/views/ImagePublish.vue` | 同上 |
-| `frontend/src/components/DouyinImagePublishPanel.vue` | 暴露 `platformOverride` / `accountOverride` props + emit |
-| `frontend/src/components/XiaohongshuImagePublishPanel.vue` | 同上 |
-| `frontend/src/components/KuaishouImagePublishPanel.vue` | 同上 |
+| `frontend/src/views/ImagePublish.vue` | 同上（覆写区是独立编辑面板，**不**改 panel 组件） |
+| `frontend/src/components/DouyinImagePublishPanel.vue` | **不动** |
+| `frontend/src/components/XiaohongshuImagePublishPanel.vue` | **不动** |
+| `frontend/src/components/KuaishouImagePublishPanel.vue` | **不动** |
 | `frontend/src/views/PublishHistory.vue` | `.detail-row` → `.detail-card` 卡片化 |
 | `frontend/src/api/drafts.js` | 不动（草稿 JSON 整体打包，自动透传新键） |
 | `frontend/src/stores/app.js` | 可能需扩 state（保存/恢复覆写区） |
@@ -177,9 +179,33 @@ const accountChecked = reactive({})            // { [accountId]: boolean }
 
 **交互逻辑**：
 ```js
+// 判断覆写区是否有用户实际填入的内容（用于取消时弹窗判定）
+function hasPlatformOverrideContent(platformKey) {
+  const ov = platformOverrides[platformKey]
+  if (!ov) return false
+  // 任一字段有非空值即视为"有内容"
+  return !!(
+    ov.title || ov.description ||
+    (ov.tags && ov.tags.length > 0) ||
+    ov.coverPortrait || ov.coverLandscape ||
+    ov.videoPortrait  || ov.videoLandscape
+  )
+}
+
+function hasAccountOverrideContent(accountId) {
+  const ov = accountOverrides[accountId]
+  if (!ov) return false
+  return !!(
+    ov.title || ov.description ||
+    (ov.tags && ov.tags.length > 0) ||
+    ov.coverPortrait || ov.coverLandscape ||
+    ov.videoPortrait  || ov.videoLandscape
+  )
+}
+
 // 平台级勾选变化
 function onPlatformCheckChange(checked) {
-  if (!checked && hasPlatformOverrideContent(selectedPlatform)) {
+  if (!checked && hasPlatformOverrideContent(selectedPlatform.value)) {
     ElMessageBox.confirm(
       '取消个性化配置后，本渠道的覆写将丢失，恢复使用公共默认，是否继续？',
       '确认取消',
@@ -191,17 +217,36 @@ function onPlatformCheckChange(checked) {
       platformChecked[selectedPlatform.value] = true
     })
   } else if (checked) {
-    // 勾选 → 自动复制公共区域当前值作为初始值
+    // 勾选 → 初始化空对象（不预填，mergeConfig 会按优先级自动合并）
     platformOverrides[selectedPlatform.value] = {
-      title: '', description: '', tagInput: '', tags: [],
+      title: '', description: '', tags: [],
       coverPortrait: null, coverLandscape: null,
-      videoLandscape: null, videoPortrait: null,
+      videoPortrait: null, videoLandscape: null,
+      // 其他 per-platform form 字段初始化为 undefined（mergeConfig 的 ?? 兜底）
     }
   }
 }
 
 // 账号级勾选变化（结构同上；账号级取消时弹同样弹窗）
-function onAccountCheckChange(checked) { ... }
+function onAccountCheckChange(checked) {
+  if (!checked && hasAccountOverrideContent(selectedAccountId.value)) {
+    ElMessageBox.confirm(
+      '取消个性化配置后，本账号的覆写将丢失，恢复使用渠道默认，是否继续？',
+      '确认取消',
+      { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
+    ).then(() => {
+      delete accountOverrides[selectedAccountId.value]
+    }).catch(() => {
+      accountChecked[selectedAccountId.value] = true
+    })
+  } else if (checked) {
+    accountOverrides[selectedAccountId.value] = {
+      title: '', description: '', tags: [],
+      coverPortrait: null, coverLandscape: null,
+      videoPortrait: null, videoLandscape: null,
+    }
+  }
+}
 ```
 
 **`publishAll` 改造**：
@@ -283,16 +328,24 @@ function loadDraft(d) {
 完全平行于 PublishCenter，差异：
 - 公共区域只有 `images` / `coverImage`（无视频文件）
 - 平台特有字段（aiContent/isOriginal/产品链接等）由 panel 内部维护
+- **没有 `platformConfigs[platformKey]`**（视频发布才有），"渠道默认"在 panel 组件内部 state
+
+**"渠道默认"取值方式**：
+- ImagePublish 的"渠道默认" = 当前选中的渠道 panel 内部的 title/desc/tags/images/coverImage
+- 在 publishAll 时从 `getPanel(selectedPlatform)?.getConfig()` 读出（panel 需新增 `getConfig()` 暴露方法；**只**新加这一个方法，**不**改 panel 的渲染逻辑）
+- 这是与 PublishCenter 唯一的实现差异：`mergeConfig` 的 `platformDefault` 参数来源不同
 
 **覆写区与 panel 的关系**：
 - 渠道级覆写区 / 账号级覆写区是**新的独立编辑面板**（与视频覆写区同结构），不复用 panel 组件
 - panel 组件本身（`DouyinImagePublishPanel` 等）保持原样，仅承担"渠道默认"的角色
-- 复选框在覆写区 section 的 header，复选区在 section 内部
+- panel 仅新增一个 `getConfig()` 方法用于读取当前 form state，**不**改其他逻辑
 - 父组件 ImagePublish.vue 自己管理覆写区 state（不通过 panel 透传）
 
 **改造点**：
 - 新增 `platformOverrides` / `accountOverrides` / `platformChecked` / `accountChecked` 四个 reactive 对象（同 PublishCenter 模式）
 - 渠道级覆写区在"渠道默认 panel 上方"渲染，账号级覆写区在"渠道默认 panel 下方 + selectedAccountId 时"渲染
+- panel 组件加 `getConfig()` 导出方法（1 个方法，~5 行）
+- `mergeConfig` 适配 ImagePublish：`platformDefault` 从 `getPanel(platformKey)?.getConfig()` 读
 - 草稿保存/恢复同视频
 
 ### 3.5 PublishHistory.vue 明细卡片化

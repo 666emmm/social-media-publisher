@@ -195,6 +195,19 @@
           </button>
         </div>
       </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">S3 视频缓存</span>
+          <span class="setting-desc">清除 data/s3_video_cache/ 目录下从 S3 下载的本地视频副本</span>
+        </div>
+        <div class="setting-control">
+          <span v-if="cacheInfo.s3_videos.count > 0" class="cache-size">{{ cacheInfo.s3_videos.count }} 个文件 · {{ formatSize(cacheInfo.s3_videos.size) }}</span>
+          <span v-else class="cache-size empty">无缓存</span>
+          <button class="cache-btn" :disabled="clearingCache || cacheInfo.s3_videos.count === 0" @click="handleClearCache('s3_videos')">
+            {{ clearingCache ? '清理中...' : '清理缓存' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 关于系统 -->
@@ -281,6 +294,7 @@ const appVersion = ref('--')
 const cacheInfo = reactive({
   frames: { count: 0, size: 0 },
   logs: { count: 0, size: 0, oldCount: 0 },
+  s3_videos: { count: 0, size: 0 },
 })
 
 const fetchSystemInfo = async () => {
@@ -291,6 +305,7 @@ const fetchSystemInfo = async () => {
       if (res.data.cache) {
         cacheInfo.frames = res.data.cache.frames || { count: 0, size: 0 }
         cacheInfo.logs = res.data.cache.logs || { count: 0, size: 0, oldCount: 0 }
+        cacheInfo.s3_videos = res.data.cache.s3_videos || { count: 0, size: 0 }
       }
     }
   } catch {}
@@ -304,8 +319,12 @@ const formatSize = (bytes) => {
 }
 
 const handleClearCache = async (target) => {
-  const messages = { frames: '抽帧缓存', logs: '日志文件' }
-  const confirmMessages = { frames: '确定要清理所有抽帧缓存数据吗？清理后下次使用封面功能时会重新提取视频帧。', logs: '确定要清理所有过期日志文件吗？' }
+  const messages = { frames: '抽帧缓存', logs: '日志文件', s3_videos: 'S3 视频缓存' }
+  const confirmMessages = {
+    frames: '确定要清理所有抽帧缓存数据吗？清理后下次使用封面功能时会重新提取视频帧。',
+    logs: '确定要清理所有过期日志文件吗？',
+    s3_videos: '确定要清理所有 S3 视频缓存吗？清理后下次抽帧时会重新从 S3 下载。',
+  }
   try {
     await ElMessageBox.confirm(
       confirmMessages[target],

@@ -752,10 +752,12 @@ def _before_publish():
             account_path = account_list[0]
             account_name = data.get('accountName') or Path(account_path).stem or account_path
 
-        # account_configs 存：除了 fileList/accountList/type/thumbnail*/scheduleTime/batchId/accountId/accountName 之外的所有字段
+        # account_configs 存：除了 fileList/accountList/type/thumbnail/scheduleTime/batchId/accountId/accountName 之外的所有字段
         # 注意：videoMaterialId/landscapeCoverMaterialId/portraitCoverMaterialId 既写 batch 列，也写进 JSON（让 JSON 自包含）
-        excluded = {'fileList', 'accountList', 'type', 'thumbnail', 'thumbnailLandscape',
-                    'thumbnailPortrait', 'scheduleTime', 'batchId',
+        # 注意：thumbnailLandscape/thumbnailPortrait（抽帧封面路径）也存进 JSON，
+        # 供 /api/v2/history 的 _resolve_cover_url 在 material_id 缺失时回退使用
+        excluded = {'fileList', 'accountList', 'type', 'thumbnail',
+                    'scheduleTime', 'batchId',
                     'accountId', 'accountName'}
         account_configs = {k: v for k, v in data.items() if k not in excluded}
 

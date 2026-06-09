@@ -205,9 +205,10 @@ class TestPostVideoPassthrough(unittest.TestCase):
         self.assertEqual(cfg["aiContent"], "内容由AI生成")
         self.assertTrue(cfg["isOriginal"])
         # spec §2.2 视频 account_configs 必须含 scheduleTime
-        # （_before_publish 当前把 scheduleTime 放在 excluded 里，会丢这个字段）
+        # （此前 scheduleTime 在 excluded 里，本 fix 后已可透传，回归测试）
         self.assertIn("scheduleTime", cfg)
         self.assertEqual(cfg["scheduleTime"], "")
+        self.assertEqual(cfg["enableTimer"], 0)
 
 
 if __name__ == "__main__":

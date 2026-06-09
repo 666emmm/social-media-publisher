@@ -31,7 +31,7 @@ if exist "%PROJECT_ROOT%\dependency\cloakbrowser\chrome.exe" (
 )
 :: --- 项目代码管理（git clone / update）---
 set "REPO_URL=https://github.com/DevilJie/social-auto-upload-web-ui.git"
-set "MAIN_BRANCH=master"
+set "MAIN_BRANCH=beta"
 
 if not exist "%BACKEND_DIR%" (
     rem 首次使用：没有项目代码，从 GitHub 克隆

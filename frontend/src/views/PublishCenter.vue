@@ -1258,6 +1258,9 @@ async function handleVideoUpload(options) {
 // ========== Material Library ==========
 
 async function selectFromLibrary(mode = 'video', videoOrCoverTarget = 'landscape') {
+  // 清空覆写区 target，避免被误分发
+  platformLibraryTarget.value = null
+  accountLibraryTarget.value = null
   materialLibraryMode.value = mode
   if (mode === 'video') {
     materialLibraryVideoTarget.value = videoOrCoverTarget
@@ -1332,6 +1335,9 @@ function onMaterialSelect(material) {
     }
     triggerFrameExtraction(material, materialLibraryVideoTarget.value)
   }
+  // 兜底：清空覆写区 target（正常情况下已经被 return，但兜底防御）
+  platformLibraryTarget.value = null
+  accountLibraryTarget.value = null
 }
 
 // Auto-select video format

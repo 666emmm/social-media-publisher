@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -128,6 +129,85 @@ class TestPublishTaskPersonalizedFields(unittest.TestCase):
         cfg = json.loads(row[0])
         self.assertEqual(cfg["videoLandscape"]["id"], "v1")
         self.assertEqual(cfg["aiContent"], "内容由AI生成")
+
+
+class TestPostVideoPassthrough(unittest.TestCase):
+    """验证 /postVideo 路由把新字段（videoLandscape/coverLandscape/aiContent 等）
+    透传到 _before_publish 并写入 publish_details.account_configs"""
+
+    def setUp(self):
+        _setup_db()
+        # 把 test 自己的 DB_PATH 注入到 task_queue 模块
+        # 镜像 test_task_queue_writes.py:74-75 的模式,避免 test 间 DB_PATH 互扰
+        from ext_api import task_queue as _tq_mod
+        _tq_mod.DB_PATH = DB_PATH
+        # 同步 app.DB_PATH（app.py:154 顶层常量），让 _record_publish 写到 test DB
+        import app as _app_mod
+        _app_mod.DB_PATH = DB_PATH
+
+    def tearDown(self):
+        # 清空 test DB 的 publish_batches/publish_details，避免跨测试污染
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            conn.execute("DELETE FROM publish_details")
+            conn.execute("DELETE FROM publish_batches")
+            conn.commit()
+
+    def test_postvideo_writes_overrides_to_publish_details(self):
+        """前端传 videoLandscape/videoPortrait/coverLandscape/coverPortrait/aiContent/isOriginal
+        → _before_publish 写入 publish_details.account_configs → DB 能查到这些键"""
+        # 延迟 import，避免 setUp 之前 import 时把生产 DB_PATH 写进 app.DB_PATH
+        from app import app
+        client = app.test_client()
+
+        payload = {
+            "type": 3,  # 抖音
+            "title": "测试标题",
+            "description": "测试描述",
+            "tags": ["#tag1"],
+            "fileList": ["uploads/test.mp4"],
+            "accountList": [],
+            "thumbnailLandscape": "",
+            "thumbnailPortrait": "",
+            "videoLandscape": {"id": "v-uuid", "stored_path": "uploads/v.mp4", "name": "v.mp4"},
+            "videoPortrait": {"id": "v-uuid2", "stored_path": "uploads/v2.mp4"},
+            "coverLandscape": {"id": "c-uuid", "stored_path": "uploads/c.jpg"},
+            "coverPortrait": {"id": "c-uuid2", "stored_path": "uploads/c2.jpg"},
+            "videoFormat": "portrait",
+            "aiContent": "内容由AI生成",
+            "isOriginal": True,
+            "enableTimer": 0,
+            "scheduleTime": "",
+        }
+
+        # _ensure_db 是 app.before_request，会试图 init_database 覆盖我们的 test schema
+        # 屏蔽掉。_before_publish 真实跑，_after_publish 也真实跑（仅写 status）
+        # 屏蔽 platform.publish_video（不需要真发）
+        with patch('app._ensure_db'), \
+             patch('app.get_platform') as mock_get_platform:
+            mock_platform = MagicMock()
+            mock_platform.publish_video.return_value = {"code": 200, "status": "success"}
+            mock_get_platform.return_value = mock_platform
+            r = client.post('/postVideo', json=payload)
+            self.assertEqual(r.status_code, 200, f"postVideo 失败: {r.get_json()}")
+
+        # 检查 DB
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            rows = conn.execute(
+                "SELECT account_configs FROM publish_details ORDER BY created_at DESC LIMIT 1"
+            ).fetchall()
+        self.assertEqual(len(rows), 1, "publish_details 应该被 _before_publish 插入 1 行")
+        cfg = json.loads(rows[0][0])
+        self.assertEqual(cfg["videoLandscape"]["id"], "v-uuid")
+        self.assertEqual(cfg["videoPortrait"]["id"], "v-uuid2")
+        self.assertEqual(cfg["coverLandscape"]["id"], "c-uuid")
+        self.assertEqual(cfg["coverPortrait"]["id"], "c-uuid2")
+        self.assertEqual(cfg["videoFormat"], "portrait")
+        self.assertEqual(cfg["aiContent"], "内容由AI生成")
+        self.assertTrue(cfg["isOriginal"])
+        # spec §2.2 视频 account_configs 必须含 scheduleTime
+        # （_before_publish 当前把 scheduleTime 放在 excluded 里，会丢这个字段）
+        self.assertIn("scheduleTime", cfg)
+        self.assertEqual(cfg["scheduleTime"], "")
 
 
 if __name__ == "__main__":

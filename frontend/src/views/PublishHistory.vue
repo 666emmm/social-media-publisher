@@ -135,22 +135,35 @@
         </div>
         <!-- 展开的明细 -->
         <div v-if="expandedBatchId === batch.id" class="card-details">
-          <div v-for="d in batch.items" :key="d.id" class="detail-row">
-            <span class="detail-status" :class="`status-${d.status}`">
-              {{ d.status === 'success' ? '✓' : d.status === 'failed' ? '✗' : '○' }}
-            </span>
-            <span class="detail-name">{{ d.account_name }}</span>
-            <span class="detail-platform">· {{ d.platform }}</span>
-            <span class="detail-duration" v-if="d.duration">· {{ formatDuration(d.duration) }}</span>
-            <a
-              v-if="d.publish_url"
-              :href="d.publish_url"
-              target="_blank"
-              rel="noopener noreferrer"
-              @click.stop
-            >[链接]</a>
-            <div v-if="d.status === 'failed' && d.error_message" class="detail-error">
-              错误：{{ d.error_message }}
+          <div v-for="d in batch.items" :key="d.id" class="detail-card"
+               :class="`status-${d.status}`">
+            <div class="detail-cover">
+              <img v-if="getCoverUrl(d)" :src="getCoverUrl(d)" :alt="d.platform" />
+              <div v-else class="cover-placeholder">
+                <el-icon :size="24"><Picture /></el-icon>
+              </div>
+            </div>
+            <div class="detail-body">
+              <div class="detail-head">
+                <span class="detail-platform">{{ d.platform }} · {{ d.account_name }}</span>
+                <span class="status-tag" :class="`status-${d.status}`">
+                  {{ statusLabel(d.status) }} · {{ formatDuration(d.duration) }}
+                </span>
+                <el-tag v-if="d.personalized" type="warning" size="small" effect="plain">个性化</el-tag>
+              </div>
+              <div v-if="d.status === 'failed' && d.error_message" class="detail-error">
+                错误：{{ d.error_message }}
+              </div>
+              <template v-else>
+                <div class="detail-title">{{ getCfgField(d, 'title') || batch.title || '无标题' }}</div>
+                <div class="detail-desc">{{ getCfgField(d, 'description') || batch.description || '无描述' }}</div>
+                <div v-if="getCfgField(d, 'tags')?.length" class="detail-tags">
+                  <el-tag v-for="t in getCfgField(d, 'tags')" :key="t" size="small" effect="plain">#{{ t }}</el-tag>
+                </div>
+              </template>
+              <div class="detail-foot">
+                <a v-if="d.publish_url" :href="d.publish_url" target="_blank" rel="noopener noreferrer" @click.stop>[查看发布作品]</a>
+              </div>
             </div>
           </div>
         </div>
@@ -178,6 +191,15 @@ import { ref, onMounted } from 'vue'
 import { Upload, CircleCheck, Calendar, Refresh, Clock, Picture } from '@element-plus/icons-vue'
 import { historyApi, statsApi } from '@/api/v2'
 import { platformList } from '@/config/platforms'
+
+function getCfgField(d, field) {
+  return d.account_configs?.[field]
+}
+
+function getCoverUrl(d) {
+  const cfg = d.account_configs || {}
+  return cfg.coverLandscape?.url || cfg.coverPortrait?.url || d.cover_url || ''
+}
 
 const batches = ref([])
 const expandedBatchId = ref(null)
@@ -594,42 +616,118 @@ onMounted(() => {
     border-top: 1px solid $border;
     padding: 12px 16px;
     background: $bg-surface;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
-  .detail-row {
+  .detail-card {
     display: flex;
-    gap: 8px;
-    align-items: center;
-    padding: 6px 0;
-    font-size: 13px;
-    flex-wrap: wrap;
-    color: $text-secondary;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid $border;
+    align-items: stretch;
 
-    .detail-status {
-      width: 18px;
-      text-align: center;
-      font-weight: 600;
-
-      &.status-success { color: #67c23a; }
-      &.status-failed { color: #f56c6c; }
+    &.status-failed {
+      opacity: 0.7;
     }
 
-    a {
-      color: $brand-start;
-      text-decoration: none;
-      font-size: 12px;
+    .detail-cover {
+      flex-shrink: 0;
+      width: 96px;
+      aspect-ratio: 16/9;
+      background: $bg-surface;
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
 
-      &:hover {
-        color: $brand-end;
-        text-decoration: underline;
+      img { width: 100%; height: 100%; object-fit: cover; }
+      .cover-placeholder {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        color: $text-muted;
+      }
+    }
+
+    .detail-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .detail-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .detail-platform {
+      font-size: 13px;
+      color: $text-primary;
+      font-weight: 500;
+    }
+
+    .detail-title {
+      font-size: 13px;
+      color: $text-primary;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .detail-desc {
+      font-size: 12px;
+      color: $text-secondary;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .detail-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .detail-foot {
+      margin-top: auto;
+      font-size: 12px;
+      a {
+        color: $brand-start;
+        text-decoration: none;
+        &:hover { color: $brand-end; text-decoration: underline; }
       }
     }
 
     .detail-error {
-      flex-basis: 100%;
       color: #f56c6c;
       font-size: 12px;
-      margin-left: 26px;
+    }
+
+    .status-tag {
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      &.status-success, &.status-partial {
+        background: rgba(82, 196, 26, 0.15); color: #67c23a;
+      }
+      &.status-failed {
+        background: rgba(245, 108, 108, 0.15); color: #f56c6c;
+      }
+      &.status-running {
+        background: rgba(64, 158, 255, 0.15); color: #409eff;
+      }
+      &.status-pending, &.status-cancelled {
+        background: rgba(0, 0, 0, 0.06); color: $text-muted;
+      }
     }
   }
 

@@ -776,11 +776,15 @@ watch(form, (newVal) => {
         diff[key] = newVal[key]
       }
     }
+    // 用 merge 而不是 replace：保留已上传的视频/封面/图片等媒体字段
+    // （这些字段不在 form 里，diff 不会包含它们）
+    const existing = accountOverrides[selectedAccountId.value]
     if (Object.keys(diff).length > 0) {
-      accountOverrides[selectedAccountId.value] = { ...diff }
-    } else {
-      delete accountOverrides[selectedAccountId.value]
+      accountOverrides[selectedAccountId.value] = existing
+        ? { ...existing, ...diff }
+        : { ...diff }
     }
+    // diff 为空时不要 delete！媒体字段可能还在
   } else {
     for (const key of Object.keys(newVal)) {
       platform[key] = newVal[key]

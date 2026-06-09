@@ -1126,10 +1126,10 @@ async function saveDraft() {
           ? { id: commonConfig.videoPortrait.id, name: commonConfig.videoPortrait.name, stored_path: commonConfig.videoPortrait.stored_path, url: commonConfig.videoPortrait.url, size: commonConfig.videoPortrait.size, type: commonConfig.videoPortrait.type }
           : null,
         coverLandscape: commonConfig.coverLandscape
-          ? { name: commonConfig.coverLandscape.name, stored_path: commonConfig.coverLandscape.stored_path, url: commonConfig.coverLandscape.url, size: commonConfig.coverLandscape.size, type: commonConfig.coverLandscape.type, _fromFrame: commonConfig.coverLandscape._fromFrame }
+          ? { id: commonConfig.coverLandscape.id, name: commonConfig.coverLandscape.name, stored_path: commonConfig.coverLandscape.stored_path, url: commonConfig.coverLandscape.url, size: commonConfig.coverLandscape.size, type: commonConfig.coverLandscape.type, _fromFrame: commonConfig.coverLandscape._fromFrame }
           : null,
         coverPortrait: commonConfig.coverPortrait
-          ? { name: commonConfig.coverPortrait.name, stored_path: commonConfig.coverPortrait.stored_path, url: commonConfig.coverPortrait.url, size: commonConfig.coverPortrait.size, type: commonConfig.coverPortrait.type, _fromFrame: commonConfig.coverPortrait._fromFrame }
+          ? { id: commonConfig.coverPortrait.id, name: commonConfig.coverPortrait.name, stored_path: commonConfig.coverPortrait.stored_path, url: commonConfig.coverPortrait.url, size: commonConfig.coverPortrait.size, type: commonConfig.coverPortrait.type, _fromFrame: commonConfig.coverPortrait._fromFrame }
           : null,
       },
       platformConfigs: JSON.parse(JSON.stringify(platformConfigs)),
@@ -1453,6 +1453,9 @@ async function publishAll() {
     } else {
       selectedVideo = merged.videoLandscape || commonConfig.videoLandscape || merged.videoPortrait || commonConfig.videoPortrait
     }
+
+    // [DEBUG 2026-06-10] 详细日志：把 4 级合并后的视频相关字段都打出来
+    console.log('[PublishCenter.publish.account] account=' + account.name + ' platform=' + group.key + ' videoFormat=' + videoFormat + ' merged.videoLandscape.id=' + (merged.videoLandscape && merged.videoLandscape.id) + ' merged.videoPortrait.id=' + (merged.videoPortrait && merged.videoPortrait.id) + ' commonConfig.videoLandscape.id=' + (commonConfig.videoLandscape && commonConfig.videoLandscape.id) + ' commonConfig.videoPortrait.id=' + (commonConfig.videoPortrait && commonConfig.videoPortrait.id) + ' selectedVideo.id=' + (selectedVideo && selectedVideo.id))
 
     if (!selectedVideo) {
         publishResults.value.push({

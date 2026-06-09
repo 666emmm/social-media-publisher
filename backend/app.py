@@ -14,6 +14,11 @@ from queue import Queue
 
 import requests as _requests
 
+# [FIX 2026-06-10] httpx（cloakbrowser 依赖）不支持 SOCKS proxy，系统设置了 ALL_PROXY=socks://
+# 会让 cloakbrowser 的 wrapper update check 直接崩。启动时清掉 SOCKS env（保留 HTTP/HTTPS proxy）
+for _k in ('ALL_PROXY', 'all_proxy'):
+    os.environ.pop(_k, None)
+
 from flask import Flask, Response, g, jsonify, request, send_from_directory
 from flask_cors import CORS
 

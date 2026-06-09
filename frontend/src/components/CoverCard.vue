@@ -71,6 +71,7 @@ async function onFileSelected(e) {
     if (resp.code === 200) {
       const d = resp.data
       emit('update:modelValue', {
+        id: d.id,                                                       // 修复：与视频上传保持一致，带上 id（之前漏了导致草稿恢复后 id 丢失，腾讯视频等平台需要 id 定位封面）
         name: d.original_filename,
         url: getFileUrl(d.stored_path),
         stored_path: d.stored_path,

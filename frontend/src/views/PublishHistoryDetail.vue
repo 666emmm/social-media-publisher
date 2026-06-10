@@ -79,36 +79,38 @@
             </a>
           </section>
 
-          <!-- 2. 内容快照 -->
-          <section v-if="selectedItem.status === 'failed'" class="content-snapshot failed">
-            <div class="failed-icon">
-              <el-icon :size="40"><CircleCloseFilled /></el-icon>
-            </div>
-            <div class="failed-text">
-              <h3>发布失败</h3>
-              <p>{{ selectedItem.error_message || '未知错误' }}</p>
-            </div>
-          </section>
-          <section v-else class="content-snapshot">
-            <div class="snapshot-cover">
-              <img v-if="getCoverUrl(selectedItem)" :src="getCoverUrl(selectedItem)" :alt="batch?.title" />
-              <div v-else class="cover-placeholder">
-                <el-icon :size="40"><Picture /></el-icon>
+          <!-- 2. 内容快照：成功 + 失败都渲染完整内容；失败时额外在顶部加错误横幅 -->
+          <section class="content-snapshot" :class="{ 'content-snapshot--failed': selectedItem.status === 'failed' }">
+            <!-- 失败错误横幅：仅失败时显示 -->
+            <div v-if="selectedItem.status === 'failed'" class="error-banner">
+              <el-icon :size="18"><CircleCloseFilled /></el-icon>
+              <div class="error-banner-body">
+                <strong>发布失败</strong>
+                <span>{{ selectedItem.error_message || '未知错误' }}</span>
               </div>
             </div>
-            <div class="snapshot-body">
-              <h3 class="snapshot-title">{{ getCfgField(selectedItem, 'title') || batch?.title || '无标题' }}</h3>
-              <p class="snapshot-desc">{{ getCfgField(selectedItem, 'description') || batch?.description || '无描述' }}</p>
-              <div v-if="getCfgField(selectedItem, 'tags')?.length" class="snapshot-tags">
-                <el-tag v-for="t in getCfgField(selectedItem, 'tags')" :key="t" size="small" effect="plain">#{{ t }}</el-tag>
+            <!-- 完整内容快照：成功 + 失败都显示 -->
+            <div class="snapshot-body-row">
+              <div class="snapshot-cover">
+                <img v-if="getCoverUrl(selectedItem)" :src="getCoverUrl(selectedItem)" :alt="batch?.title" />
+                <div v-else class="cover-placeholder">
+                  <el-icon :size="40"><Picture /></el-icon>
+                </div>
               </div>
-              <div v-if="getCfgField(selectedItem, 'creationDeclaration')" class="snapshot-meta">
-                <span class="meta-label">作品声明</span>
-                <span>{{ getCfgField(selectedItem, 'creationDeclaration') }}</span>
-              </div>
-              <div v-if="getCfgField(selectedItem, 'scheduleTime')" class="snapshot-meta">
-                <span class="meta-label">定时发布时间</span>
-                <span>{{ getCfgField(selectedItem, 'scheduleTime') }}</span>
+              <div class="snapshot-body">
+                <h3 class="snapshot-title">{{ getCfgField(selectedItem, 'title') || batch?.title || '无标题' }}</h3>
+                <p class="snapshot-desc">{{ getCfgField(selectedItem, 'description') || batch?.description || '无描述' }}</p>
+                <div v-if="getCfgField(selectedItem, 'tags')?.length" class="snapshot-tags">
+                  <el-tag v-for="t in getCfgField(selectedItem, 'tags')" :key="t" size="small" effect="plain">#{{ t }}</el-tag>
+                </div>
+                <div v-if="getCfgField(selectedItem, 'creationDeclaration')" class="snapshot-meta">
+                  <span class="meta-label">作品声明</span>
+                  <span>{{ getCfgField(selectedItem, 'creationDeclaration') }}</span>
+                </div>
+                <div v-if="getCfgField(selectedItem, 'scheduleTime')" class="snapshot-meta">
+                  <span class="meta-label">定时发布时间</span>
+                  <span>{{ getCfgField(selectedItem, 'scheduleTime') }}</span>
+                </div>
               </div>
             </div>
           </section>
@@ -535,116 +537,108 @@ onMounted(async () => {
   }
 }
 
-// 2. 内容快照：左右 16px 间距 + cover 160px 16:9 + 右侧 8px 列内 gap
+// 2. 内容快照：列向布局，顶部可能为错误横幅，下方为左 cover + 右 body
 .content-snapshot {
   display: flex;
+  flex-direction: column;
   gap: 16px;
   padding: 16px 20px;
   background: $bg-elevated;
   border: 1px solid $border;
   border-radius: $radius-card;
+  transition: $transition-base;
 
-  .snapshot-cover {
-    flex-shrink: 0;
-    width: 160px;
-    aspect-ratio: 16/9;
-    background: $bg-surface;
-    border-radius: 8px;
-    overflow: hidden;
-    position: relative;
-
-    img { width: 100%; height: 100%; object-fit: cover; }
-
-    .cover-placeholder {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: $text-muted;
-    }
+  &--failed {
+    border-color: rgba(245, 108, 108, 0.3);
+    background: rgba(245, 108, 108, 0.03);
   }
+}
 
-  .snapshot-body {
-    flex: 1;
-    min-width: 0;
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(245, 108, 108, 0.1);
+  border: 1px solid rgba(245, 108, 108, 0.3);
+  border-radius: $radius-base;
+  color: #f56c6c;
+
+  .el-icon { flex-shrink: 0; }
+
+  .error-banner-body {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2px;
+
+    strong { font-size: 13px; font-weight: 600; }
+    span { font-size: 12px; color: $text-secondary; word-break: break-all; }
   }
+}
 
-  .snapshot-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: $text-primary;
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    letter-spacing: -0.01em;
+.snapshot-body-row {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.snapshot-cover {
+  flex-shrink: 0;
+  width: 160px;
+  aspect-ratio: 16/9;
+  background: $bg-surface;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+
+  img { width: 100%; height: 100%; object-fit: cover; }
+  .cover-placeholder {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: $text-muted;
   }
+}
 
-  .snapshot-desc {
-    font-size: 13px;
-    color: $text-secondary;
-    margin: 0;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.5;
-  }
+.snapshot-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
-  .snapshot-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
+.snapshot-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: $text-primary;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .snapshot-meta {
-    display: flex;
-    gap: 8px;
-    font-size: 12px;
-    color: $text-secondary;
+.snapshot-desc {
+  font-size: 13px;
+  color: $text-secondary;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
-    .meta-label {
-      color: $text-muted;
-    }
-  }
+.snapshot-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 
-  // 失败降级红色卡：浅红底 + 红色边 + 40px 大图标 + 居中对齐
-  &.failed {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    background: rgba(245, 108, 108, 0.05);
-    border-color: rgba(245, 108, 108, 0.3);
-    padding: 20px;
-
-    .failed-icon {
-      color: #f56c6c;
-      flex-shrink: 0;
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      background: rgba(245, 108, 108, 0.12);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .failed-text h3 {
-      color: #f56c6c;
-      font-size: 16px;
-      margin: 0 0 4px;
-      font-weight: 600;
-    }
-    .failed-text p {
-      color: $text-secondary;
-      font-size: 13px;
-      margin: 0;
-      line-height: 1.5;
-    }
-  }
+.snapshot-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: $text-secondary;
+  .meta-label { color: $text-muted; }
 }
 
 // 3. 数据统计：16/20 padding，标题与内容 12px 分隔

@@ -54,12 +54,28 @@
             <div class="bar purple"></div>
             <span class="section-label">公共配置</span>
             <span class="hint">所有账号共享</span>
+            <template v-if="currentPlatformConfig">
+              <el-checkbox
+                v-model="platformChecked[selectedPlatform]"
+                @change="onPlatformCheckChange"
+              >
+                {{ currentPlatformConfig.name }} 渠道个性化
+              </el-checkbox>
+              <el-checkbox
+                v-if="selectedAccountId"
+                v-model="accountChecked[selectedAccountId]"
+                :disabled="!platformChecked[selectedPlatform]"
+                @change="onAccountCheckChange"
+              >
+                {{ getAccountDisplayName(selectedAccountId) }} 账号个性化
+              </el-checkbox>
+            </template>
           </div>
 
           <!-- 封面图片 -->
           <div class="cover-section">
             <ImageCoverUpload
-              v-model="commonConfig.coverImage"
+              v-model="currentEditTarget.coverImage"
               label="封面图片"
               @open-library="openMaterialLibraryForCover"
             />
@@ -69,69 +85,12 @@
           <div class="media-section">
             <ImageUploader
               ref="imageUploaderRef"
-              v-model="commonConfig.images"
+              v-model="currentEditTarget.images"
               :max-count="35"
               :visible-rows="3"
               :columns="5"
               @open-material-library="openMaterialLibraryForImage"
             />
-          </div>
-
-          <!-- Batch title/description/tags sync -->
-          <div class="batch-sync-section">
-            <div class="batch-sync-header" @click="batchSyncExpanded = !batchSyncExpanded">
-              <span>批量设置标题、描述和标签</span>
-              <el-icon class="cursor-pointer">
-                <component :is="batchSyncExpanded ? ArrowDown : ArrowRight" />
-              </el-icon>
-            </div>
-            <div v-show="batchSyncExpanded" class="batch-sync-body">
-              <div class="form-field">
-                <div class="field-head">
-                  <span>标题</span>
-                </div>
-                <el-input
-                  v-model="batchTitle"
-                  placeholder="输入标题后点击同步..."
-                  maxlength="100"
-                />
-              </div>
-              <div class="form-field">
-                <div class="field-head">
-                  <span>描述</span>
-                </div>
-                <el-input
-                  v-model="batchDescription"
-                  type="textarea"
-                  :rows="5"
-                  placeholder="输入描述后点击同步..."
-                  maxlength="2000"
-                />
-              </div>
-              <div class="form-field">
-                <div class="field-head">
-                  <span>标签</span>
-                </div>
-                <el-input
-                  v-model="batchTagInput"
-                  placeholder="输入标签，回车添加"
-                  @keyup.enter="addBatchTag"
-                  clearable
-                />
-                <div v-if="batchTags.length > 0" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
-                  <el-tag
-                    v-for="(t, i) in batchTags"
-                    :key="i"
-                    closable
-                    @close="batchTags.splice(i, 1)"
-                    size="small"
-                  >#{{ t }}</el-tag>
-                </div>
-              </div>
-              <button class="cover-action-btn primary" @click="syncBatchToAll">
-                <el-icon :size="15"><Promotion /></el-icon><span>同步到所有平台</span>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -191,7 +150,7 @@
         <div class="phone-panel-header">
           <span class="phone-panel-title">图片预览</span>
           <button
-            v-if="commonConfig.images.length > 0"
+            v-if="currentEditTarget.images.length > 0"
             class="cover-action-btn"
             @click="openPreviewDialog"
           >
@@ -204,8 +163,8 @@
             <div class="phone-notch"></div>
             <div class="phone-screen">
               <ImageCarousel
-                v-if="commonConfig.images.length > 0"
-                :images="commonConfig.images"
+                v-if="currentEditTarget.images.length > 0"
+                :images="currentEditTarget.images"
                 @change="onCarouselChange"
               />
               <div v-else class="phone-empty" @click="triggerUpload">
@@ -226,9 +185,9 @@
           </button>
         </div>
 
-        <div v-if="commonConfig.images.length > 0" class="phone-panel-info">
-          <span class="phone-info-name">{{ commonConfig.images[currentPreviewIndex]?.name || '未选择图片' }}</span>
-          <span class="phone-info-count">{{ currentPreviewIndex + 1 }}/{{ commonConfig.images.length }}</span>
+        <div v-if="currentEditTarget.images.length > 0" class="phone-panel-info">
+          <span class="phone-info-name">{{ currentEditTarget.images[currentPreviewIndex]?.name || '未选择图片' }}</span>
+          <span class="phone-info-count">{{ currentPreviewIndex + 1 }}/{{ currentEditTarget.images.length }}</span>
         </div>
       </div>
 
@@ -255,7 +214,7 @@
     <!-- Image Preview Dialog -->
     <ImagePreviewDialog
       ref="imagePreviewDialogRef"
-      :images="commonConfig.images"
+      :images="currentEditTarget.images"
       :initial-index="currentPreviewIndex"
     />
 
@@ -280,10 +239,10 @@
 <script setup>
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import {
-  Upload, ArrowDown, ArrowRight, Picture, PictureFilled,
-  Promotion, Document, FullScreen, MagicStick
+  Upload, Picture, PictureFilled,
+  Document, FullScreen, MagicStick
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
 import { accountApi } from '@/api/account'
@@ -357,6 +316,40 @@ const commonConfig = reactive({
   coverImage: null,
 })
 
+// ========== 平台/账号级覆写（spec §3.4）—— 公共区域的媒体字段覆写 ==========
+const platformOverrides = reactive({})         // { [platformKey]: { images, coverImage } }
+const platformChecked = reactive({})           // { [platformKey]: boolean }
+const accountOverrides = reactive({})          // { [accountId]: { images, coverImage } }
+const accountChecked = reactive({})            // { [accountId]: boolean }
+
+// 当前编辑目标：公共区域 v-model 的实际绑定对象
+// 勾选账号 → accountOverrides[id]；勾选平台 → platformOverrides[key]；默认 → commonConfig
+const currentEditTarget = computed(() => {
+  const aid = selectedAccountId.value
+  if (aid && accountChecked[aid] && accountOverrides[aid]) return accountOverrides[aid]
+  const pk = selectedPlatform.value
+  if (pk && platformChecked[pk] && platformOverrides[pk]) return platformOverrides[pk]
+  return commonConfig
+})
+
+function hasPlatformOverrideContent(platformKey) {
+  const ov = platformOverrides[platformKey]
+  if (!ov) return false
+  return !!(
+    (ov.images && ov.images.length > 0) ||
+    ov.coverImage
+  )
+}
+
+function hasAccountOverrideContent(accountId) {
+  const ov = accountOverrides[accountId]
+  if (!ov) return false
+  return !!(
+    (ov.images && ov.images.length > 0) ||
+    ov.coverImage
+  )
+}
+
 const currentPreviewIndex = ref(0)
 
 // ========== Auto-save ==========
@@ -388,6 +381,8 @@ function onPublishResult({ accountName, status, message }) {
 }
 
 function hasAccountOverride(accountId) {
+  // Task 10：新增覆写层勾选 + panel 内部 accountOverrides 任一为真都算
+  if (accountChecked[accountId] && hasAccountOverrideContent(accountId)) return true
   for (const key of ['douyin', 'xiaohongshu', 'kuaishou']) {
     const panel = getPanel(key)
     if (panel && panel.hasAccountOverride(accountId)) return true
@@ -395,31 +390,66 @@ function hasAccountOverride(accountId) {
   return false
 }
 
-// ========== Batch sync ==========
-const batchTitle = ref('')
-const batchDescription = ref('')
-const batchTags = ref([])
-const batchTagInput = ref('')
-const batchSyncExpanded = ref(false)
+// ========== Override Section: Interaction ==========
 
-function addBatchTag() {
-  const tag = batchTagInput.value.trim()
-  if (!tag) return
-  if (batchTags.value.includes(tag)) return
-  batchTags.value.push(tag)
-  batchTagInput.value = ''
+function onPlatformCheckChange(checked) {
+  if (!checked && hasPlatformOverrideContent(selectedPlatform.value)) {
+    ElMessageBox.confirm(
+      '取消个性化配置后，本渠道的覆写将丢失，恢复使用公共默认，是否继续？',
+      '确认取消', { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
+    ).then(() => {
+      delete platformOverrides[selectedPlatform.value]
+    }).catch(() => {
+      platformChecked[selectedPlatform.value] = true
+    })
+  } else if (checked) {
+    platformOverrides[selectedPlatform.value] = {
+      images: [], coverImage: null,
+    }
+  }
 }
 
-function syncBatchToAll() {
-  const platforms = ['douyin', 'xiaohongshu', 'kuaishou']
-  for (const key of platforms) {
-    const panel = getPanel(key)
-    if (!panel) continue
-    if (batchTitle.value) panel.syncTitle(batchTitle.value)
-    if (batchDescription.value) panel.syncDescription(batchDescription.value)
-    if (batchTags.value.length) panel.syncTags([...batchTags.value])
+function onAccountCheckChange(checked) {
+  if (!checked && hasAccountOverrideContent(selectedAccountId.value)) {
+    ElMessageBox.confirm(
+      '取消个性化配置后，本账号的覆写将丢失，恢复使用渠道默认，是否继续？',
+      '确认取消', { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
+    ).then(() => {
+      delete accountOverrides[selectedAccountId.value]
+    }).catch(() => {
+      accountChecked[selectedAccountId.value] = true
+    })
+  } else if (checked) {
+    accountOverrides[selectedAccountId.value] = {
+      images: [], coverImage: null,
+    }
   }
-  ElMessage.success('已同步到所有平台')
+}
+
+// ========== 4 级优先级合并（spec §3.3 / §3.4） ==========
+// accountOv > platformOv > platformDefault > common
+function resolveAccountConfig(platformKey, accountId) {
+  const accountOv = (accountChecked[accountId] && accountOverrides[accountId]) || null
+  const platformOv = (platformChecked[platformKey] && platformOverrides[platformKey]) || null
+  // 注意：plan 写的是 getConfig()，实际 panel 暴露的是 getConfigs() 返回 { platformConfig, accountOverrides }
+  const platformDefault = getPanel(platformKey)?.getConfigs?.()?.platformConfig || null
+  return mergeConfig(commonConfig, platformDefault, platformOv, accountOv)
+}
+
+function mergeConfig(common, platformDefault, platformOv, accountOv) {
+  return {
+    // 文本字段仅从 platformDefault 取（覆写区不再含 title/desc/tags）
+    title: platformDefault?.title ?? '',
+    description: platformDefault?.description ?? '',
+    tags: platformDefault?.tags ?? [],
+    // 媒体字段走 4 级合并 → commonConfig 兜底
+    images: accountOv?.images ?? platformOv?.images ?? platformDefault?.images ?? common.images,
+    coverImage: accountOv?.coverImage ?? platformOv?.coverImage ?? platformDefault?.coverImage ?? common.coverImage,
+    enableTimer: accountOv?.enableTimer ?? platformOv?.enableTimer ?? platformDefault?.enableTimer ?? 0,
+    scheduleTime: accountOv?.scheduleTime ?? platformOv?.scheduleTime ?? platformDefault?.scheduleTime ?? '',
+    aiContent: accountOv?.aiContent ?? platformOv?.aiContent ?? platformDefault?.aiContent ?? '',
+    isOriginal: accountOv?.isOriginal ?? platformOv?.isOriginal ?? platformDefault?.isOriginal ?? false,
+  }
 }
 
 // ========== Init ==========
@@ -523,7 +553,7 @@ function onMaterialSelected(material) {
   }
 
   if (materialSelectMode.value === 'cover') {
-    commonConfig.coverImage = {
+    currentEditTarget.value.coverImage = {
       id: material.id,
       name: material.name,
       url: material.url,
@@ -536,11 +566,12 @@ function onMaterialSelected(material) {
   }
 
   const targetIdx = materialTargetIndex.value
-  if (targetIdx >= 0 && targetIdx < commonConfig.images.length) {
-    commonConfig.images[targetIdx] = { ...commonConfig.images[targetIdx], ...imageData }
+  const targetImages = currentEditTarget.value.images
+  if (targetIdx >= 0 && targetIdx < targetImages.length) {
+    targetImages[targetIdx] = { ...targetImages[targetIdx], ...imageData }
   } else {
-    if (commonConfig.images.length < 35) {
-      commonConfig.images.push(imageData)
+    if (targetImages.length < 35) {
+      targetImages.push(imageData)
     } else {
       ElMessage.warning('最多只能上传 35 张图片')
     }
@@ -552,13 +583,13 @@ function onMaterialSelected(material) {
 async function saveDraft() {
   try {
     const allPlatformConfigs = {}
-    const allAccountOverrides = {}
+    const panelAccountOverrides = {}
     for (const key of ['douyin', 'xiaohongshu', 'kuaishou']) {
       const panel = getPanel(key)
       if (panel) {
         const configs = panel.getConfigs()
         allPlatformConfigs[key] = configs.platformConfig
-        Object.assign(allAccountOverrides, configs.accountOverrides)
+        Object.assign(panelAccountOverrides, configs.accountOverrides)
       }
     }
 
@@ -568,7 +599,13 @@ async function saveDraft() {
         coverImage: commonConfig.coverImage || null,
       },
       platformConfigs: allPlatformConfigs,
-      accountOverrides: allAccountOverrides,
+      // Task 10：保留 panel 内部 accountOverrides（旧草稿兼容），独立 key 避免与 spec §3.4 的 accountOverrides 冲突
+      panelAccountOverrides,
+      // Task 10：spec §3.4 新增 4 个键（覆写层）
+      platformOverrides: JSON.parse(JSON.stringify(platformOverrides)),
+      accountOverrides: JSON.parse(JSON.stringify(accountOverrides)),
+      platformChecked: { ...platformChecked },
+      accountChecked: { ...accountChecked },
       publishAccountIds: [...publishAccountIds],
       selectedPlatform: selectedPlatform.value,
       selectedAccountId: selectedAccountId.value,
@@ -602,6 +639,23 @@ async function publishAll() {
     return
   }
 
+  // Task 10：用 4 级合并后的数据校验（标题必须存在）
+  const accountsWithoutTitle = []
+  for (const group of imageAccountGroups.value) {
+    if (group.accounts.length === 0) continue
+    for (const account of group.accounts) {
+      if (!publishAccountIds.has(account.id)) continue
+      const merged = resolveAccountConfig(group.key, account.id)
+      if (!merged.title || !merged.title.trim()) {
+        accountsWithoutTitle.push(`${account.name}(${group.name})`)
+      }
+    }
+  }
+  if (accountsWithoutTitle.length > 0) {
+    ElMessage.error(`以下账号未设置标题：${accountsWithoutTitle.join('、')}`)
+    return
+  }
+
   for (const group of imageAccountGroups.value) {
     if (group.accounts.length === 0) continue
     const panel = getPanel(group.key)
@@ -628,14 +682,14 @@ async function publishAll() {
   const coverMaterialId = commonConfig.coverImage?.id || ''
   const publishExtra = { batchId, landscapeCoverMaterialId: coverMaterialId, portraitCoverMaterialId: coverMaterialId }
 
-  const commonData = { images: commonConfig.images, coverImage: commonConfig.coverImage }
-
+  // Task 10：4 级合并为每个账号生成 merged commonData（images / coverImage 走合并后值）
   const allTasks = []
   for (const group of imageAccountGroups.value) {
     if (group.accounts.length === 0) continue
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      allTasks.push({ account, groupKey: group.key })
+      const merged = resolveAccountConfig(group.key, account.id)
+      allTasks.push({ account, groupKey: group.key, merged })
     }
   }
 
@@ -651,13 +705,50 @@ async function publishAll() {
       publishResults.value.push({ label: allTasks[i].account.name, status: 'cancelled', message: '已取消' })
       continue
     }
-    const { account, groupKey } = allTasks[i]
+    const { account, groupKey, merged } = allTasks[i]
     currentPublishingAccount.value = account.name
     publishProgress.value = Math.floor((i / allTasks.length) * 100)
 
+    // merged 出的 images / coverImage 走 commonData（panel 默认使用 commonData）
+    // title/description/tags/platformConfig（aiContent/isOriginal 等）走 panel 自身 merged（panel.getMergedConfig）
+    const commonData = { images: merged.images, coverImage: merged.coverImage }
+
     const panel = getPanel(groupKey)
     if (panel) {
-      await panel.publish(account.id, account.name, commonData, publishExtra)
+      // 备份 panel 原状态（含 platformConfig 中的平台特定字段如 selectedMusic / hotspotId / mini_link / activities 等）
+      const originalConfigs = panel.getConfigs()
+      const originalPlatformConfig = originalConfigs.platformConfig || {}
+      const originalAccountOverrides = originalConfigs.accountOverrides || {}
+
+      // 选择性更新 platformConfig 的 9 个标准字段，保留其他平台特定字段不被覆盖
+      const STANDARD_FIELDS = [
+        'title', 'description', 'tags', 'images', 'coverImage',
+        'enableTimer', 'scheduleTime', 'aiContent', 'isOriginal'
+      ]
+      const updatedPlatformConfig = { ...originalPlatformConfig }
+      for (const field of STANDARD_FIELDS) {
+        if (field in merged) {
+          updatedPlatformConfig[field] = Array.isArray(merged[field])
+            ? [...merged[field]]
+            : merged[field]
+        }
+      }
+
+      // 注入 panel：platformConfig 保留所有平台特定字段 + 9 标准字段已更新；
+      // accountOverrides[id] = merged（含平台特定字段）让 publish 链路拿到完整配置
+      panel.restoreConfigs(
+        updatedPlatformConfig,
+        { ...originalAccountOverrides, [account.id]: merged }
+      )
+      try {
+        await panel.publish(account.id, account.name, commonData, publishExtra)
+      } finally {
+        // 恢复原 panel 状态（restoreConfigs 是整体重置，所以必须用完整备份）
+        panel.restoreConfigs(
+          originalPlatformConfig,
+          originalAccountOverrides
+        )
+      }
     }
   }
 
@@ -769,8 +860,10 @@ function migrateOldDraftFormat(dd) {
     delete dd.douyinSelections
   }
 
-  if (dd.accountOverrides) {
-    for (const override of Object.values(dd.accountOverrides)) {
+  // 旧草稿 accountOverrides 实际是 panel 的；新草稿拆成 panelAccountOverrides + accountOverrides
+  const oldOverrideSource = dd.panelAccountOverrides || dd.accountOverrides
+  if (oldOverrideSource) {
+    for (const override of Object.values(oldOverrideSource)) {
       delete override.coverImage
     }
   }
@@ -822,18 +915,38 @@ async function loadDraft(draftId) {
 
     await nextTick()
 
+    // Task 10：恢复 spec §3.4 的 4 个新键（先恢复 override 层，再恢复 panel 状态）
+    if (dd.platformOverrides) {
+      Object.keys(platformOverrides).forEach(k => delete platformOverrides[k])
+      Object.assign(platformOverrides, dd.platformOverrides)
+    }
+    if (dd.accountOverrides) {
+      Object.keys(accountOverrides).forEach(k => delete accountOverrides[k])
+      Object.assign(accountOverrides, dd.accountOverrides)
+    }
+    if (dd.platformChecked) {
+      Object.keys(platformChecked).forEach(k => delete platformChecked[k])
+      Object.assign(platformChecked, dd.platformChecked)
+    }
+    if (dd.accountChecked) {
+      Object.keys(accountChecked).forEach(k => delete accountChecked[k])
+      Object.assign(accountChecked, dd.accountChecked)
+    }
+
     if (dd.platformConfigs) {
+      // 兼容：旧草稿的 accountOverrides 是 panel 的；新草稿改名为 panelAccountOverrides
+      const panelOverridesSource = dd.panelAccountOverrides || dd.accountOverrides
       for (const [key, val] of Object.entries(dd.platformConfigs)) {
         const panel = getPanel(key)
         if (panel && val) {
           const ownOverrides = {}
-          if (dd.accountOverrides) {
+          if (panelOverridesSource) {
             const ownAccountIds = new Set(
               accountStore.accounts
                 .filter(a => getPlatformKeyByName(a.platform) === key)
                 .map(a => a.id)
             )
-            for (const [accId, accOverride] of Object.entries(dd.accountOverrides)) {
+            for (const [accId, accOverride] of Object.entries(panelOverridesSource)) {
               if (ownAccountIds.has(Number(accId))) {
                 ownOverrides[accId] = accOverride
               }

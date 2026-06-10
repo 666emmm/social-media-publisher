@@ -14,6 +14,11 @@ from queue import Queue
 
 import requests as _requests
 
+# [FIX 2026-06-10] httpx（cloakbrowser 依赖）不支持 SOCKS proxy，系统设置了 ALL_PROXY=socks://
+# 会让 cloakbrowser 的 wrapper update check 直接崩。启动时清掉 SOCKS env（保留 HTTP/HTTPS proxy）
+for _k in ('ALL_PROXY', 'all_proxy'):
+    os.environ.pop(_k, None)
+
 from flask import Flask, Response, g, jsonify, request, send_from_directory
 from flask_cors import CORS
 
@@ -68,7 +73,10 @@ from impl.settings import read_settings
 
 app = Flask(__name__)
 CORS(app)
-app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024
+# 视频/图片上传不限大小（用户 2026-06-10 明确要求）
+# 警告：当前 materials_bp.py:125 用 file.read() 一次性读入内存，超大文件会 OOM
+# 如未来需要处理 ≥10GB 文件，应改为流式写入（request.stream → storage.save_stream）
+app.config['MAX_CONTENT_LENGTH'] = None
 
 # SSE login status queues (keyed by account id)
 active_queues: dict[str, Queue] = {}
@@ -752,12 +760,29 @@ def _before_publish():
             account_path = account_list[0]
             account_name = data.get('accountName') or Path(account_path).stem or account_path
 
-        # account_configs 存：除了 fileList/accountList/type/thumbnail/scheduleTime/batchId/accountId/accountName 之外的所有字段
+        # [DEBUG 2026-06-10] 详细日志：把整个请求 body 的关键字段打印出来
+        logger.info(
+            "[/postVideo REQUEST] batchId=%s account=%s type=%s title=%s fileList=%s videoLandscape.id=%s videoPortrait.id=%s coverLandscape.id=%s coverPortrait.id=%s creationDeclaration=%s aiContent=%s isOriginal=%s",
+            batch_id, account_name, platform_type,
+            data.get('title', ''),
+            file_list,
+            (data.get('videoLandscape') or {}).get('id') if isinstance(data.get('videoLandscape'), dict) else data.get('videoLandscape'),
+            (data.get('videoPortrait') or {}).get('id') if isinstance(data.get('videoPortrait'), dict) else data.get('videoPortrait'),
+            (data.get('coverLandscape') or {}).get('id') if isinstance(data.get('coverLandscape'), dict) else data.get('coverLandscape'),
+            (data.get('coverPortrait') or {}).get('id') if isinstance(data.get('coverPortrait'), dict) else data.get('coverPortrait'),
+            data.get('creationDeclaration', ''),
+            data.get('aiContent', ''),
+            data.get('isOriginal', ''),
+        )
+
+        # account_configs 存：除了 fileList/accountList/type/thumbnail/batchId/accountId/accountName 之外的所有字段
         # 注意：videoMaterialId/landscapeCoverMaterialId/portraitCoverMaterialId 既写 batch 列，也写进 JSON（让 JSON 自包含）
         # 注意：thumbnailLandscape/thumbnailPortrait（抽帧封面路径）也存进 JSON，
         # 供 /api/v2/history 的 _resolve_cover_url 在 material_id 缺失时回退使用
+        # 注意：scheduleTime 现在也存进 JSON（spec §2.2 视频结构要求），
+        # publish_batches.schedule_time 仍是 batch 级聚合字段，两者并存不冲突
         excluded = {'fileList', 'accountList', 'type', 'thumbnail',
-                    'scheduleTime', 'batchId',
+                    'batchId',
                     'accountId', 'accountName'}
         account_configs = {k: v for k, v in data.items() if k not in excluded}
 

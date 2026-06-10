@@ -314,12 +314,40 @@ class TencentVideoPlatform(BasePlatform):
                 page.on("request", _on_tx_request)
 
                 # Step 1: Upload video file via input[type=file]
+                # [FIX 2026-06-10] 腾讯视频 SPA：networkidle 后还要等表单 JS 渲染完毕
+                # 之前在 networkidle 后直接找 input，找不到（form 还没渲染）
                 logger.info("Uploading video file: %s (exists=%s)", file_path, os.path.exists(file_path))
+                # 先等 publish form 渲染：找"上传视频"或上传区域的提示文字
+                try:
+                    await page.wait_for_selector(
+                        'text=上传视频, input[type="file"], [dt-mpid*="upload"], div[class*="uploadArea"], div[class*="Upload"]',
+                        timeout=15000,
+                    )
+                    logger.info("Publish form rendered, input area found")
+                except Exception as e:
+                    logger.warning("[DEBUG] Publish form wait timeout: %s", e)
+
+                # 用 attached 状态找 input（不要求 visible，hidden 的也行）
+                await page.wait_for_selector(
+                    'input[type="file"]',
+                    state='attached',
+                    timeout=15000,
+                )
                 file_input = page.locator('input[type="file"]').first
                 input_count = await page.locator('input[type="file"]').count()
                 logger.info("Found %d file input(s) on page", input_count)
                 if input_count == 0:
+                    # [DEBUG 2026-06-10] 把 page state 全 dump 出来排查
+                    current_url = page.url
+                    page_title = await page.title()
+                    body_text = (await page.locator('body').text_content() or '')[:500]
                     logger.error("No file input found, cannot upload video")
+                    logger.error("[DEBUG] current_url=%s page_title=%s body_excerpt=%s", current_url, page_title, body_text)
+                    try:
+                        html_excerpt = (await page.content())[:2000]
+                        logger.error("[DEBUG] html_excerpt=%s", html_excerpt)
+                    except Exception as e:
+                        logger.error("[DEBUG] failed to get html: %s", e)
                     raise Exception("未找到视频上传入口")
                 await file_input.set_input_files(file_path)
                 logger.info("Video file set, waiting for upload to complete...")

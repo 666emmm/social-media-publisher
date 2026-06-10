@@ -102,7 +102,7 @@ def _async_extract_thumb(material_id: str, source_path: str):
 
 @materials_bp.route("/upload", methods=["POST"])
 def upload():
-    """统一文件上传"""
+    """统一文件上传（流式：避免大文件 OOM）"""
     try:
         from storage import get_storage
 
@@ -117,23 +117,29 @@ def upload():
         now = datetime.now()
         relative_path = f"materials/{now.strftime('%Y/%m/%d')}/{file_id}{ext}"
 
-        print(f"[materials] 获取存储实例...")
         storage = get_storage()
-        print(f"[materials] 存储类型: {storage.type}")
-
-        print(f"[materials] 读取文件数据...")
-        file_data = file.read()
-        print(f"[materials] 文件大小: {len(file_data)} bytes")
-
-        print(f"[materials] 保存文件到存储...")
-        storage.save(file_data, relative_path)
-        print(f"[materials] 文件保存成功")
-
         mime_type = file.content_type or "application/octet-stream"
         file_type = _guess_file_type(mime_type, file.filename)
-        file_size = len(file_data)
 
-        print(f"[materials] 写入数据库...")
+        # 流式写入 + 累加大小（CHUNK_SIZE = 1MB）
+        CHUNK_SIZE = 1024 * 1024
+        total_size = 0
+
+        def chunk_iter():
+            nonlocal total_size
+            while True:
+                chunk = file.stream.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                yield chunk
+
+        print(f"[materials] 流式写入 {file.filename}...")
+        storage.save_stream(chunk_iter(), relative_path)
+        file_size = total_size
+        print(f"[materials] 写入完成: {file_size} bytes")
+
+        # 写 DB
         conn = _get_db()
         conn.execute(
             """INSERT INTO materials

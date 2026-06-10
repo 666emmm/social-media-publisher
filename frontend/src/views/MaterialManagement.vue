@@ -149,72 +149,15 @@
     </div>
 
     <!-- Upload Dialog -->
-    <el-dialog
+    <MaterialUploader
       v-model="uploadDialogVisible"
+      accept="*"
+      :multiple="true"
+      :max-count="20"
       title="上传素材"
-      width="40%"
-      @close="handleUploadDialogClose"
-      class="upload-dialog"
-    >
-      <div class="upload-form">
-        <el-form label-width="80px">
-          <el-form-item label="文件名称:">
-            <el-input
-              v-model="customFilename"
-              placeholder="选填 (仅单个文件时生效)"
-              :disabled="customFilenameDisabled"
-              clearable
-            />
-          </el-form-item>
-          <el-form-item label="选择文件">
-            <el-upload
-              class="upload-zone"
-              drag
-              multiple
-              :auto-upload="false"
-              :on-change="handleFileChange"
-              :on-remove="handleFileRemove"
-              :file-list="fileList"
-            >
-              <el-icon class="upload-zone-icon"><Upload /></el-icon>
-              <div class="upload-zone-text">
-                将文件拖到此处，或<em>点击上传</em>
-              </div>
-              <template #tip>
-                <div class="upload-zone-tip">
-                  支持视频、图片等格式文件，可一次选择多个文件
-                </div>
-              </template>
-            </el-upload>
-          </el-form-item>
-          <el-form-item label="上传列表" v-if="fileList.length > 0">
-            <div class="upload-file-list">
-              <div v-for="file in fileList" :key="file.uid" class="upload-file-item">
-                <div class="file-item-header">
-                  <span class="file-name">{{ file.name }}</span>
-                </div>
-                <el-progress
-                  :percentage="uploadProgress[file.uid]?.percentage || 0"
-                  :text-inside="true"
-                  :stroke-width="18"
-                  class="upload-progress"
-                >
-                  <span>{{ uploadProgress[file.uid]?.speed || '' }}</span>
-                </el-progress>
-              </div>
-            </div>
-          </el-form-item>
-        </el-form>
-      </div>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="uploadDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitUpload" :loading="isUploading">
-            {{ isUploading ? '上传中' : '确认上传' }}
-          </el-button>
-        </div>
-      </template>
-    </el-dialog>
+      tip="支持图片、视频，单文件不限大小"
+      @all-uploaded="onMaterialsUploaded"
+    />
 
     <!-- Preview Dialog -->
     <el-dialog
@@ -242,7 +185,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   Search,
   Refresh,
@@ -259,6 +202,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { materialsApi } from '@/api/materials'
 import { getFileUrl } from '@/utils/storage'
 import { useAppStore } from '@/stores/app'
+import MaterialUploader from '@/components/MaterialUploader.vue'
 
 const appStore = useAppStore()
 
@@ -286,15 +230,6 @@ const hasFilter = computed(
 const uploadDialogVisible = ref(false)
 const previewDialogVisible = ref(false)
 const currentMaterial = ref(null)
-
-// 文件上传
-const fileList = ref([])
-const customFilename = ref('')
-const customFilenameDisabled = computed(() => fileList.value.length > 1)
-const uploadProgress = ref({})
-const isUploading = ref(false)
-
-watch(fileList, () => {})
 
 function onSearchInput() {
   page.value = 1
@@ -387,85 +322,10 @@ function openPreview(mat) {
 
 // 上传素材
 function handleUploadMaterial() {
-  fileList.value = []
-  customFilename.value = ''
-  uploadProgress.value = {}
   uploadDialogVisible.value = true
 }
 
-function handleUploadDialogClose() {
-  fileList.value = []
-  customFilename.value = ''
-  uploadProgress.value = {}
-}
-
-function handleFileChange(file, uploadFileList) {
-  fileList.value = uploadFileList
-  const newProgress = {}
-  for (const f of uploadFileList) {
-    newProgress[f.uid] = { percentage: 0, speed: '' }
-  }
-  uploadProgress.value = newProgress
-}
-
-function handleFileRemove(file, uploadFileList) {
-  fileList.value = uploadFileList
-  const newProgress = { ...uploadProgress.value }
-  delete newProgress[file.uid]
-  uploadProgress.value = newProgress
-}
-
-async function submitUpload() {
-  if (fileList.value.length === 0) {
-    ElMessage.warning('请选择要上传的文件')
-    return
-  }
-  isUploading.value = true
-  for (const file of fileList.value) {
-    try {
-      if (!file || !file.raw) {
-        ElMessage.warning(`文件 ${file.name} 对象无效，已跳过`)
-        continue
-      }
-      const formData = new FormData()
-      formData.append('file', file.raw)
-      if (fileList.value.length === 1 && customFilename.value.trim()) {
-        formData.append('filename', customFilename.value.trim())
-      }
-      let lastLoaded = 0
-      let lastTime = Date.now()
-      const response = await materialsApi.upload(formData, (progressEvent) => {
-        const progressData = uploadProgress.value[file.uid]
-        if (!progressData) return
-        const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-        progressData.percentage = progress
-        const currentTime = Date.now()
-        const timeDiff = (currentTime - lastTime) / 1000
-        const loadedDiff = progressEvent.loaded - lastLoaded
-        if (timeDiff > 0.5) {
-          const speed = loadedDiff / timeDiff
-          if (speed > 1024 * 1024) {
-            progressData.speed = (speed / (1024 * 1024)).toFixed(2) + ' MB/s'
-          } else {
-            progressData.speed = (speed / 1024).toFixed(2) + ' KB/s'
-          }
-          lastLoaded = progressEvent.loaded
-          lastTime = currentTime
-        }
-      })
-      if (response.code === 200) {
-        ElMessage.success(`文件 ${file.name} 上传成功`)
-        const progressData = uploadProgress.value[file.uid]
-        if (progressData) progressData.speed = '完成'
-      } else {
-        ElMessage.error(`文件 ${file.name} 上传失败: ${response.msg || '未知错误'}`)
-      }
-    } catch (error) {
-      console.error(`上传文件 ${file.name} 出错:`, error)
-      ElMessage.error(`文件 ${file.name} 上传失败: ${error.message || '未知错误'}`)
-    }
-  }
-  isUploading.value = false
+async function onMaterialsUploaded() {
   await loadPage()
   // 同步 store（保持左侧菜单/发布界面等使用 store 的视图一致）
   materialsApi.list({ page_size: 200 }).then((r) => {
@@ -887,62 +747,6 @@ $danger: #ef4444;
       color: #fff !important;
     }
   }
-}
-
-// ========== Upload Dialog (保留原样式) ==========
-.upload-dialog {
-  :deep(.el-dialog) {
-    background: $bg-elevated;
-    border: 1px solid $border;
-    border-radius: $radius-dialog;
-  }
-  :deep(.el-dialog__header) {
-    border-bottom: 1px solid $border;
-    padding-bottom: 16px;
-  }
-  :deep(.el-dialog__title) { color: $text-primary; font-weight: 600; }
-  :deep(.el-dialog__body) { color: $text-secondary; }
-  :deep(.el-form-item__label) { color: $text-secondary; }
-}
-
-.upload-form {
-  .upload-zone {
-    width: 100%;
-    :deep(.el-upload) { width: 100%; }
-    :deep(.el-upload-dragger) {
-      background: rgba(255, 255, 255, 0.02);
-      border: 2px dashed rgba($brand-1, 0.3);
-      border-radius: $radius-card;
-      padding: 40px 20px;
-      transition: all $transition-base;
-      &:hover { border-color: rgba($brand-1, 0.6); background: rgba($brand-1, 0.03); }
-    }
-    .upload-zone-icon { font-size: 48px; color: $brand-1; margin-bottom: 12px; }
-    .upload-zone-text { color: $text-secondary; font-size: 14px; em { color: $brand-1; font-style: normal; } }
-    .upload-zone-tip { color: $text-muted; font-size: 12px; margin-top: 8px; text-align: center; }
-  }
-}
-
-.upload-file-list { width: 100%; }
-
-.upload-file-item {
-  border: 1px solid $border;
-  border-radius: $radius-base;
-  padding: 12px 16px;
-  margin-bottom: 10px;
-  background: $bg-elevated;
-  .file-item-header { margin-bottom: 8px; }
-  .file-name { font-size: 14px; color: $text-primary; font-weight: 500; }
-  .upload-progress {
-    :deep(.el-progress-bar__outer) { background: rgba(255, 255, 255, 0.06); border-radius: 9px; }
-    :deep(.el-progress-bar__inner) { background: $gradient-brand; border-radius: 9px; }
-  }
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
 }
 
 // ========== Preview Dialog ==========

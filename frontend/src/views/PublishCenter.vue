@@ -2,6 +2,7 @@
   <div class="publish-center">
     <!-- ========== LEFT SIDEBAR ========== -->
     <AccountSidebar
+      :mode="'edit'"
       :account-groups="accountGroups"
       :total-count="totalCount"
       :selected-platform="selectedPlatform"
@@ -54,6 +55,22 @@
             <div class="bar purple"></div>
             <span class="section-label">公共配置</span>
             <span class="hint">所有账号共享</span>
+            <template v-if="currentPlatformConfig">
+              <el-checkbox
+                v-model="platformChecked[selectedPlatform]"
+                @change="onPlatformCheckChange"
+              >
+                {{ currentPlatformConfig.name }} 渠道个性化
+              </el-checkbox>
+              <el-checkbox
+                v-if="selectedAccountId"
+                v-model="accountChecked[selectedAccountId]"
+                :disabled="!platformChecked[selectedPlatform]"
+                @change="onAccountCheckChange"
+              >
+                {{ getAccountName(selectedAccountId) }} 账号个性化
+              </el-checkbox>
+            </template>
           </div>
 
           <!-- Cover Section -->
@@ -63,16 +80,16 @@
               <CoverCard
                 label="竖版封面"
                 :ratio-label="appStore.portraitRatio"
-                v-model="commonConfig.coverPortrait"
-                :has-video="!!(commonConfig.videoPortrait || commonConfig.videoLandscape)"
+                v-model="currentEditTarget.coverPortrait"
+                :has-video="!!(currentEditTarget.videoPortrait || currentEditTarget.videoLandscape)"
                 @edit="openCoverEditor('portrait')"
                 @open-library="selectFromLibrary('cover', 'portrait')"
               />
               <CoverCard
                 label="横版封面"
                 :ratio-label="appStore.landscapeRatio"
-                v-model="commonConfig.coverLandscape"
-                :has-video="!!(commonConfig.videoPortrait || commonConfig.videoLandscape)"
+                v-model="currentEditTarget.coverLandscape"
+                :has-video="!!(currentEditTarget.videoPortrait || currentEditTarget.videoLandscape)"
                 @edit="openCoverEditor('landscape')"
                 @open-library="selectFromLibrary('cover', 'landscape')"
               />
@@ -81,73 +98,15 @@
 
           <CoverEditorDialog
             ref="coverEditorRef"
-            :video-landscape="commonConfig.videoLandscape"
-            :video-portrait="commonConfig.videoPortrait"
-            :cover-landscape="commonConfig.coverLandscape"
-            :cover-portrait="commonConfig.coverPortrait"
+            :video-landscape="editorSource.videoLandscape"
+            :video-portrait="editorSource.videoPortrait"
+            :cover-landscape="editorSource.coverLandscape"
+            :cover-portrait="editorSource.coverPortrait"
             :portrait-ratio="appStore.portraitRatio"
             :landscape-ratio="appStore.landscapeRatio"
-            @update:cover-landscape="commonConfig.coverLandscape = $event"
-            @update:cover-portrait="commonConfig.coverPortrait = $event"
+            @update:cover-landscape="onEditorUpdate({coverLandscape: $event})"
+            @update:cover-portrait="onEditorUpdate({coverPortrait: $event})"
           />
-
-          <!-- Batch title/description sync -->
-          <div class="batch-sync-section">
-            <div class="batch-sync-header" @click="batchSyncExpanded = !batchSyncExpanded">
-              <span>批量设置标题和描述</span>
-              <el-icon class="cursor-pointer">
-                <component :is="batchSyncExpanded ? ArrowDown : ArrowRight" />
-              </el-icon>
-            </div>
-            <div v-show="batchSyncExpanded" class="batch-sync-body">
-              <div class="form-field">
-                <div class="field-head">
-                  <span>公共标题</span>
-                </div>
-                <el-input
-                  v-model="batchTitle"
-                  placeholder="输入标题后点击同步..."
-                  maxlength="100"
-                />
-              </div>
-              <div class="form-field">
-                <div class="field-head">
-                  <span>公共描述</span>
-                </div>
-                <el-input
-                  v-model="batchDescription"
-                  type="textarea"
-                  :rows="5"
-                  placeholder="输入描述后点击同步..."
-                  maxlength="2000"
-                />
-              </div>
-              <div class="form-field">
-                <div class="field-head">
-                  <span>公共标签</span>
-                </div>
-                <el-input
-                  v-model="batchTagInput"
-                  placeholder="输入标签内容，按回车添加"
-                  @keyup.enter="addBatchTag"
-                  clearable
-                />
-                <div v-if="batchTags.length > 0" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
-                  <el-tag
-                    v-for="(t, i) in batchTags"
-                    :key="i"
-                    closable
-                    @close="batchTags.splice(i, 1)"
-                    size="small"
-                  >#{{ t }}</el-tag>
-                </div>
-              </div>
-              <button class="cover-action-btn primary" @click="syncBatchToAll">
-                <el-icon :size="15"><Promotion /></el-icon><span>同步到所有平台</span>
-              </button>
-            </div>
-          </div>
-
         </div>
 
         <!-- Divider -->
@@ -438,34 +397,15 @@
     />
 
     <!-- Video Upload Dialog -->
-    <el-dialog
+    <MaterialUploader
       v-model="videoUploadDialogVisible"
+      accept="video/*"
+      :max-size="null"
+      :multiple="false"
       :title="'上传' + (videoUploadTarget === 'portrait' ? '竖版' : '横版') + '视频'"
-      width="600px"
-      class="video-upload-dialog"
-    >
-      <el-upload
-        class="video-upload"
-        drag
-        :auto-upload="true"
-        :http-request="handleVideoUpload"
-        accept="video/*"
-      >
-        <el-icon class="el-icon--upload" :size="48"><Upload /></el-icon>
-        <div class="el-upload__text">
-          将视频文件拖到此处，或<em>点击上传</em>
-        </div>
-        <template #tip>
-          <div class="el-upload__tip">支持MP4、AVI等视频格式</div>
-        </template>
-      </el-upload>
-
-      <template #footer>
-        <div class="dialog-footer-right">
-          <el-button @click="videoUploadDialogVisible = false">关闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
+      tip="支持 MP4、AVI、MKV 等视频格式，不限大小"
+      @uploaded="onVideoUploaded"
+    />
 
     <!-- Material Library Dialog -->
     <MaterialSelectDialog
@@ -493,8 +433,8 @@
 
 <script setup>
 import { ref, reactive, computed, nextTick, watch, onMounted } from 'vue'
-import { Upload, ArrowDown, ArrowRight, Picture, VideoCameraFilled, Promotion, Delete, Document, WarningFilled, MagicStick } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { Upload, Picture, VideoCameraFilled, Delete, Document, WarningFilled, MagicStick } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
 import { materialsApi } from '@/api/materials'
@@ -509,6 +449,7 @@ import BatchPublishDialog from '@/components/BatchPublishDialog.vue'
 import CoverCard from '@/components/CoverCard.vue'
 import CoverEditorDialog from '@/components/CoverEditorDialog.vue'
 import MaterialSelectDialog from '@/components/MaterialSelectDialog.vue'
+import MaterialUploader from '@/components/MaterialUploader.vue'
 import OneClickFillDialog from '@/components/OneClickFillDialog.vue'
 import DouyinActivitySelect from '@/components/douyin/ActivitySelect.vue'
 import DouyinHotspotSelect from '@/components/douyin/HotspotSelect.vue'
@@ -551,7 +492,7 @@ const accountGroups = computed(() => {
 const totalCount = computed(() => accountStore.accounts.length)
 
 const currentVideoData = computed(() =>
-  videoModeTab.value === 'portrait' ? commonConfig.videoPortrait : commonConfig.videoLandscape
+  videoModeTab.value === 'portrait' ? currentEditTarget.value.videoPortrait : currentEditTarget.value.videoLandscape
 )
 
 const currentPlatformConfig = computed(() =>
@@ -565,6 +506,133 @@ const commonConfig = reactive({
   coverLandscape: null,
   coverPortrait: null,
 })
+
+// 平台级覆写（spec §3.3）—— 公共区域的媒体字段覆写
+const platformOverrides = reactive({})         // { [platformKey]: { coverPortrait, coverLandscape, videoPortrait, videoLandscape } }
+const platformChecked = reactive({})           // { [platformKey]: boolean }
+
+// 账号级覆写（accountOverrides 已在下方 line 631 声明）
+const accountChecked = reactive({})            // { [accountId]: boolean }
+
+// 当前编辑目标：公共区域 v-model / 编辑器 source/target 的实际绑定对象
+// 勾选账号 → accountOverrides[id]；勾选平台 → platformOverrides[key]；默认 → commonConfig
+const currentEditTarget = computed(() => {
+  const aid = selectedAccountId.value
+  if (aid && accountChecked[aid] && accountOverrides[aid]) return accountOverrides[aid]
+  const pk = selectedPlatform.value
+  if (pk && platformChecked[pk] && platformOverrides[pk]) return platformOverrides[pk]
+  return commonConfig
+})
+
+function hasPlatformOverrideContent(platformKey) {
+  const ov = platformOverrides[platformKey]
+  if (!ov) return false
+  return !!(
+    ov.coverPortrait || ov.coverLandscape ||
+    ov.videoPortrait  || ov.videoLandscape
+  )
+}
+
+function hasAccountOverrideContent(accountId) {
+  const ov = accountOverrides[accountId]
+  if (!ov) return false
+  return !!(
+    ov.coverPortrait || ov.coverLandscape ||
+    ov.videoPortrait  || ov.videoLandscape
+  )
+}
+
+// ========== Override Section: Interaction ==========
+
+function onPlatformCheckChange(checked) {
+  if (!checked && hasPlatformOverrideContent(selectedPlatform.value)) {
+    ElMessageBox.confirm(
+      '取消个性化配置后，本渠道的覆写将丢失，恢复使用公共默认，是否继续？',
+      '确认取消', { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
+    ).then(() => {
+      delete platformOverrides[selectedPlatform.value]
+    }).catch(() => {
+      platformChecked[selectedPlatform.value] = true
+    })
+  } else if (checked) {
+    platformOverrides[selectedPlatform.value] = {
+      coverPortrait: null, coverLandscape: null,
+      videoPortrait: null, videoLandscape: null,
+    }
+  }
+}
+
+function onAccountCheckChange(checked) {
+  if (!checked && hasAccountOverrideContent(selectedAccountId.value)) {
+    ElMessageBox.confirm(
+      '取消个性化配置后，本账号的覆写将丢失，恢复使用渠道默认，是否继续？',
+      '确认取消', { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
+    ).then(() => {
+      delete accountOverrides[selectedAccountId.value]
+    }).catch(() => {
+      accountChecked[selectedAccountId.value] = true
+    })
+  } else if (checked) {
+    accountOverrides[selectedAccountId.value] = {
+      coverPortrait: null, coverLandscape: null,
+      videoPortrait: null, videoLandscape: null,
+    }
+  }
+}
+
+// ========== 4 级优先级合并（spec §3.3） ==========
+// accountOv > platformOv > platformDefault > common
+function resolveAccountConfig(platformKey, accountId) {
+  const accountOv = (accountChecked[accountId] && accountOverrides[accountId]) || null
+  const platformOv = (platformChecked[platformKey] && platformOverrides[platformKey]) || null
+  const platformDefault = platformConfigs[platformKey] || null
+  return mergeConfig(commonConfig, platformDefault, platformOv, accountOv)
+}
+
+function mergeConfig(common, platformDefault, platformOv, accountOv) {
+  return {
+    // 文本字段仅从 platformDefault 取（覆写区不再含 title/desc/tags）
+    title: platformDefault?.title ?? '',
+    description: platformDefault?.description ?? '',
+    tags: platformDefault?.tags ?? [],
+    // 视频/封面走 4 级合并 → commonConfig 兜底
+    coverLandscape: accountOv?.coverLandscape ?? platformOv?.coverLandscape ?? common.coverLandscape,
+    coverPortrait:  accountOv?.coverPortrait  ?? platformOv?.coverPortrait  ?? common.coverPortrait,
+    videoLandscape: accountOv?.videoLandscape ?? platformOv?.videoLandscape ?? common.videoLandscape,
+    videoPortrait:  accountOv?.videoPortrait  ?? platformOv?.videoPortrait  ?? common.videoPortrait,
+    // 平台特有字段走 platformDefault 兜底
+    videoFormat: accountOv?.videoFormat ?? platformOv?.videoFormat ?? platformDefault?.videoFormat ?? '',
+    enableTimer: accountOv?.enableTimer ?? platformOv?.enableTimer ?? platformDefault?.enableTimer ?? 0,
+    scheduleTime: accountOv?.scheduleTime ?? platformOv?.scheduleTime ?? platformDefault?.scheduleTime ?? '',
+    aiContent: accountOv?.aiContent ?? platformOv?.aiContent ?? platformDefault?.aiContent ?? '',
+    isOriginal: accountOv?.isOriginal ?? platformOv?.isOriginal ?? platformDefault?.isOriginal ?? false,
+    // 平台作品声明 / 风险提示 / 活动等（来自 platformConfigs 渠道默认，覆写区不覆盖）
+    creationDeclaration: platformDefault?.creationDeclaration,
+    riskWarning: platformDefault?.riskWarning,
+    enableCashActivity: platformDefault?.enableCashActivity,
+    supplementaryDeclaration: platformDefault?.supplementaryDeclaration,
+    audience: platformDefault?.audience,
+    alteredContent: platformDefault?.alteredContent,
+  }
+}
+
+// ========== Override Section: CoverEditor source/target ==========
+// 公共区域的 CoverEditor 永远跟随 currentEditTarget（默认=commonConfig, 勾选时=覆写对象）
+const editorSource = computed(() => {
+  const t = currentEditTarget.value
+  return {
+    videoLandscape: t?.videoLandscape,
+    videoPortrait:  t?.videoPortrait,
+    coverLandscape: t?.coverLandscape,
+    coverPortrait:  t?.coverPortrait,
+  }
+})
+
+function onEditorUpdate({ coverLandscape, coverPortrait }) {
+  const t = currentEditTarget.value
+  if (coverLandscape) t.coverLandscape = coverLandscape
+  if (coverPortrait)  t.coverPortrait  = coverPortrait
+}
 
 // Cover editor
 const coverEditorRef = ref(null)
@@ -691,11 +759,15 @@ watch(form, (newVal) => {
         diff[key] = newVal[key]
       }
     }
+    // 用 merge 而不是 replace：保留已上传的视频/封面/图片等媒体字段
+    // （这些字段不在 form 里，diff 不会包含它们）
+    const existing = accountOverrides[selectedAccountId.value]
     if (Object.keys(diff).length > 0) {
-      accountOverrides[selectedAccountId.value] = { ...diff }
-    } else {
-      delete accountOverrides[selectedAccountId.value]
+      accountOverrides[selectedAccountId.value] = existing
+        ? { ...existing, ...diff }
+        : { ...diff }
     }
+    // diff 为空时不要 delete！媒体字段可能还在
   } else {
     for (const key of Object.keys(newVal)) {
       platform[key] = newVal[key]
@@ -790,34 +862,6 @@ function handleDouyinMixChange(mix) {
   }
 }
 
-// ========== Batch sync ==========
-const batchTitle = ref('')
-const batchDescription = ref('')
-const batchTagInput = ref('')
-const batchTags = ref([])
-
-function addBatchTag() {
-  const tag = batchTagInput.value.trim()
-  if (!tag) return
-  if (batchTags.value.includes(tag)) {
-    ElMessage.warning('标签已存在')
-    return
-  }
-  batchTags.value.push(tag)
-  batchTagInput.value = ''
-}
-
-function syncBatchToAll() {
-  for (const key of Object.keys(platformConfigs)) {
-    if (batchTitle.value) platformConfigs[key].title = batchTitle.value
-    if (batchDescription.value) platformConfigs[key].description = batchDescription.value
-    if (batchTags.value.length > 0) platformConfigs[key].tags = [...batchTags.value]
-  }
-  ElMessage.success('已同步到所有平台')
-}
-
-const batchSyncExpanded = ref(false)
-
 // ========== Init ==========
 const firstGroup = accountGroups.value.find(g => g.accounts.length > 0)
 if (firstGroup) {
@@ -887,8 +931,8 @@ function triggerUploadVideo(target = 'landscape') {
 }
 
 function clearVideo(type) {
-  if (type === 'landscape') commonConfig.videoLandscape = null
-  else commonConfig.videoPortrait = null
+  if (type === 'landscape') currentEditTarget.value.videoLandscape = null
+  else currentEditTarget.value.videoPortrait = null
 }
 
 // ========== Cover Editor ==========
@@ -926,57 +970,44 @@ function pickRecommendedFrames(frames, count) {
   return result
 }
 
-async function handleVideoUpload(options) {
-  const file = options.file
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    const resp = await materialsApi.upload(formData)
-    if (resp.code === 200) {
-      const d = resp.data
-      const videoData = {
-        id: d.id,
-        name: d.original_filename,
-        url: getFileUrl(d.stored_path),
-        stored_path: d.stored_path,
-        size: d.file_size,
-        type: d.mime_type,
-      }
-      if (videoUploadTarget.value === 'portrait') {
-        commonConfig.videoPortrait = videoData
-      } else {
-        commonConfig.videoLandscape = videoData
-      }
-      videoUploadDialogVisible.value = false
-      ElMessage.success('视频上传成功')
-      if (appStore.autoFillTitle) {
-        const title = file.name.replace(/\.[^.]+$/, '')
-        for (const key of Object.keys(platformConfigs)) {
-          platformConfigs[key].title = title
-        }
-        for (const group of accountGroups.value) {
-          for (const account of group.accounts) {
-            if (accountOverrides[account.id]?.title) {
-              accountOverrides[account.id].title = title
-            }
-          }
-        }
-        if (selectedPlatform.value) {
-          const accountId = selectedAccountId.value
-          if (accountId && accountOverrides[accountId]?.title) {
-            form.title = accountOverrides[accountId].title
-          } else if (platformConfigs[selectedPlatform.value]) {
-            form.title = platformConfigs[selectedPlatform.value].title
-          }
-        }
-      }
-      triggerFrameExtraction(videoData, videoUploadTarget.value)
-    } else {
-      options.onError(new Error(resp.msg || '上传失败'))
-    }
-  } catch (error) {
-    options.onError(error)
+async function onVideoUploaded(d) {
+  const videoData = {
+    id: d.id,
+    name: d.original_filename,
+    url: getFileUrl(d.stored_path),
+    stored_path: d.stored_path,
+    size: d.file_size,
+    type: d.mime_type,
   }
+  if (videoUploadTarget.value === 'portrait') {
+    currentEditTarget.value.videoPortrait = videoData
+  } else {
+    currentEditTarget.value.videoLandscape = videoData
+  }
+  videoUploadDialogVisible.value = false
+  ElMessage.success('视频上传成功')
+  if (appStore.autoFillTitle) {
+    const title = videoData.name.replace(/\.[^.]+$/, '')
+    if (selectedAccountId.value && accountChecked[selectedAccountId.value]) {
+      // 账号级别：只更新 form.title（form watcher 会把 diff 写到 accountOverrides）
+      form.title = title
+    } else if (selectedPlatform.value && platformChecked[selectedPlatform.value]) {
+      // 渠道级别：只更新当前渠道的 title
+      if (platformConfigs[selectedPlatform.value]) {
+        platformConfigs[selectedPlatform.value].title = title
+        form.title = title
+      }
+    } else {
+      // 公共：同步所有渠道（原逻辑）
+      for (const key of Object.keys(platformConfigs)) {
+        platformConfigs[key].title = title
+      }
+      if (selectedPlatform.value && platformConfigs[selectedPlatform.value]) {
+        form.title = platformConfigs[selectedPlatform.value].title
+      }
+    }
+  }
+  triggerFrameExtraction(videoData, videoUploadTarget.value)
 }
 
 // ========== Material Library ==========
@@ -997,34 +1028,40 @@ async function selectFromLibrary(mode = 'video', videoOrCoverTarget = 'landscape
 }
 
 function onMaterialSelect(material) {
+  // 公共区域选素材：写入 currentEditTarget（默认=commonConfig, 勾选=覆写对象）
   if (materialLibraryMode.value === 'cover') {
     if (materialLibraryCoverTarget.value === 'portrait') {
-      commonConfig.coverPortrait = material
+      currentEditTarget.value.coverPortrait = material
     } else {
-      commonConfig.coverLandscape = material
+      currentEditTarget.value.coverLandscape = material
     }
     ElMessage.success('封面已设置')
   } else {
     if (materialLibraryVideoTarget.value === 'portrait') {
-      commonConfig.videoPortrait = material
+      currentEditTarget.value.videoPortrait = material
     } else {
-      commonConfig.videoLandscape = material
+      currentEditTarget.value.videoLandscape = material
     }
     ElMessage.success('视频已设置')
     if (appStore.autoFillTitle) {
       const title = material.name.replace(/\.[^.]+$/, '')
-      for (const key of Object.keys(platformConfigs)) {
-        platformConfigs[key].title = title
-      }
-      for (const group of accountGroups.value) {
-        for (const account of group.accounts) {
-          if (accountOverrides[account.id]?.title) {
-            accountOverrides[account.id].title = title
-          }
+      if (selectedAccountId.value && accountChecked[selectedAccountId.value]) {
+        // 账号级别：只更新 form.title（form watcher 会写到 accountOverrides）
+        form.title = title
+      } else if (selectedPlatform.value && platformChecked[selectedPlatform.value]) {
+        // 渠道级别：只更新当前渠道
+        if (platformConfigs[selectedPlatform.value]) {
+          platformConfigs[selectedPlatform.value].title = title
+          form.title = title
         }
-      }
-      if (selectedPlatform.value && platformConfigs[selectedPlatform.value]) {
-        form.title = platformConfigs[selectedPlatform.value].title
+      } else {
+        // 公共：同步所有渠道
+        for (const key of Object.keys(platformConfigs)) {
+          platformConfigs[key].title = title
+        }
+        if (selectedPlatform.value && platformConfigs[selectedPlatform.value]) {
+          form.title = platformConfigs[selectedPlatform.value].title
+        }
       }
     }
     triggerFrameExtraction(material, materialLibraryVideoTarget.value)
@@ -1059,14 +1096,17 @@ async function saveDraft() {
           ? { id: commonConfig.videoPortrait.id, name: commonConfig.videoPortrait.name, stored_path: commonConfig.videoPortrait.stored_path, url: commonConfig.videoPortrait.url, size: commonConfig.videoPortrait.size, type: commonConfig.videoPortrait.type }
           : null,
         coverLandscape: commonConfig.coverLandscape
-          ? { name: commonConfig.coverLandscape.name, stored_path: commonConfig.coverLandscape.stored_path, url: commonConfig.coverLandscape.url, size: commonConfig.coverLandscape.size, type: commonConfig.coverLandscape.type, _fromFrame: commonConfig.coverLandscape._fromFrame }
+          ? { id: commonConfig.coverLandscape.id, name: commonConfig.coverLandscape.name, stored_path: commonConfig.coverLandscape.stored_path, url: commonConfig.coverLandscape.url, size: commonConfig.coverLandscape.size, type: commonConfig.coverLandscape.type, _fromFrame: commonConfig.coverLandscape._fromFrame }
           : null,
         coverPortrait: commonConfig.coverPortrait
-          ? { name: commonConfig.coverPortrait.name, stored_path: commonConfig.coverPortrait.stored_path, url: commonConfig.coverPortrait.url, size: commonConfig.coverPortrait.size, type: commonConfig.coverPortrait.type, _fromFrame: commonConfig.coverPortrait._fromFrame }
+          ? { id: commonConfig.coverPortrait.id, name: commonConfig.coverPortrait.name, stored_path: commonConfig.coverPortrait.stored_path, url: commonConfig.coverPortrait.url, size: commonConfig.coverPortrait.size, type: commonConfig.coverPortrait.type, _fromFrame: commonConfig.coverPortrait._fromFrame }
           : null,
       },
       platformConfigs: JSON.parse(JSON.stringify(platformConfigs)),
+      platformOverrides: JSON.parse(JSON.stringify(platformOverrides)),
       accountOverrides: JSON.parse(JSON.stringify(accountOverrides)),
+      platformChecked: { ...platformChecked },
+      accountChecked: { ...accountChecked },
       publishAccountIds: [...publishAccountIds],
       selectedPlatform: selectedPlatform.value,
       selectedAccountId: selectedAccountId.value,
@@ -1168,6 +1208,21 @@ async function restoreDraft(draftId) {
       Object.assign(accountOverrides, dd.accountOverrides)
     }
 
+    if (dd.platformOverrides) {
+      Object.keys(platformOverrides).forEach(k => delete platformOverrides[k])
+      Object.assign(platformOverrides, dd.platformOverrides)
+    }
+
+    if (dd.platformChecked) {
+      Object.keys(platformChecked).forEach(k => delete platformChecked[k])
+      Object.assign(platformChecked, dd.platformChecked)
+    }
+
+    if (dd.accountChecked) {
+      Object.keys(accountChecked).forEach(k => delete accountChecked[k])
+      Object.assign(accountChecked, dd.accountChecked)
+    }
+
     if (dd.publishAccountIds) {
       publishAccountIds.clear()
       dd.publishAccountIds.forEach(id => publishAccountIds.add(id))
@@ -1245,21 +1300,15 @@ async function publishAll() {
 
   for (const group of accountGroups.value) {
     if (group.accounts.length === 0) continue
-    const pSettings = platformConfigs[group.key] || {}
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      const accountOverride = accountOverrides[account.id]
-      const mergedSettings = accountOverride && Object.keys(accountOverride).length > 0
-        ? { ...pSettings, ...Object.fromEntries(
-            Object.entries(accountOverride).filter(([_, v]) => v !== undefined && v !== '' && v !== false)
-          )}
-        : { ...pSettings }
+      const merged = resolveAccountConfig(group.key, account.id)
       const platformKey = group.key
       const declFields = DECLARATION_PLATFORMS[platformKey]
       if (!declFields) continue
       const fields = Array.isArray(declFields) ? declFields : [declFields]
       for (const field of fields) {
-        const value = mergedSettings[field]
+        const value = merged[field]
         const isEmpty = Array.isArray(value)
           ? value.length === 0
           : (typeof value === 'boolean' ? value === null || value === undefined : (!value && value !== 0))
@@ -1278,13 +1327,10 @@ async function publishAll() {
   const accountsWithoutTitle = []
   for (const group of accountGroups.value) {
     if (group.accounts.length === 0) continue
-    const pSettings = platformConfigs[group.key] || {}
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      const accountOverride = accountOverrides[account.id]
-      const mergedTitle = (accountOverride && accountOverride.title)
-        || pSettings.title
-      if (!mergedTitle || !mergedTitle.trim()) {
+      const merged = resolveAccountConfig(group.key, account.id)
+      if (!merged.title || !merged.title.trim()) {
         accountsWithoutTitle.push(`${account.name}(${group.name})`)
       }
     }
@@ -1297,13 +1343,10 @@ async function publishAll() {
   const accountsWithoutVideoFormat = []
   for (const group of accountGroups.value) {
     if (group.accounts.length === 0) continue
-    const pSettings = platformConfigs[group.key] || {}
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      const accountOverride = accountOverrides[account.id]
-      const mergedFormat = (accountOverride && accountOverride.videoFormat)
-        || pSettings.videoFormat
-      if (!mergedFormat) {
+      const merged = resolveAccountConfig(group.key, account.id)
+      if (!merged.videoFormat) {
         accountsWithoutVideoFormat.push(`${account.name}(${group.name})`)
       }
     }
@@ -1333,16 +1376,13 @@ async function publishAll() {
   const allTasks = []
   for (const group of accountGroups.value) {
     if (group.accounts.length === 0) continue
-    const pSettings = platformConfigs[group.key] || {}
     for (const account of group.accounts) {
       if (!publishAccountIds.has(account.id)) continue
-      const accountOverride = accountOverrides[account.id]
-      const mergedSettings = accountOverride && Object.keys(accountOverride).length > 0
-        ? { ...pSettings, ...Object.fromEntries(
-            Object.entries(accountOverride).filter(([_, v]) => v !== undefined && v !== '' && v !== false)
-          )}
-        : { ...pSettings }
-      allTasks.push({ account, group, platformSettings: mergedSettings })
+      // 4 级优先级合并：accountOv > platformOv > platformDefault > common
+      const merged = resolveAccountConfig(group.key, account.id)
+      // 平台特有字段（mergeConfig 未覆盖的）仍取 platformConfigs 兜底
+      const pSettings = platformConfigs[group.key] || {}
+      allTasks.push({ account, group, merged, platformSettings: pSettings })
     }
   }
 
@@ -1369,20 +1409,23 @@ async function publishAll() {
       continue
     }
 
-    const { account, group, platformSettings } = allTasks[i]
+    const { account, group, merged, platformSettings } = allTasks[i]
     currentPublishingAccount.value = account.name
     publishProgress.value = Math.floor((i / allTasks.length) * 100)
 
-    const videoFormat = platformSettings.videoFormat || ''
+    const videoFormat = merged.videoFormat || ''
 
     let selectedVideo
     if (videoFormat === 'portrait') {
-      selectedVideo = commonConfig.videoPortrait
+      selectedVideo = merged.videoPortrait || commonConfig.videoPortrait
     } else if (videoFormat === 'landscape') {
-      selectedVideo = commonConfig.videoLandscape
+      selectedVideo = merged.videoLandscape || commonConfig.videoLandscape
     } else {
-      selectedVideo = commonConfig.videoLandscape || commonConfig.videoPortrait
+      selectedVideo = merged.videoLandscape || commonConfig.videoLandscape || merged.videoPortrait || commonConfig.videoPortrait
     }
+
+    // [DEBUG 2026-06-10] 详细日志：把 4 级合并后的视频相关字段都打出来
+    console.log('[PublishCenter.publish.account] account=' + account.name + ' platform=' + group.key + ' videoFormat=' + videoFormat + ' merged.videoLandscape.id=' + (merged.videoLandscape && merged.videoLandscape.id) + ' merged.videoPortrait.id=' + (merged.videoPortrait && merged.videoPortrait.id) + ' commonConfig.videoLandscape.id=' + (commonConfig.videoLandscape && commonConfig.videoLandscape.id) + ' commonConfig.videoPortrait.id=' + (commonConfig.videoPortrait && commonConfig.videoPortrait.id) + ' selectedVideo.id=' + (selectedVideo && selectedVideo.id))
 
     if (!selectedVideo) {
         publishResults.value.push({
@@ -1394,25 +1437,28 @@ async function publishAll() {
       }
 
     try {
-      const tags = platformSettings.tags || []
+      const tags = merged.tags || []
+      // 封面走 4 级合并（merged.coverLandscape/Portrait），common 兜底
+      const thumbnailLandscapeMaterial = merged.coverLandscape || commonConfig.coverLandscape
+      const thumbnailPortraitMaterial = merged.coverPortrait || commonConfig.coverPortrait
 
       const publishData = {
         type: group.id,
-        title: platformSettings.title,
-        description: platformSettings.description || '',
+        title: merged.title,
+        description: merged.description || '',
         tags: tags,
         activities: platformSettings.activityId || [],
         fileList: [selectedVideo.stored_path],
         videoFormat: videoFormat,
         accountList: [account.filePath],
-        thumbnailLandscape: commonConfig.coverLandscape ? commonConfig.coverLandscape.stored_path : '',
-        thumbnailPortrait: commonConfig.coverPortrait ? commonConfig.coverPortrait.stored_path : '',
-        enableTimer: platformSettings.scheduleTime ? 1 : 0,
-        scheduleTime: platformSettings.scheduleTime || '',
+        thumbnailLandscape: thumbnailLandscapeMaterial ? thumbnailLandscapeMaterial.stored_path : '',
+        thumbnailPortrait: thumbnailPortraitMaterial ? thumbnailPortraitMaterial.stored_path : '',
+        enableTimer: merged.scheduleTime ? 1 : 0,
+        scheduleTime: merged.scheduleTime || '',
         videosPerDay: 1,
         dailyTimes: ['10:00'],
         startDays: 0,
-        category: platformSettings.zone || (platformSettings.isOriginal ? 1 : 0),
+        category: platformSettings.zone || (merged.isOriginal ? 1 : 0),
         // Douyin-specific fields
         hotspot: platformSettings.hotspotId || '',
         tag_type: platformSettings.tagType || '',
@@ -1421,22 +1467,30 @@ async function publishAll() {
         mix_id: platformSettings.mixId || '',
         // Other platform fields
         isDraft: platformSettings.isDraft || false,
-        aiContent: platformSettings.aiContent || '',
-        creationDeclaration: Array.isArray(platformSettings.creationDeclaration)
-          ? platformSettings.creationDeclaration.join(',')
-          : platformSettings.creationDeclaration || '',
-        riskWarning: platformSettings.riskWarning || '',
-        enableCashActivity: platformSettings.enableCashActivity || false,
-        audience: platformSettings.audience || 'not_kids',
-        alteredContent: platformSettings.alteredContent || false,
+        aiContent: merged.aiContent || '',
+        // creationDeclaration 走 merged（已含 platformDefault 兜底）
+        creationDeclaration: Array.isArray(merged.creationDeclaration)
+          ? merged.creationDeclaration.join(',')
+          : merged.creationDeclaration || '',
+        riskWarning: merged.riskWarning || '',
+        enableCashActivity: merged.enableCashActivity || false,
+        audience: merged.audience || 'not_kids',
+        alteredContent: merged.alteredContent || false,
         // Task 12：本次一键发布的批次与素材 ID
         batchId,
         videoMaterialId,
         landscapeCoverMaterialId,
         portraitCoverMaterialId,
         accountId: account.id,
+        // Task 7：透传 4 级合并后的素材对象（供后端持久化到 account_configs JSON，符合 spec §3.3）
+        coverLandscape: thumbnailLandscapeMaterial,
+        coverPortrait: thumbnailPortraitMaterial,
+        videoLandscape: merged.videoLandscape,
+        videoPortrait: merged.videoPortrait,
       }
 
+      // [DEBUG 2026-06-10] 详细日志：把要发的 publishData 关键字段打印
+      console.log('[PublishCenter.publish] account=' + account.name + ' platform=' + group.key + ' fileList=' + JSON.stringify(publishData.fileList) + ' videoLandscape.id=' + (publishData.videoLandscape && publishData.videoLandscape.id) + ' videoPortrait.id=' + (publishData.videoPortrait && publishData.videoPortrait.id) + ' coverLandscape.id=' + (publishData.coverLandscape && publishData.coverLandscape.id) + ' coverPortrait.id=' + (publishData.coverPortrait && publishData.coverPortrait.id) + ' creationDeclaration=' + publishData.creationDeclaration + ' aiContent=' + publishData.aiContent)
       await http.post('/postVideo', publishData)
       publishResults.value.push({
         label: account.name,

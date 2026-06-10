@@ -2,6 +2,7 @@
   <div class="publish-center">
     <!-- ========== LEFT SIDEBAR ========== -->
     <AccountSidebar
+      :mode="'edit'"
       :account-groups="accountGroups"
       :total-count="totalCount"
       :selected-platform="selectedPlatform"

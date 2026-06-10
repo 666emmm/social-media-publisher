@@ -1281,8 +1281,21 @@ async function publishAll() {
     return
   }
 
-  if (!commonConfig.coverLandscape && !commonConfig.coverPortrait) {
-    ElMessage.error('请先设置封面图片')
+  const hasAnyCover = (() => {
+    if (commonConfig.coverLandscape || commonConfig.coverPortrait) return true
+    for (const aid of publishAccountIds) {
+      const ov = accountOverrides[aid]
+      if (ov && (ov.coverLandscape || ov.coverPortrait)) return true
+    }
+    for (const pkey of Object.keys(platformOverrides)) {
+      const pov = platformOverrides[pkey]
+      if (pov && (pov.coverLandscape || pov.coverPortrait)) return true
+    }
+    return false
+  })()
+
+  if (!hasAnyCover) {
+    ElMessage.error('请先设置封面图片（公共区域、渠道个性化或账号个性化任一处）')
     return
   }
 
@@ -1436,11 +1449,22 @@ async function publishAll() {
         continue
       }
 
+    // 封面走 4 级合并（merged.coverLandscape/Portrait），common 兜底
+    const thumbnailLandscapeMaterial = merged.coverLandscape || commonConfig.coverLandscape
+    const thumbnailPortraitMaterial = merged.coverPortrait || commonConfig.coverPortrait
+
+    // 校验每个账号的 merged 封面是否齐
+    if (!thumbnailLandscapeMaterial && !thumbnailPortraitMaterial) {
+      publishResults.value.push({
+        label: account.name,
+        status: 'error',
+        message: `缺少封面（${videoFormat === 'portrait' ? '竖版' : '横版'}），请在公共区域或账号个性化处上传`,
+      })
+      continue
+    }
+
     try {
       const tags = merged.tags || []
-      // 封面走 4 级合并（merged.coverLandscape/Portrait），common 兜底
-      const thumbnailLandscapeMaterial = merged.coverLandscape || commonConfig.coverLandscape
-      const thumbnailPortraitMaterial = merged.coverPortrait || commonConfig.coverPortrait
 
       const publishData = {
         type: group.id,

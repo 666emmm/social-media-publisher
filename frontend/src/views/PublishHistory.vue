@@ -132,7 +132,7 @@
             <span class="status-tag" :class="`status-${batch.status}`">{{ statusLabel(batch.status) }}</span>
           </div>
           <div class="card-stats">
-            <PublishStats />
+            <PublishStats compact />
           </div>
         </div>
       </div>

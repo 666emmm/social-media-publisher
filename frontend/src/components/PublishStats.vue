@@ -1,12 +1,15 @@
 <template>
-  <div class="publish-stats">
+  <div :class="['publish-stats', { 'publish-stats--compact': compact }]">
     <div
       v-for="item in metrics"
       :key="item.key"
       class="stat-item"
       :class="[
         `stat-item--${item.theme}`,
-        { 'stat-item--placeholder': isPlaceholder(item.value) },
+        {
+          'stat-item--placeholder': isPlaceholder(item.value),
+          'stat-item--compact': compact,
+        },
       ]"
     >
       <el-tooltip
@@ -14,8 +17,8 @@
         placement="top"
         :disabled="false"
       >
-        <div class="stat-inner">
-          <el-icon class="stat-icon" :size="16">
+        <div :class="['stat-inner', { 'stat-inner--compact': compact }]">
+          <el-icon class="stat-icon" :size="compact ? 13 : 16">
             <component :is="item.icon" />
           </el-icon>
           <span class="stat-label">{{ item.label }}</span>
@@ -30,6 +33,7 @@
 import { VideoPlay, Star, Collection, ChatLineRound } from '@element-plus/icons-vue'
 
 const props = defineProps({
+  compact: { type: Boolean, default: false },
   views: { type: [Number, String, null], default: null },
   likes: { type: [Number, String, null], default: null },
   favorites: { type: [Number, String, null], default: null },
@@ -64,6 +68,10 @@ function isPlaceholder(v) {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+
+  &--compact {
+    gap: 6px;
+  }
 }
 
 .stat-item {
@@ -78,6 +86,17 @@ function isPlaceholder(v) {
     border-color: $border-active;
     background: rgba(255, 255, 255, 0.04);
   }
+
+  &--compact {
+    padding: 8px 4px;
+    border-color: transparent;
+    background: transparent;
+
+    &:hover {
+      border-color: $border-light;
+      background: rgba(255, 255, 255, 0.02);
+    }
+  }
 }
 
 // 4 个主题色（基于项目已有 platform/accent 调色板，轻量区分）
@@ -87,6 +106,10 @@ function isPlaceholder(v) {
   .stat-icon {
     color: $platform-channels;
   }
+
+  &.stat-item--compact {
+    background: linear-gradient(135deg, rgba($platform-channels, 0.04), rgba(255, 255, 255, 0.01));
+  }
 }
 
 .stat-item--rose {
@@ -94,6 +117,10 @@ function isPlaceholder(v) {
 
   .stat-icon {
     color: $accent-rose;
+  }
+
+  &.stat-item--compact {
+    background: linear-gradient(135deg, rgba($accent-rose, 0.04), rgba(255, 255, 255, 0.01));
   }
 }
 
@@ -103,6 +130,10 @@ function isPlaceholder(v) {
   .stat-icon {
     color: $accent-cyan;
   }
+
+  &.stat-item--compact {
+    background: linear-gradient(135deg, rgba($accent-cyan, 0.04), rgba(255, 255, 255, 0.01));
+  }
 }
 
 .stat-item--green {
@@ -110,6 +141,10 @@ function isPlaceholder(v) {
 
   .stat-icon {
     color: $accent-green;
+  }
+
+  &.stat-item--compact {
+    background: linear-gradient(135deg, rgba($accent-green, 0.04), rgba(255, 255, 255, 0.01));
   }
 }
 
@@ -128,16 +163,32 @@ function isPlaceholder(v) {
   display: flex;
   align-items: center;
   gap: 8px;
+
+  &--compact {
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
 }
 
 .stat-icon {
   flex-shrink: 0;
+
+  .stat-item--compact & {
+    font-size: 13px;
+  }
 }
 
 .stat-label {
   font-size: 12px;
   color: $text-muted;
   flex: 1;
+
+  .stat-item--compact & {
+    flex: none;
+    font-size: 10px;
+    line-height: 1.2;
+  }
 }
 
 .stat-value {
@@ -145,5 +196,9 @@ function isPlaceholder(v) {
   font-weight: 600;
   color: $text-primary;
   font-variant-numeric: tabular-nums;
+
+  .stat-item--compact & {
+    font-size: 12px;
+  }
 }
 </style>

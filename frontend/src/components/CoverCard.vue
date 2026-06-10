@@ -27,7 +27,7 @@
       </div>
 
       <!-- No cover yet -->
-      <div v-else class="cover-empty" @click="$emit('edit')">
+      <div v-else class="cover-empty" @click="uploaderVisible = true">
         <div class="cover-empty-icon">
           <el-icon :size="28"><Picture /></el-icon>
         </div>
@@ -37,15 +37,23 @@
     </div>
   </div>
 
-  <input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="onFileSelected" />
+  <MaterialUploader
+    v-model="uploaderVisible"
+    accept="image/*"
+    :max-size="10"
+    :multiple="false"
+    :title="`上传${label}`"
+    tip="支持 JPG、PNG、WebP 格式，单文件不超过 10MB"
+    @uploaded="onUploaded"
+  />
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Picture, Upload, Edit, Delete } from '@element-plus/icons-vue'
-import { materialsApi } from '@/api/materials'
+import { Picture, Edit, Delete } from '@element-plus/icons-vue'
 import { getFileUrl } from '@/utils/storage'
+import MaterialUploader from '@/components/MaterialUploader.vue'
 
 const props = defineProps({
   label: { type: String, default: '横版封面' },
@@ -55,37 +63,18 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'edit', 'open-library'])
-const fileInputRef = ref(null)
+const uploaderVisible = ref(false)
 
-function triggerUpload() {
-  fileInputRef.value?.click()
-}
-
-async function onFileSelected(e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    const resp = await materialsApi.upload(formData)
-    if (resp.code === 200) {
-      const d = resp.data
-      emit('update:modelValue', {
-        id: d.id,                                                       // 修复：与视频上传保持一致，带上 id（之前漏了导致草稿恢复后 id 丢失，腾讯视频等平台需要 id 定位封面）
-        name: d.original_filename,
-        url: getFileUrl(d.stored_path),
-        stored_path: d.stored_path,
-        size: d.file_size,
-        type: d.mime_type,
-      })
-      ElMessage.success('封面上传成功')
-    } else {
-      ElMessage.error(resp.msg || '上传失败')
-    }
-  } catch {
-    ElMessage.error('上传失败')
-  }
-  e.target.value = ''
+function onUploaded(d) {
+  emit('update:modelValue', {
+    id: d.id,                                                       // 修复：与视频上传保持一致，带上 id（之前漏了导致草稿恢复后 id 丢失，腾讯视频等平台需要 id 定位封面）
+    name: d.original_filename,
+    url: getFileUrl(d.stored_path),
+    stored_path: d.stored_path,
+    size: d.file_size,
+    type: d.mime_type,
+  })
+  ElMessage.success('封面上传成功')
 }
 </script>
 

@@ -16,6 +16,15 @@ class LocalStorage(StorageBackend):
         full_path.write_bytes(file_data)
         return relative_path
 
+    def save_stream(self, stream_iter, relative_path: str) -> str:
+        full_path = self.base_dir / relative_path
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(full_path, 'wb') as f:
+            for chunk in stream_iter:
+                if chunk:
+                    f.write(chunk)
+        return relative_path
+
     def get(self, relative_path: str) -> bytes:
         full_path = self.base_dir / relative_path
         return full_path.read_bytes()

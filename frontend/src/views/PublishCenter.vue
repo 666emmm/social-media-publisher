@@ -397,34 +397,15 @@
     />
 
     <!-- Video Upload Dialog -->
-    <el-dialog
+    <MaterialUploader
       v-model="videoUploadDialogVisible"
+      accept="video/*"
+      :max-size="null"
+      :multiple="false"
       :title="'上传' + (videoUploadTarget === 'portrait' ? '竖版' : '横版') + '视频'"
-      width="600px"
-      class="video-upload-dialog"
-    >
-      <el-upload
-        class="video-upload"
-        drag
-        :auto-upload="true"
-        :http-request="handleVideoUpload"
-        accept="video/*"
-      >
-        <el-icon class="el-icon--upload" :size="48"><Upload /></el-icon>
-        <div class="el-upload__text">
-          将视频文件拖到此处，或<em>点击上传</em>
-        </div>
-        <template #tip>
-          <div class="el-upload__tip">支持MP4、AVI等视频格式</div>
-        </template>
-      </el-upload>
-
-      <template #footer>
-        <div class="dialog-footer-right">
-          <el-button @click="videoUploadDialogVisible = false">关闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
+      tip="支持 MP4、AVI、MKV 等视频格式，不限大小"
+      @uploaded="onVideoUploaded"
+    />
 
     <!-- Material Library Dialog -->
     <MaterialSelectDialog
@@ -468,6 +449,7 @@ import BatchPublishDialog from '@/components/BatchPublishDialog.vue'
 import CoverCard from '@/components/CoverCard.vue'
 import CoverEditorDialog from '@/components/CoverEditorDialog.vue'
 import MaterialSelectDialog from '@/components/MaterialSelectDialog.vue'
+import MaterialUploader from '@/components/MaterialUploader.vue'
 import OneClickFillDialog from '@/components/OneClickFillDialog.vue'
 import DouyinActivitySelect from '@/components/douyin/ActivitySelect.vue'
 import DouyinHotspotSelect from '@/components/douyin/HotspotSelect.vue'
@@ -988,57 +970,44 @@ function pickRecommendedFrames(frames, count) {
   return result
 }
 
-async function handleVideoUpload(options) {
-  const file = options.file
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    const resp = await materialsApi.upload(formData)
-    if (resp.code === 200) {
-      const d = resp.data
-      const videoData = {
-        id: d.id,
-        name: d.original_filename,
-        url: getFileUrl(d.stored_path),
-        stored_path: d.stored_path,
-        size: d.file_size,
-        type: d.mime_type,
-      }
-      if (videoUploadTarget.value === 'portrait') {
-        currentEditTarget.value.videoPortrait = videoData
-      } else {
-        currentEditTarget.value.videoLandscape = videoData
-      }
-      videoUploadDialogVisible.value = false
-      ElMessage.success('视频上传成功')
-      if (appStore.autoFillTitle) {
-        const title = file.name.replace(/\.[^.]+$/, '')
-        if (selectedAccountId.value && accountChecked[selectedAccountId.value]) {
-          // 账号级别：只更新 form.title（form watcher 会把 diff 写到 accountOverrides）
-          form.title = title
-        } else if (selectedPlatform.value && platformChecked[selectedPlatform.value]) {
-          // 渠道级别：只更新当前渠道的 title
-          if (platformConfigs[selectedPlatform.value]) {
-            platformConfigs[selectedPlatform.value].title = title
-            form.title = title
-          }
-        } else {
-          // 公共：同步所有渠道（原逻辑）
-          for (const key of Object.keys(platformConfigs)) {
-            platformConfigs[key].title = title
-          }
-          if (selectedPlatform.value && platformConfigs[selectedPlatform.value]) {
-            form.title = platformConfigs[selectedPlatform.value].title
-          }
-        }
-      }
-      triggerFrameExtraction(videoData, videoUploadTarget.value)
-    } else {
-      options.onError(new Error(resp.msg || '上传失败'))
-    }
-  } catch (error) {
-    options.onError(error)
+async function onVideoUploaded(d) {
+  const videoData = {
+    id: d.id,
+    name: d.original_filename,
+    url: getFileUrl(d.stored_path),
+    stored_path: d.stored_path,
+    size: d.file_size,
+    type: d.mime_type,
   }
+  if (videoUploadTarget.value === 'portrait') {
+    currentEditTarget.value.videoPortrait = videoData
+  } else {
+    currentEditTarget.value.videoLandscape = videoData
+  }
+  videoUploadDialogVisible.value = false
+  ElMessage.success('视频上传成功')
+  if (appStore.autoFillTitle) {
+    const title = videoData.name.replace(/\.[^.]+$/, '')
+    if (selectedAccountId.value && accountChecked[selectedAccountId.value]) {
+      // 账号级别：只更新 form.title（form watcher 会把 diff 写到 accountOverrides）
+      form.title = title
+    } else if (selectedPlatform.value && platformChecked[selectedPlatform.value]) {
+      // 渠道级别：只更新当前渠道的 title
+      if (platformConfigs[selectedPlatform.value]) {
+        platformConfigs[selectedPlatform.value].title = title
+        form.title = title
+      }
+    } else {
+      // 公共：同步所有渠道（原逻辑）
+      for (const key of Object.keys(platformConfigs)) {
+        platformConfigs[key].title = title
+      }
+      if (selectedPlatform.value && platformConfigs[selectedPlatform.value]) {
+        form.title = platformConfigs[selectedPlatform.value].title
+      }
+    }
+  }
+  triggerFrameExtraction(videoData, videoUploadTarget.value)
 }
 
 // ========== Material Library ==========

@@ -29,6 +29,9 @@ export const historyApi = {
     // 返回: data.items = [{id, type, title, ..., items: [{id, account_name, platform, status, ...}]}, ...]
     return http.get('/api/v2/history', params)
   },
+  getBatch(batchId) {
+    return http.get(`/api/v2/history/${batchId}`)
+  },
 }
 
 // 统计数据

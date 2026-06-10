@@ -409,6 +409,85 @@ def get_history():
         return jsonify({"code": 500, "msg": str(e)}), 500
 
 
+@ext_api.route('/history/<batch_id>', methods=['GET'])
+def get_history_batch(batch_id):
+    """获取单个发布批次详情（含所有明细）
+
+    Response 200:
+        {"code": 200, "data": <Batch with items>}
+    Response 404:
+        {"code": 404, "msg": "记录不存在或已被删除"}
+    """
+    try:
+        conn = _db_conn()
+        row = conn.execute(
+            "SELECT * FROM publish_batches WHERE id = ?", (batch_id,)
+        ).fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"code": 404, "msg": "记录不存在或已被删除"}), 404
+
+        b = dict(row)
+        detail_rows = conn.execute(
+            "SELECT * FROM publish_details WHERE batch_id = ? ORDER BY created_at ASC",
+            (batch_id,)
+        ).fetchall()
+        items = []
+        for d in detail_rows:
+            dd = dict(d)
+            try:
+                dd['account_configs'] = json.loads(dd.get('account_configs', '{}'))
+            except json.JSONDecodeError:
+                dd['account_configs'] = {}
+            if dd.get('started_at') and dd.get('finished_at'):
+                try:
+                    s = datetime.fromisoformat(dd['started_at'])
+                    f = datetime.fromisoformat(dd['finished_at'])
+                    dd['duration'] = int((f - s).total_seconds())
+                except (ValueError, TypeError):
+                    dd['duration'] = None
+            else:
+                dd['duration'] = None
+            dd['personalized'] = compute_personalized(
+                dd.get('account_configs') or {}, b
+            )
+            items.append(dd)
+        conn.close()
+
+        # 兜底封面：batch 列 material_id 为空时，从第一个 detail 的 account_configs 取
+        fallback_cover_url = ''
+        if items:
+            first_cfg = items[0].get('account_configs') or {}
+            fallback_cover_url = (
+                _resolve_cover_from_path(first_cfg.get('thumbnailLandscape', ''))
+                or _resolve_cover_from_path(first_cfg.get('thumbnailPortrait', ''))
+            )
+
+        data = {
+            'id': b['id'],
+            'type': b['type'],
+            'title': b.get('title', ''),
+            'description': b.get('description', ''),
+            'landscape_cover_material_id': b.get('landscape_cover_material_id', ''),
+            'portrait_cover_material_id': b.get('portrait_cover_material_id', ''),
+            'cover_url': _resolve_cover_url(b.get('landscape_cover_material_id', ''))
+                        or _resolve_cover_url(b.get('portrait_cover_material_id', ''))
+                        or fallback_cover_url,
+            'account_count': b.get('account_count', 0),
+            'success_count': b.get('success_count', 0),
+            'failed_count': b.get('failed_count', 0),
+            'status': b.get('status', 'pending'),
+            'schedule_time': b.get('schedule_time', ''),
+            'created_at': _to_beijing_time(b.get('created_at')),
+            'started_at': _to_beijing_time(b.get('started_at')),
+            'finished_at': _to_beijing_time(b.get('finished_at')),
+            'items': items,
+        }
+        return jsonify({"code": 200, "data": data})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": str(e)}), 500
+
+
 # ========== 统计数据 ==========
 
 @ext_api.route('/stats', methods=['GET'])

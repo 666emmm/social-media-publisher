@@ -73,7 +73,10 @@ from impl.settings import read_settings
 
 app = Flask(__name__)
 CORS(app)
-app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024
+# 视频/图片上传不限大小（用户 2026-06-10 明确要求）
+# 警告：当前 materials_bp.py:125 用 file.read() 一次性读入内存，超大文件会 OOM
+# 如未来需要处理 ≥10GB 文件，应改为流式写入（request.stream → storage.save_stream）
+app.config['MAX_CONTENT_LENGTH'] = None
 
 # SSE login status queues (keyed by account id)
 active_queues: dict[str, Queue] = {}

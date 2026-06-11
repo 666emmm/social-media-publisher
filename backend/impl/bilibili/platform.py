@@ -667,14 +667,25 @@ class BilibiliPlatform(BasePlatform):
     @staticmethod
     async def _set_category(page, category):
         """Set the video category (partition) via dropdown."""
-        if not category:
+        # 修：严格判 None（category=0 不再被早退）
+        if category is None or category == '':
             return
 
-        # Resolve Chinese name from tid
+        # Resolve Chinese name from tid OR Chinese name
         if isinstance(category, int):
             cn_name = _TID_CN_NAME.get(category, None)
+        elif isinstance(category, str):
+            s = category.strip()
+            # 反向映射：中文名 → 找是否在 _TID_CN_NAME 里
+            rev = {v: k for k, v in _TID_CN_NAME.items()}
+            if s in rev:
+                cn_name = s  # 直接用中文名（点击下拉按 title 即可）
+            elif s.isdigit() and int(s) in _TID_CN_NAME:
+                cn_name = _TID_CN_NAME[int(s)]
+            else:
+                cn_name = s  # 兜底：直接用原字符串（UI 显示的中文名）
         else:
-            cn_name = str(category).strip()
+            cn_name = None
 
         logger.info(
             f"[bilibili] setting category: category={category}, "
@@ -687,40 +698,63 @@ class BilibiliPlatform(BasePlatform):
             )
             return
 
+        log_dir = Path(BASE_DIR / "logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
         try:
-            log_dir = Path(BASE_DIR / "logs")
-            log_dir.mkdir(parents=True, exist_ok=True)
+            # 策略 1：按 .section-title-content-main 模糊匹配 "分区"
+            title = page.locator('.section-title-content-main', has_text='分区').first
+            if await title.count() == 0:
+                logger.error("[bilibili] 找不到 '分区' section 标题")
+                await page.screenshot(path=str(log_dir / "bili_no_partition_title.png"), full_page=True)
+                return
 
-            # Click select-controller to open dropdown
-            select_controller = page.locator(".select-controller").first
+            # 2. 沿 xpath 找到 .selector-container（分区 section 的兄弟节点）
+            selector_container = title.locator(
+                "xpath=ancestor::div[contains(@class,'section-title-container')][1]/following-sibling::div[contains(@class,'selector-container')][1]"
+            )
+            if await selector_container.count() == 0:
+                # 兜底：直接父 div（兼容老 DOM）
+                selector_container = title.locator("xpath=ancestor::div[2]")
+                logger.warning("[bilibili] 用 ancestor::div[2] 兜底定位 selector-container")
+
+            # 3. 在该 selector-container 内找 .select-controller
+            select_controller = selector_container.locator(".select-controller").first
             await select_controller.wait_for(state="visible", timeout=10000)
-            await select_controller.click()
-            logger.info("[bilibili] clicked select-controller")
-            await asyncio.sleep(1)
 
-            # Click target partition in dropdown
+            # 4. force=True 避开遮挡（CSS hover 弹层/动画都可能拦截）
+            await select_controller.click(force=True)
+            logger.info("[bilibili] clicked select-controller (in 分区 section, force=True)")
+
+            # 5. 等下拉项出现（drop-list-v2-container 是 B 站下拉容器）
+            try:
+                await page.locator(".drop-list-v2-container").first.wait_for(
+                    state="visible", timeout=5000
+                )
+            except Exception:
+                # 兜底：可能已经开了但选择器未匹配，再点一次
+                logger.warning("[bilibili] 下拉未出现，尝试再点一次")
+                await select_controller.click(force=True)
+                await asyncio.sleep(1)
+
+            # 6. 按 title 属性点击目标项
             target_item = page.locator(
                 f'.drop-list-v2-item[title="{cn_name}"]'
             )
             if await target_item.count() > 0:
-                await target_item.first.click()
+                await target_item.first.click(force=True)
                 logger.info(f"[bilibili] category set: {cn_name}")
             else:
-                logger.info(
+                logger.error(
                     f"[bilibili] partition not found in dropdown: {cn_name}"
                 )
                 await page.screenshot(
-                    path=str(
-                        log_dir / "bilibili_partition_not_found.png"
-                    ),
+                    path=str(log_dir / "bilibili_partition_not_found.png"),
                     full_page=True,
                 )
 
             await asyncio.sleep(1)
         except Exception as exc:
-            logger.info(
-                f"[bilibili] category setting failed (non-fatal): {exc}"
-            )
+            logger.info(f"[bilibili] category setting failed (non-fatal): {exc}")
 
     @staticmethod
     async def _fill_tags(page, tags: list):

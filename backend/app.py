@@ -469,6 +469,12 @@ def postVideo():
         thumbnail_landscape = _resolve_material_path(data.get('thumbnailLandscape', ''))
         thumbnail_portrait = _resolve_material_path(data.get('thumbnailPortrait', ''))
 
+        # 兜底：只上传了横版或竖版之一时，另一个用同图（保证 2 个封面都有内容）
+        if thumbnail_landscape and not thumbnail_portrait:
+            thumbnail_portrait = thumbnail_landscape
+        elif thumbnail_portrait and not thumbnail_landscape:
+            thumbnail_landscape = thumbnail_portrait
+
         # Some platforms have sync publish_video, others async.
         # asyncio.run() only works with coroutines — calling it on a
         # sync function that already uses asyncio.run() internally
@@ -762,7 +768,7 @@ def _before_publish():
 
         # [DEBUG 2026-06-10] 详细日志：把整个请求 body 的关键字段打印出来
         logger.info(
-            "[/postVideo REQUEST] batchId=%s account=%s type=%s title=%s fileList=%s videoLandscape.id=%s videoPortrait.id=%s coverLandscape.id=%s coverPortrait.id=%s creationDeclaration=%s aiContent=%s isOriginal=%s",
+            "[/postVideo REQUEST] batchId=%s account=%s type=%s title=%s fileList=%s videoLandscape.id=%s videoPortrait.id=%s coverLandscape.id=%s coverPortrait.id=%s creationDeclaration=%s aiContent=%s isOriginal=%s category=%s",
             batch_id, account_name, platform_type,
             data.get('title', ''),
             file_list,
@@ -773,6 +779,7 @@ def _before_publish():
             data.get('creationDeclaration', ''),
             data.get('aiContent', ''),
             data.get('isOriginal', ''),
+            data.get('category', ''),  # 新增：B 站分区字段（platformSettings.zone || 兜底）
         )
 
         # account_configs 存：除了 fileList/accountList/type/thumbnail/batchId/accountId/accountName 之外的所有字段

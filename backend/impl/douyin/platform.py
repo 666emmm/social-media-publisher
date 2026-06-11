@@ -490,11 +490,23 @@ class DouyinPlatform(BasePlatform):
         await description_editor.click()
         await page.keyboard.press("Control+KeyA")
         await page.keyboard.press("Delete")
-        await page.keyboard.type(description)
+        # 修：strip 描述尾随空白，避免与首 tag 前的空格形成双空格，
+        # 抖音编辑器会把 trailing space 后当成"句末"导致后续 hashtag 不识别
+        clean_description = (description or "").rstrip()
+        if clean_description:
+            await page.keyboard.type(clean_description)
 
+        await page.keyboard.press("Space")
+        # 修：标签循环用单空格分隔，首 tag 前明确加一个空格
         for tag in tags or []:
-            await page.keyboard.insert_text(" #" + tag)
+            if not tag:
+                continue
+            # 用 insert_text 不会触发 IME 干扰
+            await page.keyboard.insert_text(" " + "#" + tag)
+            # Space 让抖音把 " #tag" 识别为 hashtag chip
             await page.keyboard.press("Space")
+            # 修：移动光标到内容末尾，避免下次插入位置错乱
+            await page.keyboard.press("End")
 
     # ------------------------------------------------------------------
     # Helper: set schedule time

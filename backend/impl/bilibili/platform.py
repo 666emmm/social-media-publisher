@@ -671,11 +671,21 @@ class BilibiliPlatform(BasePlatform):
         if category is None or category == '':
             return
 
-        # Resolve Chinese name from tid
+        # Resolve Chinese name from tid OR Chinese name
         if isinstance(category, int):
             cn_name = _TID_CN_NAME.get(category, None)
+        elif isinstance(category, str):
+            s = category.strip()
+            # 反向映射：中文名 → 找是否在 _TID_CN_NAME 里
+            rev = {v: k for k, v in _TID_CN_NAME.items()}
+            if s in rev:
+                cn_name = s  # 直接用中文名（点击下拉按 title 即可）
+            elif s.isdigit() and int(s) in _TID_CN_NAME:
+                cn_name = _TID_CN_NAME[int(s)]
+            else:
+                cn_name = s  # 兜底：直接用原字符串（UI 显示的中文名）
         else:
-            cn_name = str(category).strip()
+            cn_name = None
 
         logger.info(
             f"[bilibili] setting category: category={category}, "

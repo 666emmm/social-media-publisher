@@ -613,6 +613,8 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     supplementaryDeclaration: accountOv?.supplementaryDeclaration ?? platformOv?.supplementaryDeclaration ?? platformDefault?.supplementaryDeclaration,
     audience: accountOv?.audience ?? platformOv?.audience ?? platformDefault?.audience,
     alteredContent: accountOv?.alteredContent ?? platformOv?.alteredContent ?? platformDefault?.alteredContent,
+    // 修：zone 字段也走 4 级合并（B 站分区），账号级填的 zone 才能进 publishData
+    zone: accountOv?.zone ?? platformOv?.zone ?? platformDefault?.zone ?? '',
   }
 }
 
@@ -1490,7 +1492,8 @@ async function publishAll() {
         videosPerDay: 1,
         dailyTimes: ['10:00'],
         startDays: 0,
-        category: platformSettings.zone || (merged.isOriginal ? 1 : 0),
+        // 修：账号级填的 zone 才能进 publishData
+        category: merged.zone || (merged.isOriginal ? 1 : 0),
         // Douyin-specific fields
         hotspot: platformSettings.hotspotId || '',
         tag_type: platformSettings.tagType || '',

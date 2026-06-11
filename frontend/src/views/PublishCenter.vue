@@ -630,6 +630,9 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     // 视频号
     isDraft: accountOv?.isDraft ?? platformOv?.isDraft ?? platformDefault?.isDraft ?? false,
     location: accountOv?.location ?? platformOv?.location ?? platformDefault?.location ?? '',
+    // 平台特有字段 4 级合并（账号 > 渠道 > 平台默认）—— 补回 xiaohongshu 漏的
+    collection: accountOv?.collection ?? platformOv?.collection ?? platformDefault?.collection ?? '',
+    groupChat: accountOv?.groupChat ?? platformOv?.groupChat ?? platformDefault?.groupChat ?? '',
   }
 }
 
@@ -1524,6 +1527,8 @@ async function publishAll() {
           ? merged.creationDeclaration.join(',')
           : merged.creationDeclaration || '',
         riskWarning: merged.riskWarning || '',
+        // 百家号补充声明
+        supplementaryDeclaration: merged.supplementaryDeclaration || '',
         enableCashActivity: merged.enableCashActivity || false,
         audience: merged.audience || 'not_kids',
         alteredContent: merged.alteredContent || false,

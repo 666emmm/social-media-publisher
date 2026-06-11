@@ -541,7 +541,7 @@ export default {
       }
 
       &.tiktok {
-        background: rgba(0, 200, 150, 0.25);
+        background: $platform-tiktok-bg;
       }
 
       &.youtube {

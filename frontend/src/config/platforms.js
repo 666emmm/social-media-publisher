@@ -207,8 +207,8 @@ export const PLATFORMS = {
     shortName: 'TT',
     letter: 'T',
     logo: new URL('../assets/logos/tiktok.png', import.meta.url).href,
-    color: '#000000',
-    bgColor: 'rgba(0, 0, 0, 0.15)',
+    color: '#FE2C55',
+    bgColor: 'rgba(254, 44, 85, 0.15)',
     cssClass: 'tiktok',
     creatorUrl: 'https://www.tiktok.com/tiktokstudio/upload?lang=en',
     settingsFields: [

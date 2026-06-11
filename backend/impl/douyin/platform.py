@@ -496,6 +496,7 @@ class DouyinPlatform(BasePlatform):
         if clean_description:
             await page.keyboard.type(clean_description)
 
+        await page.keyboard.press("Space")
         # 修：标签循环用单空格分隔，首 tag 前明确加一个空格
         for tag in tags or []:
             if not tag:

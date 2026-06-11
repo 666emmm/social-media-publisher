@@ -583,8 +583,8 @@ function onAccountCheckChange(checked) {
 // ========== 4 级优先级合并（spec §3.3） ==========
 // accountOv > platformOv > platformDefault > common
 function resolveAccountConfig(platformKey, accountId) {
-  const accountOv = (accountChecked[accountId] && accountOverrides[accountId]) || null
-  const platformOv = (platformChecked[platformKey] && platformOverrides[platformKey]) || null
+  const accountOv = accountOverrides[accountId] || null
+  const platformOv = platformOverrides[platformKey] || null
   const platformDefault = platformConfigs[platformKey] || null
   return mergeConfig(commonConfig, platformDefault, platformOv, accountOv)
 }

@@ -667,7 +667,8 @@ class BilibiliPlatform(BasePlatform):
     @staticmethod
     async def _set_category(page, category):
         """Set the video category (partition) via dropdown."""
-        if not category:
+        # 修：严格判 None（category=0 不再被早退）
+        if category is None or category == '':
             return
 
         # Resolve Chinese name from tid

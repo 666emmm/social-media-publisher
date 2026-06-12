@@ -4,6 +4,38 @@
 字段集与 PublishCenter.vue:592-637 保持同步。
 """
 
+import sqlite3
+from pathlib import Path
+import sys
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from conf import BASE_DIR
+
+DB_PATH = BASE_DIR / "db" / "database.db"
+
+
+def _get_account_by_id(account_id):
+    """查 user_info 表，返回 account 对象（id/platform/file_path）或不存在的 None。"""
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            row = conn.execute(
+                "SELECT id, platform, file_path FROM user_info WHERE id = ?",
+                (account_id,),
+            ).fetchone()
+        if not row:
+            return None
+        account = type('Account', (), {})()
+        account.id = row[0]
+        account.platform = row[1]
+        account.file_path = row[2]
+        return account
+    except Exception:
+        return None
+
+
 # 平台声明字段映射（与 PublishCenter.vue:1329-1338 一致）
 DECLARATION_PLATFORMS = {
     'xiaohongshu': 'aiContent',
@@ -99,8 +131,87 @@ def merge_config(common, platform_default, platform_ov, account_ov):
 
 
 def validate_draft_for_publish(draft):
-    """dry-run 校验。返回错误消息列表（空 = 合法）。"""
-    raise NotImplementedError
+    """dry-run 校验视频草稿。返回错误消息列表。"""
+    errors = []
+    draft_data = draft.get('draft_data') or {}
+    common = draft_data.get('commonConfig') or {}
+    platform_configs = draft_data.get('platformConfigs') or {}
+    platform_overrides = draft_data.get('platformOverrides') or {}
+    account_overrides = draft_data.get('accountOverrides') or {}
+    publish_account_ids = draft_data.get('publishAccountIds') or []
+
+    # 1. 视频文件
+    if not (common.get('videoLandscape') or common.get('videoPortrait')):
+        errors.append('缺少视频文件')
+
+    # 2. 至少 1 张封面（来自 3 个源）
+    has_cover = bool(common.get('coverLandscape') or common.get('coverPortrait'))
+    if not has_cover:
+        for ov in account_overrides.values():
+            if ov and (ov.get('coverLandscape') or ov.get('coverPortrait')):
+                has_cover = True
+                break
+    if not has_cover:
+        for ov in platform_overrides.values():
+            if ov and (ov.get('coverLandscape') or ov.get('coverPortrait')):
+                has_cover = True
+                break
+    if not has_cover:
+        errors.append('缺少封面')
+
+    # 3. publishAccountIds 非空
+    if not publish_account_ids:
+        errors.append('草稿未选择发布账号（publishAccountIds 为空）')
+        return errors   # 后续检查依赖账号
+
+    # 4. 每个账号的检查
+    for account_id in publish_account_ids:
+        account = _get_account_by_id(account_id)
+        if account is None:
+            errors.append(f'账号 {account_id} 不存在')
+            continue
+
+        platform = account.platform
+        platform_default = platform_configs.get(platform) or {}
+        account_ov = account_overrides.get(str(account_id)) or {}
+
+        merged = merge_config(common, platform_default, None, account_ov)
+
+        # 标题
+        if not merged.get('title') or not str(merged['title']).strip():
+            errors.append(f'账号 {account_id}({platform}) 缺标题')
+
+        # 视频格式
+        vf = merged.get('videoFormat')
+        if vf not in ('portrait', 'landscape'):
+            errors.append(f'账号 {account_id}({platform}) 缺视频格式')
+
+        # 封面 per-videoFormat
+        if vf == 'portrait' and not merged.get('coverPortrait'):
+            errors.append(f'账号 {account_id}({platform}) 缺竖版封面')
+        if vf == 'landscape' and not merged.get('coverLandscape'):
+            errors.append(f'账号 {account_id}({platform}) 缺横版封面')
+
+        # 声明字段
+        decl_field = DECLARATION_PLATFORMS.get(platform)
+        if decl_field:
+            if isinstance(decl_field, list):
+                # YouTube: 多个字段
+                missing = [f for f in decl_field if not merged.get(f)]
+                if missing:
+                    errors.append(f'账号 {account_id}({platform}) 缺 {"+".join(missing)}')
+            else:
+                if not merged.get(decl_field):
+                    errors.append(f'账号 {account_id}({platform}) 缺 {decl_field}')
+
+        # 抖音活动+标签 ≤ 5
+        if platform == 'douyin':
+            ac_len = len(merged.get('activityId') or [])
+            tg_len = len(merged.get('tags') or [])
+            if ac_len + tg_len > 5:
+                errors.append(f'账号 {account_id}(douyin) 活动({ac_len})+标签({tg_len}) 超过 5')
+
+    return errors
 
 
 def validate_image_draft_for_publish(draft):

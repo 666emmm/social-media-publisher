@@ -304,3 +304,68 @@ def test_validate_draft_missing_title(monkeypatch):
     })
     errs = validate_draft_for_publish(draft)
     assert any('缺标题' in e for e in errs)
+
+
+# ===== validate_image_draft_for_publish =====
+
+_DEFAULT_IMAGE_IDS = ['img-1', 'img-2']
+
+
+def _image_draft(draft_id, account_configs, image_ids=_DEFAULT_IMAGE_IDS):
+    return {
+        'id': draft_id,
+        'image_ids': image_ids,
+        'account_configs': account_configs,
+    }
+
+
+def test_validate_image_draft_missing_image_ids():
+    draft = _image_draft(1, {
+        'platform': 'xiaohongshu', 'account_id': 1, 'account_name': 'a',
+        'filePath': '/cookies/x1', 'title': 'T', 'description': '',
+        'aiContent': '内容由AI生成', 'isOriginal': True,
+    }, image_ids=[])
+    errs = validate_image_draft_for_publish(draft)
+    assert any('image' in e.lower() or '图片' in e for e in errs)
+
+
+def test_validate_image_draft_missing_title():
+    draft = _image_draft(1, {
+        'platform': 'xiaohongshu', 'account_id': 1, 'account_name': 'a',
+        'filePath': '/cookies/x1', 'title': '', 'description': '',
+        'aiContent': '内容由AI生成', 'isOriginal': True,
+    })
+    errs = validate_image_draft_for_publish(draft)
+    assert any('title' in e.lower() or '标题' in e for e in errs)
+
+
+def test_validate_image_draft_xiaohongshu_missing_ai_content():
+    draft = _image_draft(1, {
+        'platform': 'xiaohongshu', 'account_id': 1, 'account_name': 'a',
+        'filePath': '/cookies/x1', 'title': 'T', 'description': '',
+        'isOriginal': True,
+        # 缺 aiContent
+    })
+    errs = validate_image_draft_for_publish(draft)
+    assert any('aiContent' in e or 'ai_content' in e for e in errs)
+
+
+def test_validate_image_draft_bilibili_missing_creation_declaration():
+    draft = _image_draft(1, {
+        'platform': 'bilibili', 'account_id': 1, 'account_name': 'a',
+        'filePath': '/cookies/b1', 'title': 'T', 'description': '',
+        'isOriginal': True,
+        # 缺 creationDeclaration
+    })
+    errs = validate_image_draft_for_publish(draft)
+    assert any('creationDeclaration' in e or 'creation_declaration' in e for e in errs)
+
+
+def test_validate_image_draft_happy_path():
+    draft = _image_draft(1, {
+        'platform': 'xiaohongshu', 'account_id': 1, 'account_name': 'a',
+        'filePath': '/cookies/x1', 'title': 'T', 'description': '',
+        'aiContent': '内容由AI生成', 'isOriginal': True,
+    })
+    errs = validate_image_draft_for_publish(draft)
+    assert errs == []

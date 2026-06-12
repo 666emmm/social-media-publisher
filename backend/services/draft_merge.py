@@ -221,9 +221,34 @@ def validate_draft_for_publish(draft):
     return errors
 
 
+# 图文平台声明字段映射（与视频版相同）
+_IMAGE_DECLARATION_PLATFORMS = DECLARATION_PLATFORMS
+
+
 def validate_image_draft_for_publish(draft):
-    """图文草稿 dry-run 校验。返回错误消息列表。"""
-    raise NotImplementedError
+    """dry-run 校验图文草稿。返回错误消息列表。"""
+    errors = []
+    image_ids = draft.get('image_ids') or []
+    config = draft.get('account_configs') or {}
+
+    if not image_ids:
+        errors.append('缺少 image_ids')
+
+    if not config.get('title') or not str(config['title']).strip():
+        errors.append('缺 title（标题）')
+
+    platform = config.get('platform', '')
+    decl_field = _IMAGE_DECLARATION_PLATFORMS.get(platform)
+    if decl_field:
+        if isinstance(decl_field, list):
+            missing = [f for f in decl_field if not config.get(f)]
+            if missing:
+                errors.append(f'图文草稿({platform}) 缺 {"+".join(missing)}')
+        else:
+            if not config.get(decl_field):
+                errors.append(f'图文草稿({platform}) 缺 {decl_field}')
+
+    return errors
 
 
 def build_platform_kwargs(merged, common, account):

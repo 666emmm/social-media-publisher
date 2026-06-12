@@ -17,4 +17,12 @@ export const draftApi = {
   deleteDraft(id) {
     return http.delete(`/api/v2/drafts/${id}`)
   },
+  // 草稿批量发布（视频）
+  batchPublishVideoDrafts(draftIds) {
+    return http.post('/api/v2/drafts/batch-publish', { draft_ids: draftIds })
+  },
+  // 草稿批量删除
+  batchDeleteDrafts(draftIds) {
+    return http.delete('/api/v2/drafts/batch', { data: { draft_ids: draftIds } })
+  },
 }

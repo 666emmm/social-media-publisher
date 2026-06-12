@@ -11,9 +11,19 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 
+# 平台名 → 整数平台 id（与 init_db.py 一致：1=小红书 2=视频号 ... 10=爱奇艺）
+_PLATFORM_NAME_TO_TYPE = {
+    'xiaohongshu': 1, 'channels': 2, 'douyin': 3, 'kuaishou': 4,
+    'bilibili': 5, 'baijiahao': 6, 'tiktok': 7, 'youtube': 8,
+    'tencent_video': 9, 'iqiyi': 10,
+}
+
+
 def _setup_db(tmp_db):
     """建测试数据库（含 drafts + user_info + publish_batches/publish_details）。
 
+    user_info schema 必须与生产 init_db.py 一致（id/type/filePath/userName/status/avatar），
+    因为 endpoint 通过 `services.draft_merge._get_account_by_id` 查 `type/filePath` 列。
     注意：legacy `publish_tasks` 表已删除（commit 71898c0）。`PublishTask` 持久化走
     `publish_details.account_configs` JSON（由 `_build_account_configs(task)` 填充）。
     本 fixture 只需建 `publish_batches` + `publish_details` 即可，因为 Task 12 测试用
@@ -22,10 +32,12 @@ def _setup_db(tmp_db):
     conn = sqlite3.connect(str(tmp_db))
     conn.executescript("""
         CREATE TABLE user_info (
-            id INTEGER PRIMARY KEY,
-            platform TEXT NOT NULL DEFAULT '',
-            file_path TEXT NOT NULL DEFAULT '',
-            user_name TEXT NOT NULL DEFAULT ''
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type INTEGER NOT NULL,
+            filePath TEXT NOT NULL DEFAULT '',
+            userName TEXT NOT NULL DEFAULT '',
+            status INTEGER DEFAULT 0,
+            avatar TEXT DEFAULT ''
         );
         CREATE TABLE drafts (
             id INTEGER PRIMARY KEY,
@@ -83,8 +95,12 @@ def _setup_db(tmp_db):
 
 
 def _insert_user(conn, id, platform, file_path):
-    conn.execute("INSERT INTO user_info (id, platform, file_path) VALUES (?, ?, ?)",
-                (id, platform, file_path))
+    """插入 user_info 行。`platform` 是平台名字符串，内部映射为整数 type。"""
+    type_int = _PLATFORM_NAME_TO_TYPE[platform]
+    conn.execute(
+        "INSERT INTO user_info (id, type, filePath, userName) VALUES (?, ?, ?, ?)",
+        (id, type_int, file_path, platform)
+    )
     conn.commit()
 
 

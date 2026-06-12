@@ -7,6 +7,7 @@ import json
 import sqlite3
 import queue
 import threading
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Blueprint, request, jsonify, Response
@@ -17,6 +18,9 @@ from conf import BASE_DIR
 
 from .task_queue import get_task_queue, PublishTask, TaskStatus
 from ._personalized import compute_personalized
+from services.draft_merge import (
+    merge_config, validate_draft_for_publish, build_platform_kwargs,
+)
 
 ext_api = Blueprint('ext_api', __name__, url_prefix='/api/v2')
 
@@ -1012,6 +1016,131 @@ def get_publish_templates():
             "page_size": page_size,
         }
     })
+
+
+# ========== 草稿批量发布 ==========
+@ext_api.route('/drafts/batch-publish', methods=['POST'])
+def batch_publish_drafts():
+    """视频草稿批量发布：每个 (draft, account) 入队 1 个 task。
+
+    Body: {"draft_ids": [int, ...]}  (1-30 个视频草稿 id)
+    Response: {"code": 200, "task_ids": [...], "failed": [...]}
+    """
+    data = request.get_json() or {}
+    draft_ids = data.get('draft_ids') or []
+    if not isinstance(draft_ids, list) or not draft_ids or len(draft_ids) > 30:
+        return jsonify({"code": 400, "msg": "draft_ids 数量必须 1-30"}), 400
+
+    from app import _get_db_path, PLATFORM_ID_TO_KEY
+    db_path = _get_db_path()
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    placeholders = ','.join('?' * len(draft_ids))
+    rows = conn.execute(
+        f"SELECT id, type, draft_data FROM drafts WHERE id IN ({placeholders})",
+        draft_ids
+    ).fetchall()
+    conn.close()
+
+    found_ids = {r['id'] for r in rows}
+    missing_ids = [i for i in draft_ids if i not in found_ids]
+    if missing_ids:
+        return jsonify({"code": 404, "msg": "草稿不存在", "missing_ids": missing_ids}), 404
+
+    wrong_type = [r['id'] for r in rows if r['type'] != 'video']
+    if wrong_type:
+        return jsonify({"code": 400, "msg": "包含非视频草稿", "wrong_type_ids": wrong_type}), 400
+
+    # 反向映射：platform key → 整数平台 id（给 PublishTask.platform_type）
+    KEY_TO_PLATFORM_ID = {v: k for k, v in PLATFORM_ID_TO_KEY.items()}
+
+    # 通过模块属性查找 get_task_queue，让 monkeypatch.setattr(tq, 'get_task_queue', ...)
+    # 能生效（直接调用本模块的 get_task_queue 会绕过 patch）。
+    from . import task_queue as _tq
+    task_queue = _tq.get_task_queue()
+    task_ids = []
+    failed = []
+
+    for r in rows:
+        draft = {
+            'id': r['id'],
+            'type': r['type'],
+            'draft_data': json.loads(r['draft_data'] or '{}'),
+        }
+        try:
+            errs = validate_draft_for_publish(draft)
+            if errs:
+                failed.append({'draft_id': r['id'], 'reason': '; '.join(errs)})
+                continue
+
+            draft_data = draft['draft_data']
+            common = draft_data.get('commonConfig') or {}
+            platform_configs = draft_data.get('platformConfigs') or {}
+            account_overrides = draft_data.get('accountOverrides') or {}
+            publish_account_ids = draft_data.get('publishAccountIds') or []
+
+            for account_id in publish_account_ids:
+                # 查 user_info（生产 schema: id, type INTEGER, filePath TEXT）
+                acc_conn = sqlite3.connect(str(db_path))
+                acc_conn.row_factory = sqlite3.Row
+                acc_row = acc_conn.execute(
+                    "SELECT id, type, filePath, userName FROM user_info WHERE id = ?",
+                    (account_id,),
+                ).fetchone()
+                acc_conn.close()
+                if not acc_row:
+                    failed.append({'draft_id': r['id'], 'reason': f'账号 {account_id} 不存在'})
+                    continue
+
+                account_platform = PLATFORM_ID_TO_KEY.get(acc_row['type'], '')
+                platform_default = platform_configs.get(account_platform) or {}
+                account_ov = account_overrides.get(str(account_id)) or {}
+
+                platform_overrides = draft_data.get('platformOverrides') or {}
+                merged = merge_config(
+                    common, platform_default,
+                    platform_overrides.get(account_platform),
+                    account_ov,
+                )
+
+                account_obj = type('Account', (), {})()
+                account_obj.id = acc_row['id']
+                account_obj.platform = account_platform
+                account_obj.file_path = acc_row['filePath']
+
+                payload = build_platform_kwargs(merged, common, account_obj)
+
+                ptype = KEY_TO_PLATFORM_ID.get(account_platform)
+                if not ptype:
+                    failed.append({'draft_id': r['id'], 'reason': f'未知平台: {account_platform}'})
+                    continue
+
+                task_id = str(uuid.uuid4())
+                task = PublishTask(
+                    id=task_id,
+                    platform=account_platform,
+                    platform_type=ptype,
+                    account_name=acc_row['userName'] or '',
+                    account_cookie_path=acc_row['filePath'] or '',
+                    video_path=(payload.get('files') or ['/'])[0],
+                    title=payload.get('title', ''),
+                    description=payload.get('desc', ''),
+                    thumbnail_path=payload.get('thumbnail_path', ''),
+                    tags=payload.get('tags') or [],
+                    source='draft',
+                    draft_id=r['id'],
+                    account_id=account_id,
+                    payload=payload,
+                )
+                try:
+                    task_queue.add_task(task)
+                    task_ids.append(task_id)
+                except Exception as e:
+                    failed.append({'draft_id': r['id'], 'reason': f'入队失败: {e}'})
+        except Exception as e:
+            failed.append({'draft_id': r['id'], 'reason': str(e)})
+
+    return jsonify({"code": 200, "task_ids": task_ids, "failed": failed}), 200
 
 
 # ========== 测试用 Flask app ==========

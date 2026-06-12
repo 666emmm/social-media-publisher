@@ -12,6 +12,23 @@
       </el-tabs>
     </div>
 
+    <!-- Batch operations toolbar -->
+    <div class="draft-toolbar">
+      <el-button
+        :type="selectMode ? 'primary' : 'default'"
+        size="small"
+        @click="toggleSelectMode"
+      >
+        {{ selectMode ? '退出多选' : '多选' }}
+      </el-button>
+      <template v-if="selectMode && selection.size > 0">
+        <span class="selected-count">已选 {{ selection.size }} 项</span>
+        <el-button size="small" @click="onBatchDelete">批量删除</el-button>
+        <el-button size="small" type="primary" :disabled="isPublishing" @click="onBatchPublish">批量发布</el-button>
+        <el-button size="small" text @click="clearSelection">清空</el-button>
+      </template>
+    </div>
+
     <!-- Video Drafts -->
     <template v-if="activeTab === 'video'">
       <div v-if="!loading && videoDrafts.length === 0" class="empty-state">
@@ -22,6 +39,12 @@
 
       <div v-else class="draft-grid">
         <div v-for="draft in videoDrafts" :key="draft.id" class="draft-card">
+          <el-checkbox
+            v-if="selectMode"
+            :model-value="selection.has(draft.id)"
+            @change="(v) => toggleSelection(draft.id, v)"
+            class="draft-card-checkbox"
+          />
           <div class="card-cover">
             <img
               v-if="draft.cover_path"
@@ -70,6 +93,14 @@
       </div>
     </template>
 
+    <!-- Batch draft publish dialog -->
+    <BatchDraftPublishDialog
+      v-model:visible="dialogVisible"
+      :drafts="dialogDrafts"
+      :failures="dialogFailures"
+      @confirm="onDialogConfirm"
+    />
+
     <!-- Image Drafts -->
     <template v-if="activeTab === 'image'">
       <div v-if="!loading && imageDrafts.length === 0" class="empty-state">
@@ -80,6 +111,12 @@
 
       <div v-else class="draft-grid">
         <div v-for="draft in imageDrafts" :key="draft.id" class="draft-card">
+          <el-checkbox
+            v-if="selectMode"
+            :model-value="selection.has(draft.id)"
+            @change="(v) => toggleSelection(draft.id, v)"
+            class="draft-card-checkbox"
+          />
           <div class="card-cover">
             <img
               v-if="draft.cover_path"
@@ -134,6 +171,7 @@ import { Picture, Edit, Delete } from '@element-plus/icons-vue'
 import { draftApi } from '@/api/draft'
 import { getPlatformByKey } from '@/config/platforms'
 import { getFileUrl } from '@/utils/storage'
+import BatchDraftPublishDialog from '@/components/BatchDraftPublishDialog.vue'
 
 const router = useRouter()
 const activeTab = ref('video')
@@ -142,6 +180,14 @@ const imageDrafts = ref([])
 const loading = ref(true)
 const channelRefs = {}
 const overflowMap = ref({})
+
+// Batch operations state
+const selection = ref(new Set())           // 选中的草稿 id
+const selectMode = ref(false)              // 多选模式开关
+const dialogVisible = ref(false)
+const dialogDrafts = ref([])                // 给 dialog 的草稿列表
+const dialogFailures = ref([])              // 校验失败列表
+const isPublishing = ref(false)
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
 
@@ -256,6 +302,105 @@ async function loadAllDrafts() {
 }
 
 onMounted(loadAllDrafts)
+
+// ===== Batch operations =====
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  if (!selectMode.value) {
+    selection.value = new Set()
+  }
+}
+
+function clearSelection() {
+  selection.value = new Set()
+}
+
+function toggleSelection(id, checked) {
+  if (checked) selection.value.add(id)
+  else selection.value.delete(id)
+  // 触发响应式更新（Set 本身无深度响应）
+  selection.value = new Set(selection.value)
+}
+
+function getCurrentDrafts() {
+  return activeTab.value === 'video' ? videoDrafts.value : imageDrafts.value
+}
+
+async function onBatchDelete() {
+  const count = selection.value.size
+  if (count === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${count} 个草稿？此操作不可恢复。`,
+      '批量删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  const ids = [...selection.value]
+  try {
+    const resp = await draftApi.batchDeleteDrafts(ids)
+    const { deleted = [], failed = [] } = resp || {}
+    if (deleted.length) {
+      ElMessage.success(`已删除 ${deleted.length} 个草稿`)
+      // 从本地列表移除
+      videoDrafts.value = videoDrafts.value.filter((d) => !deleted.includes(d.id))
+      imageDrafts.value = imageDrafts.value.filter((d) => !deleted.includes(d.id))
+    }
+    if (failed.length) {
+      ElMessage.warning(`${failed.length} 个草稿删除失败：${failed.map((f) => f.reason).join('; ')}`)
+    }
+    selection.value = new Set()
+  } catch (e) {
+    ElMessage.error(`批量删除失败：${e.message || e}`)
+  }
+}
+
+async function onBatchPublish() {
+  const ids = [...selection.value]
+  const current = getCurrentDrafts()
+  // 仅推送当前 tab 下选中的草稿
+  dialogDrafts.value = current
+    .filter((d) => ids.includes(d.id))
+    .map((d) => ({
+      id: d.id,
+      type: d.type,
+      title: d.title,
+      platforms: [],
+    }))
+  dialogFailures.value = []
+  dialogVisible.value = true
+}
+
+async function onDialogConfirm(confirmedIds) {
+  dialogVisible.value = false
+  if (!confirmedIds || confirmedIds.length === 0) return
+
+  isPublishing.value = true
+  try {
+    const resp = await draftApi.batchPublishVideoDrafts(confirmedIds)
+    const { task_ids = [], failed = [] } = resp || {}
+    if (task_ids.length) {
+      ElMessage.success(
+        `已入队 ${task_ids.length} 个任务，去任务中心查看 →`,
+        { duration: 4000 },
+      )
+    }
+    if (failed.length) {
+      ElMessage.warning(
+        `${failed.length} 个草稿发布失败：${failed.map((f) => f.reason).join('; ')}`,
+      )
+    }
+    selection.value = new Set()
+  } catch (e) {
+    ElMessage.error(`批量发布失败：${e.message || e}`)
+  } finally {
+    isPublishing.value = false
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -456,5 +601,32 @@ onMounted(loadAllDrafts)
     background: rgba(245, 108, 108, 0.1);
     color: #f56c6c;
   }
+}
+
+.draft-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+
+  .selected-count {
+    font-size: 13px;
+    color: $text-secondary;
+  }
+}
+
+.draft-card-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.draft-card {
+  position: relative;
 }
 </style>

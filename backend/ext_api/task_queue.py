@@ -66,9 +66,17 @@ class PublishTask:
     ai_content: str | None = None
     is_original: bool | None = None
 
+    # 草稿批量发布溯源字段（Task 10 扩展）
+    source: str = ''                # '' | 'draft' | 'normal'
+    draft_id: int = 0
+    account_id: int = 0
+    detail_id: str = ''            # publish_details.id
+    payload: dict = field(default_factory=dict)
+
     def to_dict(self):
         d = asdict(self)
         d['tags'] = json.dumps(self.tags, ensure_ascii=False)
+        d['payload'] = json.dumps(self.payload, ensure_ascii=False)
         return d
 
     @classmethod
@@ -80,6 +88,12 @@ class PublishTask:
                 tags = json.loads(tags)
             except json.JSONDecodeError:
                 tags = []
+        payload = row_dict.get('payload', '{}')
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                payload = {}
         return cls(
             id=row_dict['id'],
             batch_id=row_dict.get('batch_id', ''),
@@ -100,6 +114,11 @@ class PublishTask:
             created_at=row_dict['created_at'],
             started_at=row_dict.get('started_at'),
             finished_at=row_dict.get('finished_at'),
+            source=row_dict.get('source', ''),
+            draft_id=row_dict.get('draft_id', 0),
+            account_id=row_dict.get('account_id', 0),
+            detail_id=row_dict.get('detail_id', ''),
+            payload=payload,
         )
 
 

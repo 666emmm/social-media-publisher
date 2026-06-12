@@ -18,21 +18,28 @@ DB_PATH = BASE_DIR / "db" / "database.db"
 
 
 def _get_account_by_id(account_id):
-    """查 user_info 表，返回 account 对象（id/platform/file_path）或不存在的 None。"""
+    """查 user_info 表，返回 account 对象（id/platform/file_path）或不存在的 None。
+
+    user_info schema: (id, type INTEGER, filePath TEXT, userName TEXT, status, avatar)
+    `type` 是数字平台 id（1-10），需要映射到字符串 key。
+    """
     try:
         with sqlite3.connect(str(DB_PATH)) as conn:
             row = conn.execute(
-                "SELECT id, platform, file_path FROM user_info WHERE id = ?",
+                "SELECT id, type, filePath FROM user_info WHERE id = ?",
                 (account_id,),
             ).fetchone()
         if not row:
             return None
+        # 复用 app.py 里的 PLATFORM_ID_TO_KEY 映射（导入而非重复定义）
+        from app import PLATFORM_ID_TO_KEY
+        platform_key = PLATFORM_ID_TO_KEY.get(row[1], '')
         account = type('Account', (), {})()
         account.id = row[0]
-        account.platform = row[1]
+        account.platform = platform_key
         account.file_path = row[2]
         return account
-    except Exception:
+    except sqlite3.Error:
         return None
 
 
@@ -175,7 +182,7 @@ def validate_draft_for_publish(draft):
         platform_default = platform_configs.get(platform) or {}
         account_ov = account_overrides.get(str(account_id)) or {}
 
-        merged = merge_config(common, platform_default, None, account_ov)
+        merged = merge_config(common, platform_default, platform_overrides.get(platform), account_ov)
 
         # 标题
         if not merged.get('title') or not str(merged['title']).strip():

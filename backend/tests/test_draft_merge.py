@@ -287,3 +287,20 @@ def test_validate_draft_happy_path(monkeypatch):
     })
     errs = validate_draft_for_publish(draft)
     assert errs == []
+
+
+def test_validate_draft_missing_title(monkeypatch):
+    """账号层标题为空 → 报错。"""
+    _user_info_lookup_patch(monkeypatch, [FakeAccount(1, 'xiaohongshu', '/cookies/x1')])
+    draft = _video_draft({
+        'commonConfig': {'videoPortrait': {'id': 'v'},
+                         'coverPortrait': {'id': 'c'}},
+        'platformConfigs': {'xiaohongshu': {'title': 'T', 'videoFormat': 'portrait',
+                                            'aiContent': '内容由AI生成'}},
+        'platformOverrides': {},
+        'accountOverrides': {'1': {'title': '   ', 'videoFormat': 'portrait',
+                                    'aiContent': '内容由AI生成'}},
+        'publishAccountIds': [1],
+    })
+    errs = validate_draft_for_publish(draft)
+    assert any('缺标题' in e for e in errs)

@@ -7,6 +7,8 @@ import json
 import sqlite3
 import queue
 import threading
+import urllib.parse
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Blueprint, request, jsonify, Response
@@ -17,6 +19,9 @@ from conf import BASE_DIR
 
 from .task_queue import get_task_queue, PublishTask, TaskStatus
 from ._personalized import compute_personalized
+from services.draft_merge import (
+    merge_config, validate_draft_for_publish, build_platform_kwargs,
+)
 
 ext_api = Blueprint('ext_api', __name__, url_prefix='/api/v2')
 
@@ -81,7 +86,10 @@ def _to_beijing_time(utc_str):
 
 
 def _resolve_cover_url(material_id: str) -> str:
-    """解析 material_id → /api/materials/file/{stored_path} URL。失败返回空串。"""
+    """解析 material_id → /api/materials/file/{stored_path} URL。失败返回空串。
+
+    stored_path 可能是绝对路径。用 urllib.parse.quote 编码可避免前导 `/` 触发双斜杠。
+    """
     if not material_id:
         return ''
     try:
@@ -92,16 +100,33 @@ def _resolve_cover_url(material_id: str) -> str:
         conn.close()
         if not row:
             return ''
-        return f"/api/materials/file/{row['stored_path']}"
+        return f"/api/materials/file/{urllib.parse.quote(row['stored_path'], safe='')}"
     except Exception:
         return ''
 
 
 def _resolve_cover_from_path(stored_path: str) -> str:
-    """直接用 stored_path 构造 /api/materials/file/{path} URL。空串返回空。"""
+    """直接用 stored_path 构造 /api/materials/file/{path} URL。空串返回空。
+
+    stored_path 可能是绝对路径（thumbnail_path 来自 _resolve_material_path，
+    例如 /home/czy/workspace/.../data/materials/2026/06/13/uuid.jpg），
+    也可能是相对路径（含 materials/ 前缀）。要构造 storage API 的 file 路由
+    URL，relative_path 必须等于 materials 表的 stored_path 列。
+    """
     if not stored_path:
         return ''
-    return f"/api/materials/file/{stored_path}"
+    # 绝对路径：剥掉 BASE_DIR（data 目录）的父前缀，保留 materials/ 之后的部分
+    import re
+    m = re.search(r'(?:^|/)data/(materials/.+)$', stored_path)
+    if m:
+        relative = m.group(1)
+    elif stored_path.startswith('materials/'):
+        relative = stored_path
+    else:
+        # 兜底：取 basename
+        import os
+        relative = os.path.basename(stored_path)
+    return f"/api/materials/file/{urllib.parse.quote(relative, safe='')}"
 
 
 # ========== 任务管理 ==========
@@ -312,13 +337,14 @@ def _serialize_batch_with_items(b, items):
             d_item.get('account_configs') or {}, b
         )
     # 兜底：当 batch 列上的 material_id 都为空（封面是从视频抽帧得到的，没有 materials.id）时，
-    # 从第一个 detail 的 account_configs 里取 thumbnailLandscape / thumbnailPortrait。
+    # 从第一个 detail 的 account_configs 里取 coverLandscape / coverPortrait / thumbnail_path。
     fallback_cover_url = ''
     if items:
         first_cfg = items[0].get('account_configs') or {}
         fallback_cover_url = (
-            _resolve_cover_from_path(first_cfg.get('thumbnailLandscape', ''))
-            or _resolve_cover_from_path(first_cfg.get('thumbnailPortrait', ''))
+            _resolve_cover_from_path(first_cfg.get('coverLandscape', ''))
+            or _resolve_cover_from_path(first_cfg.get('coverPortrait', ''))
+            or _resolve_cover_from_path(first_cfg.get('thumbnail_path', ''))
         )
     return {
         'id': b['id'],
@@ -1012,6 +1038,196 @@ def get_publish_templates():
             "page_size": page_size,
         }
     })
+
+
+# ========== 草稿批量发布 ==========
+@ext_api.route('/drafts/batch-publish', methods=['POST'])
+def batch_publish_drafts():
+    """视频草稿批量发布：每个 (draft, account) 入队 1 个 task。
+
+    Body: {"draft_ids": [int, ...]}  (1-30 个视频草稿 id)
+    Response: {"code": 200, "task_ids": [...], "failed": [...]}
+    """
+    data = request.get_json() or {}
+    draft_ids = data.get('draft_ids') or []
+    if not isinstance(draft_ids, list) or not draft_ids or len(draft_ids) > 30:
+        return jsonify({"code": 400, "msg": "draft_ids 数量必须 1-30"}), 400
+
+    from app import _get_db_path, PLATFORM_ID_TO_KEY
+    db_path = _get_db_path()
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    placeholders = ','.join('?' * len(draft_ids))
+    rows = conn.execute(
+        f"SELECT id, type, draft_data FROM drafts WHERE id IN ({placeholders})",
+        draft_ids
+    ).fetchall()
+    conn.close()
+
+    found_ids = {r['id'] for r in rows}
+    missing_ids = [i for i in draft_ids if i not in found_ids]
+    if missing_ids:
+        return jsonify({"code": 404, "msg": "草稿不存在", "missing_ids": missing_ids}), 404
+
+    wrong_type = [r['id'] for r in rows if r['type'] != 'video']
+    if wrong_type:
+        return jsonify({"code": 400, "msg": "包含非视频草稿", "wrong_type_ids": wrong_type}), 400
+
+    # 反向映射：platform key → 整数平台 id（给 PublishTask.platform_type）
+    KEY_TO_PLATFORM_ID = {v: k for k, v in PLATFORM_ID_TO_KEY.items()}
+
+    # 通过模块属性查找 get_task_queue，让 monkeypatch.setattr(tq, 'get_task_queue', ...)
+    # 能生效（直接调用本模块的 get_task_queue 会绕过 patch）。
+    from . import task_queue as _tq
+    task_queue = _tq.get_task_queue()
+    task_ids = []
+    failed = []
+    # draft_id → batch_id 映射，让同一 draft 的多个 detail 共享一个 batch
+    task_batch_id_by_draft = {}
+
+    for r in rows:
+        draft = {
+            'id': r['id'],
+            'type': r['type'],
+            'draft_data': json.loads(r['draft_data'] or '{}'),
+        }
+        try:
+            errs = validate_draft_for_publish(draft)
+            if errs:
+                failed.append({'draft_id': r['id'], 'reason': '; '.join(errs)})
+                continue
+
+            draft_data = draft['draft_data']
+            common = draft_data.get('commonConfig') or {}
+            platform_configs = draft_data.get('platformConfigs') or {}
+            account_overrides = draft_data.get('accountOverrides') or {}
+            publish_account_ids = draft_data.get('publishAccountIds') or []
+
+            for account_id in publish_account_ids:
+                # 查 user_info（生产 schema: id, type INTEGER, filePath TEXT）
+                acc_conn = sqlite3.connect(str(db_path))
+                acc_conn.row_factory = sqlite3.Row
+                acc_row = acc_conn.execute(
+                    "SELECT id, type, filePath, userName FROM user_info WHERE id = ?",
+                    (account_id,),
+                ).fetchone()
+                acc_conn.close()
+                if not acc_row:
+                    failed.append({'draft_id': r['id'], 'reason': f'账号 {account_id} 不存在'})
+                    continue
+
+                account_platform = PLATFORM_ID_TO_KEY.get(acc_row['type'], '')
+                platform_default = platform_configs.get(account_platform) or {}
+                account_ov = account_overrides.get(str(account_id)) or {}
+
+                platform_overrides = draft_data.get('platformOverrides') or {}
+                merged = merge_config(
+                    common, platform_default,
+                    platform_overrides.get(account_platform),
+                    account_ov,
+                )
+
+                account_obj = type('Account', (), {})()
+                account_obj.id = acc_row['id']
+                account_obj.platform = account_platform
+                account_obj.file_path = acc_row['filePath']
+
+                payload = build_platform_kwargs(merged, common, account_obj)
+
+                ptype = KEY_TO_PLATFORM_ID.get(account_platform)
+                if not ptype:
+                    failed.append({'draft_id': r['id'], 'reason': f'未知平台: {account_platform}'})
+                    continue
+
+                task_id = str(uuid.uuid4())
+                # 草稿批量发布：每个 (draft, account) 一个 detail，但同一 draft 的所有 detail 共享一个 batch_id
+                # （task.batch_id 第一次循环时初始化，后续同 draft 共享；这里每个 draft_id 只一次循环无问题）
+                if not task_batch_id_by_draft.get(r['id']):
+                    task_batch_id_by_draft[r['id']] = str(uuid.uuid4())
+                # 把 stored_path 相对路径转成绝对路径（与 postVideo 的 _resolve_material_path 一致）
+                # 否则 worker 拿相对路径去 set_input_files，Playwright 找不到文件，会触发 3 次重试。
+                from storage import resolve_material_path
+                raw_video = (payload.get('files') or [''])[0]
+                raw_thumbnail = payload.get('thumbnail_path', '') or ''
+                resolved_video = resolve_material_path(raw_video)
+                resolved_thumbnail = resolve_material_path(raw_thumbnail)
+                if not resolved_video:
+                    # 文件解析失败（草稿里引用了已被用户从磁盘删除的文件），直接标记失败，
+                    # 避免 worker 重复开浏览器重试 3 次。
+                    failed.append({
+                        'draft_id': r['id'],
+                        'reason': f'账号 {account_id} 视频文件不存在: {raw_video}',
+                    })
+                    continue
+                task = PublishTask(
+                    id=task_id,
+                    batch_id=task_batch_id_by_draft[r['id']],
+                    platform=account_platform,
+                    platform_type=ptype,
+                    account_name=acc_row['userName'] or '',
+                    account_cookie_path=acc_row['filePath'] or '',
+                    video_path=resolved_video,
+                    title=payload.get('title', ''),
+                    description=payload.get('desc', ''),
+                    thumbnail_path=resolved_thumbnail,
+                    tags=payload.get('tags') or [],
+                    source='draft',
+                    draft_id=r['id'],
+                    account_id=account_id,
+                    payload=payload,
+                )
+                try:
+                    task_queue.add_task(task)
+                    task_ids.append(task_id)
+                except Exception as e:
+                    failed.append({'draft_id': r['id'], 'reason': f'入队失败: {e}'})
+        except Exception as e:
+            failed.append({'draft_id': r['id'], 'reason': str(e)})
+
+    return jsonify({"code": 200, "task_ids": task_ids, "failed": failed}), 200
+
+
+# ========== 视频草稿批量删除 ==========
+
+@ext_api.route('/drafts/batch', methods=['DELETE'])
+def batch_delete_drafts():
+    """视频草稿批量删除。
+
+    Body: {"draft_ids": [int, ...]}  (1-30 个草稿 id)
+    Response 200: {"code": 200, "deleted": [...], "failed": [{draft_id, reason}, ...]}
+    Response 400: draft_ids 缺失/非列表/为空/超过 30
+    """
+    from flask import request
+    data = request.get_json() or {}
+    draft_ids = data.get('draft_ids') or []
+    if not isinstance(draft_ids, list) or not draft_ids or len(draft_ids) > 30:
+        return jsonify({"code": 400, "msg": "draft_ids 数量必须 1-30"}), 400
+
+    from app import _get_db_path
+    db_path = _get_db_path()
+    conn = sqlite3.connect(str(db_path))
+    placeholders = ','.join('?' * len(draft_ids))
+
+    existing = {r[0] for r in conn.execute(
+        f"SELECT id FROM drafts WHERE id IN ({placeholders})", draft_ids
+    ).fetchall()}
+
+    deleted = []
+    failed = []
+    for did in draft_ids:
+        if did in existing:
+            try:
+                conn.execute("DELETE FROM drafts WHERE id = ?", (did,))
+                deleted.append(did)
+            except Exception as e:
+                failed.append({'draft_id': did, 'reason': str(e)})
+        else:
+            failed.append({'draft_id': did, 'reason': '草稿不存在'})
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"code": 200, "deleted": deleted, "failed": failed}), 200
 
 
 # ========== 测试用 Flask app ==========

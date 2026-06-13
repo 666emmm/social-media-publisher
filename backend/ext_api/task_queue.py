@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from conf import BASE_DIR
 from util._logger import get_channel_logger
+from impl.registry import get_platform
 
 logger = get_channel_logger("task_queue")
 
@@ -31,6 +32,27 @@ class TaskStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+def aggregate_batch_status(*, succ: int, fail: int, in_flight: int, total: int) -> str:
+    """根据 detail 状态聚合 batch 状态。
+
+    优先级：
+      1. total == 0            -> 'pending'    （无 detail，理论不该发生）
+      2. in_flight > 0         -> 'running'    （仍有 queued/running detail 未结束）
+      3. fail == 0             -> 'success'    （全部成功）
+      4. succ == 0             -> 'failed'     （全部失败）
+      5. 其余                  -> 'partial'    （混合成功+失败）
+    """
+    if total == 0:
+        return 'pending'
+    if in_flight > 0:
+        return 'running'
+    if fail == 0:
+        return 'success'
+    if succ == 0:
+        return 'failed'
+    return 'partial'
 
 
 @dataclass
@@ -66,9 +88,17 @@ class PublishTask:
     ai_content: str | None = None
     is_original: bool | None = None
 
+    # 草稿批量发布溯源字段（Task 10 扩展）
+    source: str = ''                # '' | 'draft' | 'normal'
+    draft_id: int = 0
+    account_id: int = 0
+    detail_id: str = ''            # publish_details.id
+    payload: dict = field(default_factory=dict)
+
     def to_dict(self):
         d = asdict(self)
         d['tags'] = json.dumps(self.tags, ensure_ascii=False)
+        # payload 不持久化（仅 in-memory 透传），不写入 d
         return d
 
     @classmethod
@@ -100,6 +130,10 @@ class PublishTask:
             created_at=row_dict['created_at'],
             started_at=row_dict.get('started_at'),
             finished_at=row_dict.get('finished_at'),
+            source=row_dict.get('source', ''),
+            draft_id=row_dict.get('draft_id', 0),
+            account_id=row_dict.get('account_id', 0),
+            detail_id=row_dict.get('detail_id', ''),
         )
 
 
@@ -178,6 +212,10 @@ class TaskQueue:
                     await self.queue.put(task)
                     if task.id in self.running:
                         del self.running[task.id]
+                    # 通知但不 task_done（任务仍在队列里）
+                    self._update_db(task)
+                    self._notify_status(task)
+                    # 唯一一次 task_done（在重试入队后）
                     self.queue.task_done()
                     continue
                 else:
@@ -192,10 +230,31 @@ class TaskQueue:
                     self.completed.append(task)
                 self._update_db(task)
                 self._notify_status(task)
-                self.queue.task_done()
+                # 只有非 retry 路径才 task_done
+                # retry 路径已经 task_done() 并 continue 跳到下一轮
+                if task.status != TaskStatus.PENDING:
+                    self.queue.task_done()
 
     async def _execute(self, task: PublishTask):
-        """调用上游 uploader 执行上传"""
+        """调用上游 uploader 执行上传。
+
+        新逻辑：当 task.payload 非空时，调 platform.publish_video(**payload)（splat）。
+        旧逻辑（task.payload 为空时）：保留原 myUtils.postVideo 模块函数调用（向后兼容）。
+        """
+        # 新逻辑：payload 透传到 platform.publish_video
+        if task.payload:
+            platform = get_platform(task.platform_type)
+            if not platform:
+                raise ValueError(f"不支持的平台类型: {task.platform_type}")
+            publish_fn = platform.publish_video
+            if asyncio.iscoroutinefunction(publish_fn):
+                return await publish_fn(**task.payload)
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None, lambda: publish_fn(**task.payload)
+            )
+
+        # 旧逻辑：保留原代码不动
         from myUtils.postVideo import (
             post_video_DouYin, post_video_ks,
             post_video_tencent, post_video_xhs,
@@ -319,14 +378,18 @@ class TaskQueue:
         try:
             with sqlite3.connect(str(DB_PATH)) as conn:
                 # batch 插一次，多次同 batch_id 跳过
+                # 草稿批量发布时填 source='draft' + draft_id 溯源到草稿
                 conn.execute(
                     """INSERT OR IGNORE INTO publish_batches
                        (id, type, title, description, video_material_id,
                         landscape_cover_material_id, portrait_cover_material_id,
-                        account_count, status, created_at, updated_at)
-                       VALUES (?, 'video', ?, ?, '', '', '', 0, 'pending', ?, ?)""",
+                        account_count, status, created_at, updated_at,
+                        source, draft_id)
+                       VALUES (?, 'video', ?, ?, '', '', '', 0, 'pending', ?, ?,
+                               ?, ?)""",
                     (task.batch_id or task.id, task.title, task.description,
-                     task.created_at, task.created_at)
+                     task.created_at, task.created_at,
+                     task.source or '', task.draft_id or 0)
                 )
                 # account_configs：把 task 字段打包成 JSON
                 cfg = _build_account_configs(task)
@@ -334,8 +397,9 @@ class TaskQueue:
                     """INSERT INTO publish_details
                        (id, batch_id, account_id, account_name, platform, account_configs,
                         status, created_at)
-                       VALUES (?, ?, NULL, ?, ?, ?, ?, ?)""",
-                    (task.id, task.batch_id or task.id, task.account_name, task.platform,
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (task.id, task.batch_id or task.id, task.account_id or None,
+                     task.account_name, task.platform,
                      json.dumps(cfg, ensure_ascii=False), task.status, task.created_at)
                 )
         except Exception as e:
@@ -362,15 +426,13 @@ class TaskQueue:
                 counts = conn.execute(
                     """SELECT COUNT(*),
                               SUM(CASE WHEN status='success' THEN 1 ELSE 0 END),
-                              SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END)
+                              SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),
+                              SUM(CASE WHEN status IN ('running', 'queued') THEN 1 ELSE 0 END)
                        FROM publish_details WHERE batch_id=?""",
                     (batch_id,)
                 ).fetchone()
-                total, succ, fail = counts[0], counts[1] or 0, counts[2] or 0
-                if total == 0: bs = 'pending'
-                elif fail == 0: bs = 'success'
-                elif succ == 0: bs = 'failed'
-                else: bs = 'partial'
+                total, succ, fail, in_flight = counts[0], counts[1] or 0, counts[2] or 0, counts[3] or 0
+                bs = aggregate_batch_status(succ=succ, fail=fail, in_flight=in_flight, total=total)
                 now = datetime.now().isoformat()
                 conn.execute(
                     """UPDATE publish_batches

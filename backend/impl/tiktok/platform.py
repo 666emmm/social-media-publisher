@@ -292,6 +292,10 @@ class TiktokPlatform(BasePlatform):
                 else publish_datetimes
             )
             for cookie_path in cookie_paths:
+                logger.info(
+                    f"[tiktok] === _upload_all 调用 _upload_single "
+                    f"(cookie={cookie_path!r}, file={file_path!r}, title={title!r}) ==="
+                )
                 await self._upload_single(
                     title=title,
                     file_path=file_path,
@@ -318,6 +322,41 @@ class TiktokPlatform(BasePlatform):
     ) -> None:
         """Upload one video to one TikTok account using CloakBrowser.
         """
+        # === 诊断日志：打印所有接收到的参数 + 关键验证 ===
+        import os
+        logger.info(f"[tiktok] === _upload_single 接收参数 ===")
+        logger.info(f"[tiktok]   title={title!r}")
+        logger.info(f"[tiktok]   file_path={file_path!r}")
+        logger.info(
+            f"[tiktok]   file_path 是否存在="
+            f"{os.path.exists(file_path) if file_path else 'N/A (empty)'}"
+        )
+        if file_path and not os.path.exists(file_path):
+            # 列举父目录看实际有什么
+            parent = os.path.dirname(file_path)
+            if os.path.isdir(parent):
+                siblings = os.listdir(parent)[:10]
+                logger.info(
+                    f"[tiktok]   父目录 {parent!r} 存在，样本: {siblings}"
+                )
+            else:
+                logger.info(f"[tiktok]   父目录 {parent!r} 不存在！")
+        logger.info(f"[tiktok]   tags={tags!r}")
+        logger.info(f"[tiktok]   publish_date={publish_date!r}")
+        logger.info(f"[tiktok]   account_file={account_file!r}")
+        logger.info(
+            f"[tiktok]   account_file 是否存在="
+            f"{os.path.exists(account_file) if account_file else 'N/A'}"
+        )
+        logger.info(f"[tiktok]   thumbnail_path={thumbnail_path!r}")
+        if thumbnail_path:
+            logger.info(
+                f"[tiktok]   thumbnail_path 是否存在="
+                f"{os.path.exists(thumbnail_path)}"
+            )
+        logger.info(f"[tiktok]   ai_content={ai_content!r}")
+        logger.info(f"[tiktok] === 参数打印完毕 ===")
+
         browser = await self.create_browser(
             headless=False,
         )
@@ -360,7 +399,7 @@ class TiktokPlatform(BasePlatform):
                 logger.info("[tiktok] Using main page file input")
 
             try:
-                await file_input.set_input_files(file_path)
+                await file_input.set_input_files(file_path, timeout=60_000)
                 logger.info(f"[tiktok] Video file set: {file_path}")
             except Exception as e:
                 logger.info(f"[tiktok] set_input_files FAILED: {e!r}")
@@ -504,25 +543,40 @@ class TiktokPlatform(BasePlatform):
         """Dismiss the "继续发布？" copyright-check warning modal.
 
         Appears after clicking 发布 if TikTok's copyright/content
-        check is still running.  Click "立即发布" to force-publish.
+        check is still running. Click "立即发布" to force-publish.
         No-op if the modal is not present.
+
+        The modal may be inside an iframe (TikTok's upload page uses
+        ``iframe[data-tt="Upload_index_iframe"]``), so we iterate through
+        all frames. We use ``state="attached"`` (not ``state="visible"``)
+        because the modal's opening transition animation makes the
+        visibility check flaky — and ``force=True`` on click to bypass
+        actionability checks that can also fail during the transition.
         """
         try:
-            modal = page.locator(
-                'div.TUXModal.common-modal:has(.common-modal-header:has-text("继续发布？"))'
-            ).first
-            if not await modal.is_visible(timeout=2_000):
-                return
-            publish_now_btn = modal.locator(
-                'div.common-modal-footer '
-                'button:has-text("立即发布")'
-            ).first
-            await publish_now_btn.wait_for(state="visible", timeout=3_000)
-            await publish_now_btn.click()
-            logger.info("[tiktok] Dismissed '继续发布？' modal (立即发布)")
-        except Exception:
-            # Modal not shown — fine
-            pass
+            frames = [page] + list(page.frames)
+            for frame in frames:
+                try:
+                    btn = frame.locator(
+                        'div.TUXModal.common-modal-confirm-modal '
+                        'div.common-modal-footer '
+                        'button:has-text("立即发布")'
+                    ).first
+                    # 等 button 在 DOM 里(最多 10 秒,忽略可见性检查)
+                    await btn.wait_for(state="attached", timeout=10_000)
+                    # force click 跳过可见性/可点击性/遮挡检查
+                    await btn.click(force=True, timeout=2_000)
+                    logger.info(
+                        f"[tiktok] Dismissed '继续发布？' modal "
+                        f"in frame url={frame.url[:60]!r}"
+                    )
+                    return
+                except Exception:
+                    # Frame 不可访问或 button 不在,try next frame
+                    continue
+            logger.info("[tiktok] _dismiss_publish_confirm_modal: button not found in any frame within 10s")
+        except Exception as e:
+            logger.info(f"[tiktok] _dismiss_publish_confirm_modal: {e!r}")
 
     @staticmethod
     async def _add_title_tags(page, title: str, tags: list) -> None:
@@ -783,8 +837,19 @@ class TiktokPlatform(BasePlatform):
         Button text is "发布" for immediate publish, "预约发布" for
         scheduled — both share ``data-e2e="post_video_button"``.  We
         poll the click until the URL changes to ``/tiktokstudio/content``.
+
+        Guarded by ``page.is_closed()`` so the loop exits cleanly when
+        the user (or TikTok's own navigation) closes the page — without
+        this, a closed-page ``TargetClosedError`` re-enters the loop and
+        Playwright throws ``Object prototype may only be an Object or
+        null: undefined`` on the next locator call.
         """
-        while True:
+        max_attempts = 60  # 60 * 0.5s = 30s upper bound on the loop
+        for _ in range(max_attempts):
+            # 如果 page 已关闭（用户关浏览器 / TikTok 跳页关闭），直接退出循环
+            if page.is_closed():
+                logger.info("[tiktok] Page closed, exit _click_publish loop")
+                return
             try:
                 publish_btn = page.locator(
                     'button[data-e2e="post_video_button"]'
@@ -806,10 +871,11 @@ class TiktokPlatform(BasePlatform):
                     timeout=10_000,
                 )
                 logger.info("[tiktok] Video published successfully")
-                break
+                return
             except Exception as e:
                 logger.info(f"[tiktok] Waiting for publish... ({e.__class__.__name__})")
                 await asyncio.sleep(0.5)
+        logger.info(f"[tiktok] _click_publish loop exhausted {max_attempts} attempts")
 
     @staticmethod
     async def _get_last_video_id(page):

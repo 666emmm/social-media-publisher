@@ -169,6 +169,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Edit, Delete } from '@element-plus/icons-vue'
 import { draftApi } from '@/api/draft'
+import { imagePublishApi } from '@/api/imagePublish'
 import { getPlatformByKey } from '@/config/platforms'
 import { getFileUrl } from '@/utils/storage'
 import BatchDraftPublishDialog from '@/components/BatchDraftPublishDialog.vue'
@@ -359,6 +360,12 @@ async function onBatchDelete() {
   }
 }
 
+function extractPlatforms(draft) {
+  // 从 channels_summary（list of {platform, name, count}）提取平台 key 列表
+  const list = draft?.channels_summary || []
+  return list.map((c) => c.platform).filter(Boolean)
+}
+
 async function onBatchPublish() {
   const ids = [...selection.value]
   const current = getCurrentDrafts()
@@ -369,7 +376,7 @@ async function onBatchPublish() {
       id: d.id,
       type: d.type,
       title: d.title,
-      platforms: [],
+      platforms: extractPlatforms(d),
     }))
   dialogFailures.value = []
   dialogVisible.value = true
@@ -381,7 +388,11 @@ async function onDialogConfirm(confirmedIds) {
 
   isPublishing.value = true
   try {
-    const resp = await draftApi.batchPublishVideoDrafts(confirmedIds)
+    // 根据当前 tab 调不同的批量发布端点
+    const isImage = activeTab.value === 'image'
+    const resp = isImage
+      ? await imagePublishApi.batchPublishImageDrafts(confirmedIds)
+      : await draftApi.batchPublishVideoDrafts(confirmedIds)
     const { task_ids = [], failed = [] } = resp || {}
     if (task_ids.length) {
       ElMessage.success(

@@ -16,4 +16,8 @@ export const imagePublishApi = {
   saveDraft(data) { return http.post('/api/image-publish/drafts', data) },
   deleteDraft(id) { return http.delete(`/api/image-publish/drafts/${id}`) },
   getHistory() { return http.get('/api/image-publish/history') },
+  // 草稿批量发布（图文明文）：POST /api/image-publish/drafts/batch-publish
+  batchPublishImageDrafts(draftIds) {
+    return http.post('/api/image-publish/drafts/batch-publish', { draft_ids: draftIds })
+  },
 }

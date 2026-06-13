@@ -108,12 +108,25 @@ def _resolve_cover_url(material_id: str) -> str:
 def _resolve_cover_from_path(stored_path: str) -> str:
     """直接用 stored_path 构造 /api/materials/file/{path} URL。空串返回空。
 
-    stored_path 可能是绝对路径（thumbnail_path 来自 _resolve_material_path），
-    也可能是相对路径。用 urllib.parse.quote 编码可避免前导 `/` 触发双斜杠。
+    stored_path 可能是绝对路径（thumbnail_path 来自 _resolve_material_path，
+    例如 /home/czy/workspace/.../data/materials/2026/06/13/uuid.jpg），
+    也可能是相对路径（含 materials/ 前缀）。要构造 storage API 的 file 路由
+    URL，relative_path 必须等于 materials 表的 stored_path 列。
     """
     if not stored_path:
         return ''
-    return f"/api/materials/file/{urllib.parse.quote(stored_path, safe='')}"
+    # 绝对路径：剥掉 BASE_DIR（data 目录）的父前缀，保留 materials/ 之后的部分
+    import re
+    m = re.search(r'(?:^|/)data/(materials/.+)$', stored_path)
+    if m:
+        relative = m.group(1)
+    elif stored_path.startswith('materials/'):
+        relative = stored_path
+    else:
+        # 兜底：取 basename
+        import os
+        relative = os.path.basename(stored_path)
+    return f"/api/materials/file/{urllib.parse.quote(relative, safe='')}"
 
 
 # ========== 任务管理 ==========

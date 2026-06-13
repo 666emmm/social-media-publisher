@@ -548,7 +548,10 @@ class TiktokPlatform(BasePlatform):
 
         The modal may be inside an iframe (TikTok's upload page uses
         ``iframe[data-tt="Upload_index_iframe"]``), so we iterate through
-        all frames — main + iframes — to find the clickable button.
+        all frames. We use ``state="attached"`` (not ``state="visible"``)
+        because the modal's opening transition animation makes the
+        visibility check flaky — and ``force=True`` on click to bypass
+        actionability checks that can also fail during the transition.
         """
         try:
             frames = [page] + list(page.frames)
@@ -559,17 +562,19 @@ class TiktokPlatform(BasePlatform):
                         'div.common-modal-footer '
                         'button:has-text("立即发布")'
                     ).first
-                    if await btn.is_visible(timeout=1_000):
-                        await btn.click(timeout=2_000)
-                        logger.info(
-                            f"[tiktok] Dismissed '继续发布？' modal "
-                            f"in frame url={frame.url[:60]!r}"
-                        )
-                        return
+                    # 等 button 在 DOM 里(最多 10 秒,忽略可见性检查)
+                    await btn.wait_for(state="attached", timeout=10_000)
+                    # force click 跳过可见性/可点击性/遮挡检查
+                    await btn.click(force=True, timeout=2_000)
+                    logger.info(
+                        f"[tiktok] Dismissed '继续发布？' modal "
+                        f"in frame url={frame.url[:60]!r}"
+                    )
+                    return
                 except Exception:
                     # Frame 不可访问或 button 不在,try next frame
                     continue
-            logger.info("[tiktok] _dismiss_publish_confirm_modal: button not found in any frame")
+            logger.info("[tiktok] _dismiss_publish_confirm_modal: button not found in any frame within 10s")
         except Exception as e:
             logger.info(f"[tiktok] _dismiss_publish_confirm_modal: {e!r}")
 

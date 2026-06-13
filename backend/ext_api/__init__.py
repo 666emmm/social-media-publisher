@@ -7,6 +7,7 @@ import json
 import sqlite3
 import queue
 import threading
+import urllib.parse
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -85,7 +86,10 @@ def _to_beijing_time(utc_str):
 
 
 def _resolve_cover_url(material_id: str) -> str:
-    """解析 material_id → /api/materials/file/{stored_path} URL。失败返回空串。"""
+    """解析 material_id → /api/materials/file/{stored_path} URL。失败返回空串。
+
+    stored_path 可能是绝对路径。用 urllib.parse.quote 编码可避免前导 `/` 触发双斜杠。
+    """
     if not material_id:
         return ''
     try:
@@ -96,16 +100,20 @@ def _resolve_cover_url(material_id: str) -> str:
         conn.close()
         if not row:
             return ''
-        return f"/api/materials/file/{row['stored_path']}"
+        return f"/api/materials/file/{urllib.parse.quote(row['stored_path'], safe='')}"
     except Exception:
         return ''
 
 
 def _resolve_cover_from_path(stored_path: str) -> str:
-    """直接用 stored_path 构造 /api/materials/file/{path} URL。空串返回空。"""
+    """直接用 stored_path 构造 /api/materials/file/{path} URL。空串返回空。
+
+    stored_path 可能是绝对路径（thumbnail_path 来自 _resolve_material_path），
+    也可能是相对路径。用 urllib.parse.quote 编码可避免前导 `/` 触发双斜杠。
+    """
     if not stored_path:
         return ''
-    return f"/api/materials/file/{stored_path}"
+    return f"/api/materials/file/{urllib.parse.quote(stored_path, safe='')}"
 
 
 # ========== 任务管理 ==========

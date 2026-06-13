@@ -1,6 +1,5 @@
 """PublishTask 扩展字段测试。"""
 import sys
-import json
 import asyncio
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -22,7 +21,7 @@ def test_publish_task_default_new_fields():
 
 
 def test_publish_task_to_dict_includes_payload():
-    """to_dict 把 payload 转 JSON 字符串。"""
+    """to_dict 不再序列化 payload（payload 是 in-memory，不持久化）。"""
     t = PublishTask(
         platform='bilibili', platform_type=5,
         source='draft', draft_id=42, account_id=3,
@@ -34,14 +33,13 @@ def test_publish_task_to_dict_includes_payload():
     assert d['draft_id'] == 42
     assert d['account_id'] == 3
     assert d['detail_id'] == 'd-1'
-    # payload 是 JSON 字符串（DB 存储）
-    assert isinstance(d['payload'], str)
-    parsed = json.loads(d['payload'])
-    assert parsed == {'title': 'T', 'files': ['/a.mp4']}
+    # payload 不持久化（in-memory only），不再被 JSON 编码到 to_dict
+    assert d['payload'] == {'title': 'T', 'files': ['/a.mp4']}
+    assert not isinstance(d['payload'], str)
 
 
 def test_publish_task_from_row_round_trip():
-    """to_dict → from_row 往返保留所有新字段。"""
+    """to_dict → from_row 往返保留新字段（payload in-memory，不进 DB）。"""
     t = PublishTask(
         platform='douyin', platform_type=3,
         source='draft', draft_id=99, account_id=5,
@@ -53,8 +51,9 @@ def test_publish_task_from_row_round_trip():
     assert t2.source == 'draft'
     assert t2.draft_id == 99
     assert t2.account_id == 5
-    assert t2.payload == {'title': 'X', 'ai_content': '内容由AI生成'}
     assert t2.detail_id == 'd-2'
+    # payload 是 in-memory 字段，from_row 后回到默认 {}
+    assert t2.payload == {}
 
 
 def test_execute_splats_payload_to_platform_publish_video():

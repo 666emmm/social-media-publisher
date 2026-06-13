@@ -77,7 +77,7 @@ class PublishTask:
     def to_dict(self):
         d = asdict(self)
         d['tags'] = json.dumps(self.tags, ensure_ascii=False)
-        d['payload'] = json.dumps(self.payload, ensure_ascii=False)
+        # payload 不持久化（仅 in-memory 透传），不写入 d
         return d
 
     @classmethod
@@ -89,12 +89,6 @@ class PublishTask:
                 tags = json.loads(tags)
             except json.JSONDecodeError:
                 tags = []
-        payload = row_dict.get('payload', '{}')
-        if isinstance(payload, str):
-            try:
-                payload = json.loads(payload)
-            except json.JSONDecodeError:
-                payload = {}
         return cls(
             id=row_dict['id'],
             batch_id=row_dict.get('batch_id', ''),
@@ -119,7 +113,6 @@ class PublishTask:
             draft_id=row_dict.get('draft_id', 0),
             account_id=row_dict.get('account_id', 0),
             detail_id=row_dict.get('detail_id', ''),
-            payload=payload,
         )
 
 

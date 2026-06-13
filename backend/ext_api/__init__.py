@@ -1129,7 +1129,7 @@ def batch_publish_drafts():
                     platform_type=ptype,
                     account_name=acc_row['userName'] or '',
                     account_cookie_path=acc_row['filePath'] or '',
-                    video_path=(payload.get('files') or ['/'])[0],
+                    video_path=(payload.get('files') or [''])[0],
                     title=payload.get('title', ''),
                     description=payload.get('desc', ''),
                     thumbnail_path=payload.get('thumbnail_path', ''),

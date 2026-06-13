@@ -13,19 +13,59 @@
     </div>
 
     <!-- Batch operations toolbar -->
-    <div class="draft-toolbar">
+    <div class="draft-toolbar" :class="{ 'is-active': selectMode }">
       <el-button
-        :type="selectMode ? 'primary' : 'default'"
-        size="small"
+        v-if="!selectMode"
+        size="default"
+        :icon="Select"
+        class="toolbar-trigger"
         @click="toggleSelectMode"
       >
-        {{ selectMode ? '退出多选' : '多选' }}
+        多选
       </el-button>
-      <template v-if="selectMode && selection.size > 0">
-        <span class="selected-count">已选 {{ selection.size }} 项</span>
-        <el-button size="small" @click="onBatchDelete">批量删除</el-button>
-        <el-button size="small" type="primary" :disabled="isPublishing" @click="onBatchPublish">批量发布</el-button>
-        <el-button size="small" text @click="clearSelection">清空</el-button>
+
+      <template v-else>
+        <el-checkbox
+          :model-value="isAllSelected"
+          :indeterminate="isIndeterminate"
+          class="toolbar-select-all"
+          @change="toggleSelectAll"
+        >
+          全选
+        </el-checkbox>
+
+        <div class="selected-info">
+          <el-icon class="selected-icon"><Check /></el-icon>
+          <span>已选 <strong>{{ selection.size }}</strong> / {{ currentTabTotal }}</span>
+        </div>
+
+        <div class="toolbar-spacer"></div>
+
+        <el-button
+          size="default"
+          :icon="Promotion"
+          type="primary"
+          :disabled="selection.size === 0 || isPublishing"
+          @click="onBatchPublish"
+        >
+          批量发布<template v-if="selection.size > 0"> ({{ selection.size }})</template>
+        </el-button>
+        <el-button
+          size="default"
+          :icon="Delete"
+          :disabled="selection.size === 0"
+          @click="onBatchDelete"
+        >
+          批量删除
+        </el-button>
+        <el-button
+          size="default"
+          :icon="Close"
+          class="toolbar-exit"
+          @click="toggleSelectMode"
+        >
+          退出多选
+        </el-button>
       </template>
     </div>
 
@@ -38,13 +78,24 @@
       </div>
 
       <div v-else class="draft-grid">
-        <div v-for="draft in videoDrafts" :key="draft.id" class="draft-card">
-          <el-checkbox
+        <div
+          v-for="draft in videoDrafts"
+          :key="draft.id"
+          class="draft-card"
+          :class="{
+            'is-selected': selection.has(draft.id),
+            'select-mode': selectMode,
+          }"
+          @click="onCardClick(draft.id)"
+        >
+          <div
             v-if="selectMode"
-            :model-value="selection.has(draft.id)"
-            @change="(v) => toggleSelection(draft.id, v)"
-            class="draft-card-checkbox"
-          />
+            class="card-selector"
+            :class="{ 'is-checked': selection.has(draft.id) }"
+            @click.stop="toggleSelection(draft.id, !selection.has(draft.id))"
+          >
+            <el-icon class="selector-icon"><Check /></el-icon>
+          </div>
           <div class="card-cover">
             <img
               v-if="draft.cover_path"
@@ -82,10 +133,10 @@
           </div>
 
           <div class="card-actions">
-            <button class="action-btn action-edit" @click="editVideoDraft(draft.id)">
+            <button class="action-btn action-edit" @click.stop="editVideoDraft(draft.id)">
               <el-icon><Edit /></el-icon> 编辑
             </button>
-            <button class="action-btn action-delete" @click="confirmDelete(draft.id, 'video')">
+            <button class="action-btn action-delete" @click.stop="confirmDelete(draft.id, 'video')">
               <el-icon><Delete /></el-icon> 删除
             </button>
           </div>
@@ -110,13 +161,24 @@
       </div>
 
       <div v-else class="draft-grid">
-        <div v-for="draft in imageDrafts" :key="draft.id" class="draft-card">
-          <el-checkbox
+        <div
+          v-for="draft in imageDrafts"
+          :key="draft.id"
+          class="draft-card"
+          :class="{
+            'is-selected': selection.has(draft.id),
+            'select-mode': selectMode,
+          }"
+          @click="onCardClick(draft.id)"
+        >
+          <div
             v-if="selectMode"
-            :model-value="selection.has(draft.id)"
-            @change="(v) => toggleSelection(draft.id, v)"
-            class="draft-card-checkbox"
-          />
+            class="card-selector"
+            :class="{ 'is-checked': selection.has(draft.id) }"
+            @click.stop="toggleSelection(draft.id, !selection.has(draft.id))"
+          >
+            <el-icon class="selector-icon"><Check /></el-icon>
+          </div>
           <div class="card-cover">
             <img
               v-if="draft.cover_path"
@@ -150,10 +212,10 @@
           </div>
 
           <div class="card-actions">
-            <button class="action-btn action-edit" @click="editImageDraft(draft.id)">
+            <button class="action-btn action-edit" @click.stop="editImageDraft(draft.id)">
               <el-icon><Edit /></el-icon> 编辑
             </button>
-            <button class="action-btn action-delete" @click="confirmDelete(draft.id, 'image')">
+            <button class="action-btn action-delete" @click.stop="confirmDelete(draft.id, 'image')">
               <el-icon><Delete /></el-icon> 删除
             </button>
           </div>
@@ -164,10 +226,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Picture, Edit, Delete } from '@element-plus/icons-vue'
+import { Picture, Edit, Delete, Check, Select, Promotion, Close } from '@element-plus/icons-vue'
 import { draftApi } from '@/api/draft'
 import { imagePublishApi } from '@/api/imagePublish'
 import { getPlatformByKey } from '@/config/platforms'
@@ -306,11 +368,33 @@ onMounted(loadAllDrafts)
 
 // ===== Batch operations =====
 
+const currentTabTotal = computed(() => getCurrentDrafts().length)
+const isAllSelected = computed(() => {
+  const total = currentTabTotal.value
+  return total > 0 && selection.value.size >= total
+})
+const isIndeterminate = computed(() => {
+  return selection.value.size > 0 && selection.value.size < currentTabTotal.value
+})
+
 function toggleSelectMode() {
   selectMode.value = !selectMode.value
   if (!selectMode.value) {
     selection.value = new Set()
   }
+}
+
+function toggleSelectAll(checked) {
+  if (checked) {
+    selection.value = new Set(getCurrentDrafts().map((d) => d.id))
+  } else {
+    selection.value = new Set()
+  }
+}
+
+function onCardClick(id) {
+  if (!selectMode.value) return
+  toggleSelection(id, !selection.value.has(id))
 }
 
 function clearSelection() {
@@ -470,6 +554,7 @@ async function onDialogConfirm(confirmedIds) {
 }
 
 .draft-card {
+  position: relative;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid $border;
   border-radius: $radius-lg;
@@ -477,11 +562,6 @@ async function onDialogConfirm(confirmedIds) {
   transition: $transition-base;
   display: flex;
   flex-direction: column;
-
-  &:hover {
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  }
 }
 
 .card-cover {
@@ -620,24 +700,140 @@ async function onDialogConfirm(confirmedIds) {
   gap: 12px;
   margin-bottom: 16px;
   flex-wrap: wrap;
+  padding: 8px 12px;
+  border-radius: $radius-card;
+  border: 1px solid transparent;
+  transition: $transition-base;
 
-  .selected-count {
-    font-size: 13px;
-    color: $text-secondary;
+  &.is-active {
+    background: linear-gradient(135deg, rgba($brand-start, 0.1), rgba($brand-end, 0.06));
+    border-color: $border-active;
+    box-shadow: 0 0 24px rgba($brand-start, 0.08);
+    backdrop-filter: blur(8px);
+    padding: 10px 16px;
   }
 }
 
-.draft-card-checkbox {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 2;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 4px;
-  padding: 2px 4px;
+.toolbar-trigger {
+  --el-button-bg-color: rgba(255, 255, 255, 0.04);
+  --el-button-border-color: rgba(255, 255, 255, 0.12);
+  --el-button-hover-bg-color: rgba($brand-start, 0.12);
+  --el-button-hover-border-color: rgba($brand-start, 0.4);
+  --el-button-hover-text-color: lighten($brand-start, 12%);
+  --el-button-text-color: $text-secondary;
+}
+
+.toolbar-select-all {
+  :deep(.el-checkbox__label) {
+    color: $text-secondary;
+    font-size: 13px;
+  }
+}
+
+.toolbar-exit {
+  --el-button-bg-color: rgba(255, 255, 255, 0.03);
+  --el-button-border-color: rgba(255, 255, 255, 0.12);
+  --el-button-text-color: $text-secondary;
+  --el-button-hover-bg-color: rgba(244, 63, 94, 0.12);
+  --el-button-hover-border-color: rgba(244, 63, 94, 0.4);
+  --el-button-hover-text-color: lighten($accent-rose, 8%);
+  --el-button-active-bg-color: rgba(244, 63, 94, 0.16);
+  --el-button-active-border-color: rgba(244, 63, 94, 0.5);
+  --el-button-active-text-color: lighten($accent-rose, 12%);
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.selected-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: linear-gradient(135deg, rgba($brand-start, 0.18), rgba($brand-end, 0.12));
+  border: 1px solid rgba($brand-start, 0.25);
+  color: lighten($brand-start, 12%);
+  font-size: 13px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+
+  .selected-icon {
+    font-size: 12px;
+    color: $brand-start;
+  }
+
+  strong {
+    color: $text-primary;
+    font-weight: 600;
+  }
 }
 
 .draft-card {
   position: relative;
+  transition: $transition-base;
+
+  &.select-mode {
+    cursor: pointer;
+  }
+
+  &:hover:not(.is-selected) {
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+
+  &.is-selected {
+    border-color: rgba($brand-start, 0.5);
+    background: linear-gradient(135deg, rgba($brand-start, 0.08), rgba($brand-end, 0.04));
+    box-shadow:
+      0 0 0 1px rgba($brand-start, 0.45),
+      0 8px 24px rgba($brand-start, 0.18);
+    transform: translateY(-2px);
+  }
+}
+
+.card-selector {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: $transition-base;
+  opacity: 0;
+  transform: scale(0.85);
+
+  .selector-icon {
+    font-size: 14px;
+    color: white;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: $transition-base;
+  }
+
+  .draft-card.select-mode:hover & {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .draft-card.is-selected & {
+    opacity: 1;
+    transform: scale(1);
+    background: $gradient-brand;
+    border-color: transparent;
+    box-shadow: 0 0 14px rgba($brand-start, 0.6);
+
+    .selector-icon {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
 }
 </style>

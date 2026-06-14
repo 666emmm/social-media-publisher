@@ -12,7 +12,7 @@
       <div v-if="modelValue" class="cover-preview-wrap">
         <img :src="modelValue.url" class="cover-preview" />
         <div class="cover-preview-overlay">
-          <button class="overlay-action" @click="triggerUpload">
+          <button class="overlay-action" @click="uploaderVisible = true">
             <el-icon :size="14"><Upload /></el-icon>
             <span>重新上传</span>
           </button>
@@ -30,7 +30,7 @@
       <!-- 未上传封面 -->
       <div v-else class="cover-empty">
         <div class="cover-empty-actions">
-          <button class="empty-action-btn" @click="triggerUpload">
+          <button class="empty-action-btn" @click="uploaderVisible = true">
             <el-icon :size="20"><Upload /></el-icon>
             <span>本地上传</span>
           </button>
@@ -43,12 +43,14 @@
       </div>
     </div>
 
-    <input
-      ref="fileInputRef"
-      type="file"
+    <MaterialUploader
+      v-model="uploaderVisible"
       accept="image/jpeg,image/png,image/webp"
-      style="display: none"
-      @change="onFileSelected"
+      :max-size="10"
+      :multiple="false"
+      :title="`上传${label}`"
+      tip="支持 JPG、PNG、WebP 格式，单文件不超过 10MB"
+      @uploaded="onUploaded"
     />
   </div>
 </template>
@@ -57,8 +59,8 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Upload, Delete, FolderOpened } from '@element-plus/icons-vue'
-import { materialsApi } from '@/api/materials'
 import { getFileUrl } from '@/utils/storage'
+import MaterialUploader from '@/components/MaterialUploader.vue'
 
 const props = defineProps({
   label: { type: String, default: '封面图片' },
@@ -66,54 +68,18 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'open-library'])
-const fileInputRef = ref(null)
+const uploaderVisible = ref(false)
 
-function triggerUpload() {
-  fileInputRef.value?.click()
-}
-
-async function onFileSelected(e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-
-  // 验证文件类型
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
-  if (!allowedTypes.includes(file.type)) {
-    ElMessage.error('只支持 JPG、PNG、WebP 格式的图片')
-    return
-  }
-
-  // 验证文件大小（10MB）
-  if (file.size > 10 * 1024 * 1024) {
-    ElMessage.error('图片大小不能超过 10MB')
-    return
-  }
-
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const resp = await materialsApi.upload(formData)
-    if (resp.code === 200) {
-      const d = resp.data
-      emit('update:modelValue', {
-        id: d.id,
-        name: d.original_filename,
-        url: getFileUrl(d.stored_path),
-        stored_path: d.stored_path,
-        size: d.file_size,
-        type: d.mime_type,
-      })
-      ElMessage.success('封面上传成功')
-    } else {
-      ElMessage.error(resp.msg || '上传失败')
-    }
-  } catch (err) {
-    console.error('封面上传失败:', err)
-    ElMessage.error('上传失败')
-  }
-
-  // 清空 input
-  e.target.value = ''
+function onUploaded(d) {
+  emit('update:modelValue', {
+    id: d.id,
+    name: d.original_filename,
+    url: getFileUrl(d.stored_path),
+    stored_path: d.stored_path,
+    size: d.file_size,
+    type: d.mime_type,
+  })
+  ElMessage.success('封面上传成功')
 }
 </script>
 

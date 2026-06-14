@@ -103,8 +103,8 @@
       </div>
     </div>
 
-    <!-- Cards list (replaces table) -->
-    <div class="cards-list" v-loading="loading">
+    <!-- 卡片网格 -->
+    <div class="cards-grid" v-loading="loading">
       <div v-if="!loading && batches.length === 0" class="empty-state">
         <el-icon class="empty-icon"><Clock /></el-icon>
         <p>暂无发布记录</p>
@@ -113,45 +113,26 @@
         v-for="batch in batches"
         :key="batch.id"
         class="batch-card"
-        :class="{ 'is-expanded': expandedBatchId === batch.id }"
+        @click="goDetail(batch.id)"
       >
-        <!-- 卡片主行 -->
-        <div class="card-main" @click="toggleExpand(batch.id)">
-          <div class="card-cover">
-            <img v-if="batch.cover_url" :src="batch.cover_url" :alt="batch.title" />
-            <div v-else class="cover-placeholder">
-              <el-icon :size="32"><Picture /></el-icon>
-            </div>
-          </div>
-          <div class="card-body">
-            <div class="card-title">{{ batch.title || '无标题' }}</div>
-            <div class="card-desc">{{ (batch.description || '').slice(0, 100) }}</div>
-            <div class="card-meta">
-              <span class="meta-item">{{ batch.account_count }}账号 {{ batch.success_count }}成功 {{ batch.failed_count }}失败</span>
-              <span class="status-tag" :class="`status-${batch.status}`">{{ statusLabel(batch.status) }}</span>
-              <span class="meta-item">{{ formatRelativeTime(batch.created_at) }}</span>
-            </div>
+        <div class="card-cover">
+          <img v-if="batch.cover_url" :src="batch.cover_url" :alt="batch.title" />
+          <div v-else class="cover-placeholder">
+            <el-icon :size="32"><Picture /></el-icon>
           </div>
         </div>
-        <!-- 展开的明细 -->
-        <div v-if="expandedBatchId === batch.id" class="card-details">
-          <div v-for="d in batch.items" :key="d.id" class="detail-row">
-            <span class="detail-status" :class="`status-${d.status}`">
-              {{ d.status === 'success' ? '✓' : d.status === 'failed' ? '✗' : '○' }}
-            </span>
-            <span class="detail-name">{{ d.account_name }}</span>
-            <span class="detail-platform">· {{ d.platform }}</span>
-            <span class="detail-duration" v-if="d.duration">· {{ formatDuration(d.duration) }}</span>
-            <a
-              v-if="d.publish_url"
-              :href="d.publish_url"
-              target="_blank"
-              rel="noopener noreferrer"
-              @click.stop
-            >[链接]</a>
-            <div v-if="d.status === 'failed' && d.error_message" class="detail-error">
-              错误：{{ d.error_message }}
-            </div>
+        <div class="card-body">
+          <h3 class="card-title">{{ batch.title || '无标题' }}</h3>
+          <ChannelSummary
+            :channels="computeChannelsSummary(batch.items)"
+            :overflow-key="batch.id"
+          />
+          <div class="card-meta">
+            <span class="meta-time">{{ formatCardTime(batch.created_at) }}</span>
+            <span class="status-tag" :class="`status-${batch.status}`">{{ statusLabel(batch.status) }}</span>
+          </div>
+          <div class="card-stats">
+            <PublishStats compact />
           </div>
         </div>
       </div>
@@ -175,12 +156,15 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Upload, CircleCheck, Calendar, Refresh, Clock, Picture } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import { Clock, Picture, Refresh, Upload, CircleCheck, Calendar } from '@element-plus/icons-vue'
 import { historyApi, statsApi } from '@/api/v2'
-import { platformList } from '@/config/platforms'
+import { platformList, getPlatformByKey } from '@/config/platforms'
+import ChannelSummary from '@/components/ChannelSummary.vue'
+import PublishStats from '@/components/PublishStats.vue'
 
+const router = useRouter()
 const batches = ref([])
-const expandedBatchId = ref(null)
 const stats = ref({ total: 0, successRate: 0, monthlyTotal: 0 })
 const loading = ref(false)
 
@@ -193,8 +177,47 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
-// Fetch history (batch list)
-const fetchHistory = async () => {
+function computeChannelsSummary(items) {
+  const groups = {}
+  for (const it of items || []) {
+    const key = it.platform
+    if (!groups[key]) {
+      const cfg = getPlatformByKey(
+        platformList.find(p => p.name === key)?.key
+      )
+      groups[key] = { platform: key, name: it.platform, count: 0, logo: cfg?.logo || null }
+    }
+    groups[key].count++
+  }
+  return Object.values(groups)
+}
+
+function statusLabel(status) {
+  return ({
+    pending: '等待中',
+    running: '发布中',
+    success: '全部成功',
+    partial: '部分失败',
+    failed: '全部失败',
+    cancelled: '已取消',
+  }[status] || status)
+}
+
+function formatCardTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = new Date()
+  const diff = (now - d) / 1000
+  if (diff < 86400) {
+    if (diff < 60) return '刚刚'
+    if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
+    return `${Math.floor(diff / 3600)} 小时前`
+  }
+  const pad = n => String(n).padStart(2, '0')
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+async function fetchHistory() {
   loading.value = true
   try {
     const params = { page: currentPage.value, pageSize: pageSize.value }
@@ -214,8 +237,7 @@ const fetchHistory = async () => {
   }
 }
 
-// Fetch stats
-const fetchStats = async () => {
+async function fetchStats() {
   try {
     const res = await statsApi.getStats()
     if (res.code === 200 && res.data) {
@@ -231,61 +253,15 @@ const fetchStats = async () => {
   }
 }
 
-const handlePageChange = (page) => {
-  currentPage.value = page
-  fetchHistory()
+const handlePageChange = (page) => { currentPage.value = page; fetchHistory() }
+const handleSizeChange = (size) => { pageSize.value = size; currentPage.value = 1; fetchHistory() }
+const handleFilterChange = () => { currentPage.value = 1; fetchHistory() }
+
+function goDetail(batchId) {
+  router.push(`/publish-history/${batchId}`)
 }
 
-const handleSizeChange = (size) => {
-  pageSize.value = size
-  currentPage.value = 1
-  fetchHistory()
-}
-
-const handleFilterChange = () => {
-  currentPage.value = 1
-  fetchHistory()
-}
-
-// Expand/collapse toggle
-const toggleExpand = (id) => {
-  expandedBatchId.value = expandedBatchId.value === id ? null : id
-}
-
-// Status label (Chinese)
-const statusLabel = (status) => ({
-  pending: '等待中',
-  running: '发布中',
-  success: '全部成功',
-  partial: '部分失败',
-  failed: '全部失败',
-  cancelled: '已取消',
-}[status] || status)
-
-// Relative time formatter (copy pattern from OneClickFillDialog)
-const formatRelativeTime = (iso) => {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const now = new Date()
-  const diff = (now - d) / 1000
-  if (diff < 60) return '刚刚'
-  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
-  if (diff < 604800) return `${Math.floor(diff / 86400)} 天前`
-  return d.toLocaleDateString('zh-CN')
-}
-
-// Duration formatter (Chinese)
-const formatDuration = (s) => {
-  if (s == null) return ''
-  if (s < 60) return `${s}秒`
-  return `${Math.floor(s / 60)}分${s % 60}秒`
-}
-
-onMounted(() => {
-  fetchHistory()
-  fetchStats()
-})
+onMounted(() => { fetchHistory(); fetchStats() })
 </script>
 
 <style lang="scss" scoped>
@@ -472,165 +448,100 @@ onMounted(() => {
     }
   }
 
-  // ========== Cards List (replaces table) ==========
-  .cards-list {
+  // ========== Cards Grid ==========
+  .cards-grid {
     margin-top: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
   }
 
   .batch-card {
     border: 1px solid $border;
-    border-radius: 12px;
+    border-radius: $radius-card;
     background: $bg-elevated;
     overflow: hidden;
+    cursor: pointer;
     transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
 
     &:hover {
-      border-color: $brand-start;
+      border-color: rgba($brand-start, 0.5);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      transform: translateY(-1px);
     }
-
-    &.is-expanded {
-      border-color: $brand-start;
-    }
-  }
-
-  .card-main {
-    display: flex;
-    gap: 16px;
-    padding: 16px;
-    cursor: pointer;
   }
 
   .card-cover {
-    flex-shrink: 0;
-    width: 160px;
+    width: 100%;
     aspect-ratio: 16/9;
     background: $bg-surface;
-    border-radius: 8px;
     overflow: hidden;
     position: relative;
+    flex-shrink: 0;
 
-    img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
+    img { width: 100%; height: 100%; object-fit: cover; }
 
     .cover-placeholder {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
       color: $text-muted;
     }
   }
 
   .card-body {
-    flex: 1;
-    min-width: 0;
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .card-title {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     color: $text-primary;
+    margin: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .card-desc {
-    font-size: 13px;
-    color: $text-secondary;
-    margin: 6px 0 12px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
   .card-meta {
     display: flex;
-    gap: 12px;
     align-items: center;
-    flex-wrap: wrap;
+    gap: 10px;
     font-size: 12px;
     color: $text-muted;
+    flex-wrap: wrap;
+  }
+
+  .meta-time {
+    font-variant-numeric: tabular-nums;
   }
 
   .status-tag {
-    padding: 2px 8px;
+    padding: 1px 8px;
     border-radius: 4px;
     font-size: 11px;
     font-weight: 500;
 
-    &.status-success,
-    &.status-partial {
-      background: rgba(82, 196, 26, 0.15);
-      color: #67c23a;
+    &.status-success, &.status-partial {
+      background: rgba(82, 196, 26, 0.15); color: #67c23a;
     }
-
     &.status-failed {
-      background: rgba(245, 108, 108, 0.15);
-      color: #f56c6c;
+      background: rgba(245, 108, 108, 0.15); color: #f56c6c;
     }
-
     &.status-running {
-      background: rgba(64, 158, 255, 0.15);
-      color: #409eff;
+      background: rgba(64, 158, 255, 0.15); color: #409eff;
     }
-
-    &.status-pending,
-    &.status-cancelled {
-      background: rgba(0, 0, 0, 0.06);
-      color: $text-muted;
+    &.status-pending, &.status-cancelled {
+      background: rgba(0, 0, 0, 0.06); color: $text-muted;
     }
   }
 
-  .card-details {
-    border-top: 1px solid $border;
-    padding: 12px 16px;
-    background: $bg-surface;
-  }
-
-  .detail-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    padding: 6px 0;
-    font-size: 13px;
-    flex-wrap: wrap;
-    color: $text-secondary;
-
-    .detail-status {
-      width: 18px;
-      text-align: center;
-      font-weight: 600;
-
-      &.status-success { color: #67c23a; }
-      &.status-failed { color: #f56c6c; }
-    }
-
-    a {
-      color: $brand-start;
-      text-decoration: none;
-      font-size: 12px;
-
-      &:hover {
-        color: $brand-end;
-        text-decoration: underline;
-      }
-    }
-
-    .detail-error {
-      flex-basis: 100%;
-      color: #f56c6c;
-      font-size: 12px;
-      margin-left: 26px;
-    }
+  .card-stats {
+    margin-top: 4px;
   }
 
   // Empty state

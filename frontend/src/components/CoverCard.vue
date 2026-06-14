@@ -27,24 +27,19 @@
       </div>
 
       <!-- No cover yet -->
-      <div v-else class="cover-empty" @click="$emit('edit')">
+      <div v-else :class="['cover-empty', { disabled }]" @click="!disabled && $emit('edit')">
         <div class="cover-empty-icon">
           <el-icon :size="28"><Picture /></el-icon>
         </div>
         <span class="cover-empty-title">上传{{ label }}</span>
-        <span class="cover-empty-desc">支持 JPG、PNG 格式</span>
+        <span class="cover-empty-desc">点击打开封面编辑器</span>
       </div>
     </div>
   </div>
-
-  <input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="onFileSelected" />
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Picture, Upload, Edit, Delete } from '@element-plus/icons-vue'
-import { materialsApi } from '@/api/materials'
+import { Picture, Edit, Delete } from '@element-plus/icons-vue'
 import { getFileUrl } from '@/utils/storage'
 
 const props = defineProps({
@@ -52,40 +47,10 @@ const props = defineProps({
   ratioLabel: { type: String, default: '16:9' },
   modelValue: { type: Object, default: null },
   hasVideo: { type: Boolean, default: false },
+  disabled: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:modelValue', 'edit', 'open-library'])
-const fileInputRef = ref(null)
-
-function triggerUpload() {
-  fileInputRef.value?.click()
-}
-
-async function onFileSelected(e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    const resp = await materialsApi.upload(formData)
-    if (resp.code === 200) {
-      const d = resp.data
-      emit('update:modelValue', {
-        name: d.original_filename,
-        url: getFileUrl(d.stored_path),
-        stored_path: d.stored_path,
-        size: d.file_size,
-        type: d.mime_type,
-      })
-      ElMessage.success('封面上传成功')
-    } else {
-      ElMessage.error(resp.msg || '上传失败')
-    }
-  } catch {
-    ElMessage.error('上传失败')
-  }
-  e.target.value = ''
-}
+defineEmits(['update:modelValue', 'edit', 'open-library'])
 </script>
 
 <style scoped lang="scss">
@@ -108,7 +73,6 @@ async function onFileSelected(e) {
   }
 }
 
-// ===== Header =====
 .cover-header {
   display: flex;
   align-items: center;
@@ -133,7 +97,6 @@ async function onFileSelected(e) {
   background: $gradient-brand;
 }
 
-// ===== Body =====
 .cover-body {
   min-height: 160px;
 }
@@ -251,5 +214,4 @@ async function onFileSelected(e) {
   font-size: 11px;
   color: $text-muted;
 }
-
 </style>

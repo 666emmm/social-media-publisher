@@ -45,6 +45,29 @@ class S3Storage(StorageBackend):
         )
         return relative_path
 
+    def save_stream(self, stream_iter, relative_path: str) -> str:
+        class _StreamToFileObj:
+            """包一个 bytes 迭代器为 boto3 upload_fileobj 接受的 file-like 对象"""
+            def __init__(self, it):
+                self._it = it
+            def read(self, size=-1):
+                if size is None or size < 0:
+                    # 一次性读完（boto3 罕见调用）
+                    return b''.join(self._it)
+                try:
+                    return next(self._it)
+                except StopIteration:
+                    return b''
+            def close(self):
+                pass
+        self.client.upload_fileobj(
+            _StreamToFileObj(stream_iter),
+            self.bucket,
+            relative_path,
+            Config=self._transfer_config,
+        )
+        return relative_path
+
     def get(self, relative_path: str) -> bytes:
         resp = self.client.get_object(Bucket=self.bucket, Key=relative_path)
         return resp["Body"].read()

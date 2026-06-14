@@ -12,6 +12,63 @@
       </el-tabs>
     </div>
 
+    <!-- Batch operations toolbar -->
+    <div class="draft-toolbar" :class="{ 'is-active': selectMode }">
+      <el-button
+        v-if="!selectMode"
+        size="default"
+        :icon="Select"
+        class="toolbar-trigger"
+        @click="toggleSelectMode"
+      >
+        多选
+      </el-button>
+
+      <template v-else>
+        <el-checkbox
+          :model-value="isAllSelected"
+          :indeterminate="isIndeterminate"
+          class="toolbar-select-all"
+          @change="toggleSelectAll"
+        >
+          全选
+        </el-checkbox>
+
+        <div class="selected-info">
+          <el-icon class="selected-icon"><Check /></el-icon>
+          <span>已选 <strong>{{ selection.size }}</strong> / {{ currentTabTotal }}</span>
+        </div>
+
+        <div class="toolbar-spacer"></div>
+
+        <el-button
+          size="default"
+          :icon="Promotion"
+          type="primary"
+          :disabled="selection.size === 0 || isPublishing"
+          @click="onBatchPublish"
+        >
+          批量发布<template v-if="selection.size > 0"> ({{ selection.size }})</template>
+        </el-button>
+        <el-button
+          size="default"
+          :icon="Delete"
+          :disabled="selection.size === 0"
+          @click="onBatchDelete"
+        >
+          批量删除
+        </el-button>
+        <el-button
+          size="default"
+          :icon="Close"
+          class="toolbar-exit"
+          @click="toggleSelectMode"
+        >
+          退出多选
+        </el-button>
+      </template>
+    </div>
+
     <!-- Video Drafts -->
     <template v-if="activeTab === 'video'">
       <div v-if="!loading && videoDrafts.length === 0" class="empty-state">
@@ -21,7 +78,24 @@
       </div>
 
       <div v-else class="draft-grid">
-        <div v-for="draft in videoDrafts" :key="draft.id" class="draft-card">
+        <div
+          v-for="draft in videoDrafts"
+          :key="draft.id"
+          class="draft-card"
+          :class="{
+            'is-selected': selection.has(draft.id),
+            'select-mode': selectMode,
+          }"
+          @click="onCardClick(draft.id)"
+        >
+          <div
+            v-if="selectMode"
+            class="card-selector"
+            :class="{ 'is-checked': selection.has(draft.id) }"
+            @click.stop="toggleSelection(draft.id, !selection.has(draft.id))"
+          >
+            <el-icon class="selector-icon"><Check /></el-icon>
+          </div>
           <div class="card-cover">
             <img
               v-if="draft.cover_path"
@@ -59,16 +133,24 @@
           </div>
 
           <div class="card-actions">
-            <button class="action-btn action-edit" @click="editVideoDraft(draft.id)">
+            <button class="action-btn action-edit" @click.stop="editVideoDraft(draft.id)">
               <el-icon><Edit /></el-icon> 编辑
             </button>
-            <button class="action-btn action-delete" @click="confirmDelete(draft.id, 'video')">
+            <button class="action-btn action-delete" @click.stop="confirmDelete(draft.id, 'video')">
               <el-icon><Delete /></el-icon> 删除
             </button>
           </div>
         </div>
       </div>
     </template>
+
+    <!-- Batch draft publish dialog -->
+    <BatchDraftPublishDialog
+      v-model:visible="dialogVisible"
+      :drafts="dialogDrafts"
+      :failures="dialogFailures"
+      @confirm="onDialogConfirm"
+    />
 
     <!-- Image Drafts -->
     <template v-if="activeTab === 'image'">
@@ -79,7 +161,24 @@
       </div>
 
       <div v-else class="draft-grid">
-        <div v-for="draft in imageDrafts" :key="draft.id" class="draft-card">
+        <div
+          v-for="draft in imageDrafts"
+          :key="draft.id"
+          class="draft-card"
+          :class="{
+            'is-selected': selection.has(draft.id),
+            'select-mode': selectMode,
+          }"
+          @click="onCardClick(draft.id)"
+        >
+          <div
+            v-if="selectMode"
+            class="card-selector"
+            :class="{ 'is-checked': selection.has(draft.id) }"
+            @click.stop="toggleSelection(draft.id, !selection.has(draft.id))"
+          >
+            <el-icon class="selector-icon"><Check /></el-icon>
+          </div>
           <div class="card-cover">
             <img
               v-if="draft.cover_path"
@@ -113,10 +212,10 @@
           </div>
 
           <div class="card-actions">
-            <button class="action-btn action-edit" @click="editImageDraft(draft.id)">
+            <button class="action-btn action-edit" @click.stop="editImageDraft(draft.id)">
               <el-icon><Edit /></el-icon> 编辑
             </button>
-            <button class="action-btn action-delete" @click="confirmDelete(draft.id, 'image')">
+            <button class="action-btn action-delete" @click.stop="confirmDelete(draft.id, 'image')">
               <el-icon><Delete /></el-icon> 删除
             </button>
           </div>
@@ -127,13 +226,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Picture, Edit, Delete } from '@element-plus/icons-vue'
+import { Picture, Edit, Delete, Check, Select, Promotion, Close } from '@element-plus/icons-vue'
 import { draftApi } from '@/api/draft'
+import { imagePublishApi } from '@/api/imagePublish'
 import { getPlatformByKey } from '@/config/platforms'
 import { getFileUrl } from '@/utils/storage'
+import BatchDraftPublishDialog from '@/components/BatchDraftPublishDialog.vue'
 
 const router = useRouter()
 const activeTab = ref('video')
@@ -142,6 +243,14 @@ const imageDrafts = ref([])
 const loading = ref(true)
 const channelRefs = {}
 const overflowMap = ref({})
+
+// Batch operations state
+const selection = ref(new Set())           // 选中的草稿 id
+const selectMode = ref(false)              // 多选模式开关
+const dialogVisible = ref(false)
+const dialogDrafts = ref([])                // 给 dialog 的草稿列表
+const dialogFailures = ref([])              // 校验失败列表
+const isPublishing = ref(false)
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
 
@@ -256,6 +365,137 @@ async function loadAllDrafts() {
 }
 
 onMounted(loadAllDrafts)
+
+// ===== Batch operations =====
+
+const currentTabTotal = computed(() => getCurrentDrafts().length)
+const isAllSelected = computed(() => {
+  const total = currentTabTotal.value
+  return total > 0 && selection.value.size >= total
+})
+const isIndeterminate = computed(() => {
+  return selection.value.size > 0 && selection.value.size < currentTabTotal.value
+})
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  if (!selectMode.value) {
+    selection.value = new Set()
+  }
+}
+
+function toggleSelectAll(checked) {
+  if (checked) {
+    selection.value = new Set(getCurrentDrafts().map((d) => d.id))
+  } else {
+    selection.value = new Set()
+  }
+}
+
+function onCardClick(id) {
+  if (!selectMode.value) return
+  toggleSelection(id, !selection.value.has(id))
+}
+
+function clearSelection() {
+  selection.value = new Set()
+}
+
+function toggleSelection(id, checked) {
+  if (checked) selection.value.add(id)
+  else selection.value.delete(id)
+  // 触发响应式更新（Set 本身无深度响应）
+  selection.value = new Set(selection.value)
+}
+
+function getCurrentDrafts() {
+  return activeTab.value === 'video' ? videoDrafts.value : imageDrafts.value
+}
+
+async function onBatchDelete() {
+  const count = selection.value.size
+  if (count === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${count} 个草稿？此操作不可恢复。`,
+      '批量删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  const ids = [...selection.value]
+  try {
+    const resp = await draftApi.batchDeleteDrafts(ids)
+    const { deleted = [], failed = [] } = resp || {}
+    if (deleted.length) {
+      ElMessage.success(`已删除 ${deleted.length} 个草稿`)
+      // 从本地列表移除
+      videoDrafts.value = videoDrafts.value.filter((d) => !deleted.includes(d.id))
+      imageDrafts.value = imageDrafts.value.filter((d) => !deleted.includes(d.id))
+    }
+    if (failed.length) {
+      ElMessage.warning(`${failed.length} 个草稿删除失败：${failed.map((f) => f.reason).join('; ')}`)
+    }
+    selection.value = new Set()
+  } catch (e) {
+    ElMessage.error(`批量删除失败：${e.message || e}`)
+  }
+}
+
+function extractPlatforms(draft) {
+  // 从 channels_summary（list of {platform, name, count}）提取平台 key 列表
+  const list = draft?.channels_summary || []
+  return list.map((c) => c.platform).filter(Boolean)
+}
+
+async function onBatchPublish() {
+  const ids = [...selection.value]
+  const current = getCurrentDrafts()
+  // 仅推送当前 tab 下选中的草稿
+  dialogDrafts.value = current
+    .filter((d) => ids.includes(d.id))
+    .map((d) => ({
+      id: d.id,
+      type: d.type,
+      title: d.title,
+      platforms: extractPlatforms(d),
+    }))
+  dialogFailures.value = []
+  dialogVisible.value = true
+}
+
+async function onDialogConfirm(confirmedIds) {
+  dialogVisible.value = false
+  if (!confirmedIds || confirmedIds.length === 0) return
+
+  isPublishing.value = true
+  const isImage = activeTab.value === 'image'
+  try {
+    // 根据当前 tab 调不同的批量发布端点
+    const resp = isImage
+      ? await imagePublishApi.batchPublishImageDrafts(confirmedIds)
+      : await draftApi.batchPublishVideoDrafts(confirmedIds)
+    const { task_ids = [], failed = [] } = resp || {}
+    if (task_ids.length) {
+      ElMessage.success({
+        message: `已入队 ${task_ids.length} 个任务，去任务中心查看 →`,
+        duration: 4000,
+      })
+    }
+    if (failed.length) {
+      ElMessage.warning({
+        message: `${failed.length} 个草稿发布失败：${failed.map((f) => f.reason).join('; ')}`,
+      })
+    }
+    selection.value = new Set()
+  } catch (e) {
+    ElMessage.error({ message: `批量发布失败：${e?.message || e}` })
+  } finally {
+    isPublishing.value = false
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -314,6 +554,7 @@ onMounted(loadAllDrafts)
 }
 
 .draft-card {
+  position: relative;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid $border;
   border-radius: $radius-lg;
@@ -321,11 +562,6 @@ onMounted(loadAllDrafts)
   transition: $transition-base;
   display: flex;
   flex-direction: column;
-
-  &:hover {
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  }
 }
 
 .card-cover {
@@ -455,6 +691,149 @@ onMounted(loadAllDrafts)
   &.action-delete:hover {
     background: rgba(245, 108, 108, 0.1);
     color: #f56c6c;
+  }
+}
+
+.draft-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-radius: $radius-card;
+  border: 1px solid transparent;
+  transition: $transition-base;
+
+  &.is-active {
+    background: linear-gradient(135deg, rgba($brand-start, 0.1), rgba($brand-end, 0.06));
+    border-color: $border-active;
+    box-shadow: 0 0 24px rgba($brand-start, 0.08);
+    backdrop-filter: blur(8px);
+    padding: 10px 16px;
+  }
+}
+
+.toolbar-trigger {
+  --el-button-bg-color: rgba(255, 255, 255, 0.04);
+  --el-button-border-color: rgba(255, 255, 255, 0.12);
+  --el-button-hover-bg-color: rgba($brand-start, 0.12);
+  --el-button-hover-border-color: rgba($brand-start, 0.4);
+  --el-button-hover-text-color: lighten($brand-start, 12%);
+  --el-button-text-color: $text-secondary;
+}
+
+.toolbar-select-all {
+  :deep(.el-checkbox__label) {
+    color: $text-secondary;
+    font-size: 13px;
+  }
+}
+
+.toolbar-exit {
+  --el-button-bg-color: rgba(255, 255, 255, 0.03);
+  --el-button-border-color: rgba(255, 255, 255, 0.12);
+  --el-button-text-color: $text-secondary;
+  --el-button-hover-bg-color: rgba(244, 63, 94, 0.12);
+  --el-button-hover-border-color: rgba(244, 63, 94, 0.4);
+  --el-button-hover-text-color: lighten($accent-rose, 8%);
+  --el-button-active-bg-color: rgba(244, 63, 94, 0.16);
+  --el-button-active-border-color: rgba(244, 63, 94, 0.5);
+  --el-button-active-text-color: lighten($accent-rose, 12%);
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.selected-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: linear-gradient(135deg, rgba($brand-start, 0.18), rgba($brand-end, 0.12));
+  border: 1px solid rgba($brand-start, 0.25);
+  color: lighten($brand-start, 12%);
+  font-size: 13px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+
+  .selected-icon {
+    font-size: 12px;
+    color: $brand-start;
+  }
+
+  strong {
+    color: $text-primary;
+    font-weight: 600;
+  }
+}
+
+.draft-card {
+  position: relative;
+  transition: $transition-base;
+
+  &.select-mode {
+    cursor: pointer;
+  }
+
+  &:hover:not(.is-selected) {
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+
+  &.is-selected {
+    border-color: rgba($brand-start, 0.5);
+    background: linear-gradient(135deg, rgba($brand-start, 0.08), rgba($brand-end, 0.04));
+    box-shadow:
+      0 0 0 1px rgba($brand-start, 0.45),
+      0 8px 24px rgba($brand-start, 0.18);
+    transform: translateY(-2px);
+  }
+}
+
+.card-selector {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: $transition-base;
+  opacity: 0;
+  transform: scale(0.85);
+
+  .selector-icon {
+    font-size: 14px;
+    color: white;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: $transition-base;
+  }
+
+  .draft-card.select-mode:hover & {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .draft-card.is-selected & {
+    opacity: 1;
+    transform: scale(1);
+    background: $gradient-brand;
+    border-color: transparent;
+    box-shadow: 0 0 14px rgba($brand-start, 0.6);
+
+    .selector-icon {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 }
 </style>

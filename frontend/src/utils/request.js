@@ -73,7 +73,7 @@ request.interceptors.response.use(
           ElMessage.error('拒绝访问')
           break
         case 404:
-          ElMessage.error('请求地址不存在')
+          ElMessage.error(msg || '请求地址不存在')
           break
         case 500:
           ElMessage.error(msg || '服务器内部错误')

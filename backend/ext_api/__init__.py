@@ -109,8 +109,10 @@ def _resolve_cover_from_path(stored_path) -> str:
     """直接用 stored_path 构造 /api/materials/file/{path} URL。空串/无法解析返回空。
 
     stored_path 可能是:
-    - 字符串:绝对路径(/home/.../data/materials/2026/06/13/uuid.jpg)
-      或相对路径(含 materials/ 前缀)
+    - Linux 绝对路径:/home/.../data/materials/2026/06/13/uuid.jpg
+    - Windows 绝对路径:D:\\...\\data\\materials\\2026\\06\\13\\uuid.jpg
+      (数据从 Windows 同步过来时常见)
+    - 相对路径(含 materials/ 前缀)
     - dict:某些路径(草稿批量发布等)会把 task.cover_landscape(dict)
       原样写进 account_configs,结构可能是 {stored_path|path|url: ...}
     - None / 空:返回空串
@@ -127,17 +129,14 @@ def _resolve_cover_from_path(stored_path) -> str:
             return ''
     if not stored_path or not isinstance(stored_path, str):
         return ''
-    # 绝对路径:剥掉 BASE_DIR(data 目录)的父前缀,保留 materials/ 之后的部分
-    import re
-    m = re.search(r'(?:^|/)data/(materials/.+)$', stored_path)
-    if m:
-        relative = m.group(1)
-    elif stored_path.startswith('materials/'):
-        relative = stored_path
+    # 跨平台:统一反斜杠为正斜杠,再找 materials/ 起始位置
+    normalized = stored_path.replace('\\', '/')
+    idx = normalized.find('materials/')
+    if idx >= 0:
+        relative = normalized[idx:]
     else:
         # 兜底:取 basename
-        import os
-        relative = os.path.basename(stored_path)
+        relative = normalized.rsplit('/', 1)[-1]
     return f"/api/materials/file/{urllib.parse.quote(relative, safe='')}"
 
 
@@ -384,7 +383,9 @@ def _serialize_batch_with_items(b, items):
 def get_history():
     """获取发布历史（按批次分组），支持分页、平台/状态/类型过滤
 
-    Query: type=video|image (可选), page=1, pageSize=20
+    Query: type=video|image (可选), page=1, pageSize=20, include_legacy=0|1
+    默认过滤掉 v0.6.0 旧版本数据(account_configs 不含 coverLandscape /
+    videoLandscape 任一字段且 source 为空),传 include_legacy=1 看全部。
     """
     type_ = request.args.get('type')
     status = request.args.get('status')
@@ -392,6 +393,7 @@ def get_history():
     time_range = request.args.get('timeRange')
     start_date = request.args.get('startDate')
     end_date = request.args.get('endDate')
+    include_legacy = request.args.get('include_legacy', '').lower() in ('1', 'true', 'yes')
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('pageSize', 20))
     offset = (page - 1) * page_size
@@ -419,6 +421,18 @@ def get_history():
     if end_date:
         conditions.append("created_at <= ?")
         params.append(end_date)
+    # 默认过滤旧版本数据(v0.6.0 时代)。判断标准:batch 至少有一个 detail
+    # 含 v0.7.0 新字段(coverLandscape / videoLandscape),或 batch.source 非空
+    if not include_legacy:
+        conditions.append("""EXISTS (
+            SELECT 1 FROM publish_details d
+            WHERE d.batch_id = publish_batches.id
+              AND (
+                json_extract(d.account_configs, '$.coverLandscape') IS NOT NULL
+                OR json_extract(d.account_configs, '$.videoLandscape') IS NOT NULL
+                OR publish_batches.source != ''
+              )
+        )""")
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     try:

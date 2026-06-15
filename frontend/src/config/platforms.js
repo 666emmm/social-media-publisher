@@ -15,6 +15,7 @@ import logoBaijiahao from '@/assets/logos/baijiahao.png'
 import logoYoutube from '@/assets/logos/youtube.png'
 import logoTencentVideo from '@/assets/logos/tengxunshipin.png'
 import logoIqiyi from '@/assets/logos/aiqiyi.png'
+import logoWeibo from '@/assets/logos/weibo.png'
 
 export const PLATFORMS = {
   XIAOHONGSHU: {
@@ -298,6 +299,22 @@ export const PLATFORMS = {
       { key: 'videoFormat', label: '视频格式', type: 'radio', options: [{ label: '横版', value: 'landscape' }, { label: '竖版', value: 'portrait' }] },
     ],
     defaultSettings: { title: '', description: '', creationDeclaration: '', riskWarning: '', enableCashActivity: false, scheduleTime: '', videoFormat: '' },
+  },
+  WEIBO: {
+    id: 11,
+    key: 'weibo',
+    name: '微博',
+    shortName: 'WB',
+    letter: 'W',
+    logo: logoWeibo,
+    color: '#E6162D',
+    bgColor: 'rgba(230, 22, 45, 0.15)',
+    cssClass: 'weibo',
+    creatorUrl: 'https://weibo.com/set/index',
+    settingsFields: [
+      // 微博账号管理阶段，发布相关字段留空（publish_video 未实现）
+    ],
+    defaultSettings: { title: '', description: '' },
   },
 }
 

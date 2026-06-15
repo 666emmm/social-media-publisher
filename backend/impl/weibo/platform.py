@@ -53,23 +53,6 @@ class WeiboPlatform(BasePlatform):
         No timeout: the user may take as long as needed. Browser close → task
         cancel (handled by ``login_mode=True`` in ``_browser.py``).
         """
-        login_done = asyncio.Event()
-
-        async def _check_login_state():
-            """Poll the DOM for the post-login profile link."""
-            while not login_done.is_set():
-                try:
-                    has_profile = await page.locator(
-                        'a[href^="/u/"] img[src*="sinaimg.cn"]'
-                    ).count()
-                    if has_profile > 0:
-                        logger.info("[weibo] login detected (profile link in top nav)")
-                        login_done.set()
-                        return
-                except Exception as e:
-                    logger.debug(f"[weibo] login check iter error: {e}")
-                await asyncio.sleep(1)
-
         browser = await self.create_browser(login_mode=True)
         success = False
         try:
@@ -85,12 +68,16 @@ class WeiboPlatform(BasePlatform):
 
                 # Click the "登录" link by text (robust against hash class changes)
                 login_link = page.get_by_role("link", name="登录").first
-                await login_link.wait_for(state="visible", timeout=10000)
                 await login_link.click()
                 logger.info("[weibo] login link clicked, waiting for user to complete login")
 
-                # Poll the DOM for the post-login profile link — no timeout
-                await _check_login_state()
+                # Wait indefinitely for the post-login profile link. The user
+                # may take as long as needed; browser close → task cancel
+                # (handled by login_mode=True in _browser.py).
+                await page.wait_for_selector(
+                    'a[href^="/u/"] img[src*="sinaimg.cn"]'
+                )
+                logger.info("[weibo] login detected (profile link in top nav)")
 
                 # Give the page a moment to render authenticated content
                 await page.wait_for_load_state("domcontentloaded", timeout=15000)

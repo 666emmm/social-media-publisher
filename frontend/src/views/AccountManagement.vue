@@ -54,7 +54,7 @@
       >
         <!-- 卡片主体：头像 + 用户信息 -->
         <div class="card-body">
-          <img :src="account.avatar || getDefaultAvatar(account.name)" referrerpolicy="no-referrer" class="user-avatar" />
+          <img :src="proxyAvatar(account.avatar) || getDefaultAvatar(account.name)" class="user-avatar" />
           <div class="user-info">
             <span class="user-name">{{ account.name }}</span>
             <div class="platform-row">
@@ -489,6 +489,12 @@ const handleSyncProfile = async (row) => {
 
 const getDefaultAvatar = (name) => {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`
+}
+
+/** 头像代理：sinaimg.cn 防盗链，走后端代理绕过 */
+const proxyAvatar = (url) => {
+  const api = window.__AVATAR_PROXY_API__ || '/api/image-proxy'
+  return url && url.includes('sinaimg.cn') ? `${api}?url=${encodeURIComponent(url)}` : url
 }
 
 const handleOpenCreatorCenter = async (row) => {

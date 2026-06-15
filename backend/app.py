@@ -402,6 +402,30 @@ def sync_profile():
     return jsonify({"code": 200, "msg": "同步成功", "data": {"name": name, "avatar": avatar}})
 
 
+@app.route('/api/image-proxy')
+def image_proxy():
+    """头像代理：绕过 sinaimg.cn 防盗链。后端请求带 Referer=weibo.com。"""
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"code": 400, "msg": "缺少 url 参数"}), 400
+    import httpx
+    try:
+        resp = httpx.get(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) "
+                              "Chrome/135.0.0.0 Safari/537.36",
+                "Referer": "https://weibo.com/",
+            },
+            timeout=15,
+        )
+        return Response(resp.content, mimetype=resp.headers.get("content-type", "image/jpeg"))
+    except Exception as e:
+        logger.warning(f"[image-proxy] fetch failed: {e}")
+        return jsonify({"code": 500, "msg": str(e)}), 500
+
+
 @app.route('/openCreatorCenter', methods=['POST'])
 def open_creator_center():
     account_id = request.json.get('id')

@@ -1,6 +1,7 @@
 """Weibo platform implementation — CloakBrowser."""
 
 import asyncio
+import json
 import os
 import threading
 from pathlib import Path
@@ -75,9 +76,16 @@ class WeiboPlatform(BasePlatform):
                 )
                 await page.goto(_WEIBO_CREATOR_URL)
 
-                # Wait for the user to complete login
-                await exit_login.wait()
-                logger.info("[weibo] login completion detected")
+                # Wait for the user to complete login (up to 300 s)
+                try:
+                    await asyncio.wait_for(exit_login.wait(), timeout=300)
+                    logger.info("[weibo] login completion detected")
+                except asyncio.TimeoutError:
+                    logger.warning("[weibo] login timed out (300 s)")
+                    status_queue.put(
+                        json.dumps({"status": "500", "msg": "登录超时，请重试"})
+                    )
+                    return
 
                 await save_login_result(
                     context, page,
@@ -111,7 +119,7 @@ class WeiboPlatform(BasePlatform):
             try:
                 await page.goto(_WEIBO_CREATOR_URL, timeout=30000)
                 await page.wait_for_load_state("domcontentloaded", timeout=10000)
-                await asyncio.sleep(2)
+                await page.wait_for_load_state("networkidle", timeout=10000)
 
                 if _WEIBO_LOGIN_HOST in page.url:
                     logger.info("[weibo] cookie expired, needs re-login")

@@ -389,96 +389,30 @@ async def scrape_youtube_profile(page):
 async def scrape_weibo_profile(page):
     """Weibo-specific scraper.
 
-    微博创作中心 DOM 使用 CSS-in-JS hash class（如 ``_wrap_1l406_3``），
-    通用 JS 注入的 class 选择器会全部失效。本函数依赖两个稳定锚点：
-    头像 CDN 域名（sinaimg.cn 系列）+ 头像 img 父容器内的 leaf 文本。
+    抓取依据：微博创作中心顶部导航栏登录后会出现
+    ``a[href^=\"/u/\"]``（最后一个 tab，带 ``title`` 属性和头像 img）。
+    这是已知最稳定的锚点（与 login 检测用同一选择器）。
 
-    抓取顺序：
-    1. 头像：遍历 <img>，匹配 sinaimg.cn / tvax*.sinaimg.cn 域名，过滤 icon/logo
-    2. 昵称：找到头像 <img> 后向上 5 层父容器内查找 leaf span/div 文本，
-       用 isValidName 过滤（来自 _SCRAPE_JS 中的同款逻辑）
+    1. 昵称：``a[href^=\"/u/\"]`` 的 ``title`` 属性
+    2. 头像：``a[href^=\"/u/\"] img[src*=\"sinaimg.cn\"]`` 的 ``src`` 属性
 
     失败兜底：返回 ("", "")，由 save_login_result 兜底用户名。
 
     Returns:
         tuple[str, str]: (user_name, avatar_url)
     """
-    # 复用 _SCRAPE_JS 中已写好的 isValidName，避免重新实现
-    # 但 isValidName 在 _SCRAPE_JS 内部 closure 里，外部不可见
-    # 这里直接重写一份相同语义的过滤函数
-    exclude_keywords = (
-        "登录", "注册", "密码", "手机", "首页", "上传", "数据", "管理",
-        "发布", "创作", "视频", "直播", "消息", "设置", "帮助", "退出",
-        "更多", "搜索", "扫码", "关注", "粉丝", "获赞", "作品", "动态",
-        "喜欢", "收藏", "共创", "中心", "工具", "服务", "收益", "任务",
-        "课程", "通知", "评论", "互动", "权限", "认证", "申请", "开通",
-        "绑定", "电商", "带货", "网址", "链接", "复制", "分享", "下载",
-        "打开", "全部", "菜单", "内容", "素材", "流量", "分析", "商品",
-        "订单", "结算", "功能", "主页", "个人", "专栏", "活动", "热门",
-        "推荐", "播放量", "点赞数", "评论数", "转发数", "浏览量", "阅读量",
-        "新增", "昨日", "请选择", "请输入", "未知", "微博用户",
-    )
-
-    def _is_valid_name(text: str) -> bool:
-        if not text or len(text) < 2 or len(text) > 30:
-            return False
-        for kw in exclude_keywords:
-            if kw in text:
-                return False
-        return True
-
     name = ""
     avatar = ""
-
     try:
         await page.wait_for_load_state("domcontentloaded", timeout=5000)
         await asyncio.sleep(2)
 
-        result = await page.evaluate(
-            """() => {
-                const imgs = [...document.querySelectorAll('img')];
-                const cdnHosts = [
-                    'sinaimg.cn', 'tvax2.sinaimg.cn', 'tvax1.sinaimg.cn',
-                    'wx1.sinaimg.cn', 'wx2.sinaimg.cn', 'wx3.sinaimg.cn',
-                    'wx4.sinaimg.cn',
-                ];
-                const filtered = imgs.filter(img => {
-                    const src = img.src || '';
-                    const lower = src.toLowerCase();
-                    if (!src.startsWith('http')) return false;
-                    if (lower.includes('icon') || lower.includes('logo')) return false;
-                    if (lower.includes('qrcode') || lower.includes('placeholder')) return false;
-                    if (lower.includes('default') || lower.includes('blank')) return false;
-                    return cdnHosts.some(h => src.includes(h));
-                });
-                const avatar = filtered.length ? filtered[0].src : '';
-
-                // 昵称：在第一个头像 img 的父容器树上找 leaf 文本
-                let name = '';
-                if (filtered.length) {
-                    let container = filtered[0].parentElement;
-                    for (let i = 0; i < 5 && container; i++) {
-                        const leaves = container.querySelectorAll('span, div, p, a');
-                        for (const leaf of leaves) {
-                            if (leaf.childElementCount > 0) continue;
-                            const text = (leaf.textContent || '').trim();
-                            if (text && text.length >= 2 && text.length <= 30) {
-                                name = text;
-                                break;
-                            }
-                        }
-                        if (name) break;
-                        container = container.parentElement;
-                    }
-                }
-
-                return { name, avatar };
-            }"""
-        )
-        avatar = (result.get("avatar") or "").strip()
-        candidate = (result.get("name") or "").strip()
-        if _is_valid_name(candidate):
-            name = candidate
+        profile_link = page.locator('a[href^="/u/"]').first
+        if await profile_link.count():
+            name = (await profile_link.get_attribute("title") or "").strip()
+            avatar_img = profile_link.locator('img[src*="sinaimg.cn"]').first
+            if await avatar_img.count():
+                avatar = (await avatar_img.get_attribute("src") or "").strip()
         logger.info(f"[weibo] profile scraped - name={name!r} avatar={avatar[:50] if avatar else 'None'}")
     except Exception as e:
         logger.info(f"[weibo] profile scrape error: {e}")

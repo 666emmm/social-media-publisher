@@ -54,7 +54,7 @@
       >
         <!-- 卡片主体：头像 + 用户信息 -->
         <div class="card-body">
-          <el-avatar :src="account.avatar || getDefaultAvatar(account.name)" :size="48" class="user-avatar" />
+          <img :src="account.avatar || getDefaultAvatar(account.name)" referrerpolicy="no-referrer" class="user-avatar" />
           <div class="user-info">
             <span class="user-name">{{ account.name }}</span>
             <div class="platform-row">
@@ -846,6 +846,10 @@ onBeforeUnmount(() => { closeSSEConnection() })
       margin-bottom: 12px;
 
       .user-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        object-fit: cover;
         border: 2px solid $border;
         flex-shrink: 0;
       }

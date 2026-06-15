@@ -1,4 +1,5 @@
 """Unit tests for `scrape_weibo_profile` in backend.impl._utils."""
+import asyncio
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -22,7 +23,6 @@ def _make_page(evaluate_result=None, evaluate_raises=False):
 
 def test_scraper_returns_empty_on_evaluate_exception():
     """evaluate 抛异常时返回空字符串。"""
-    import asyncio
     page = _make_page(evaluate_raises=True)
     name, avatar = asyncio.run(scrape_weibo_profile(page))
     assert name == ""
@@ -31,7 +31,6 @@ def test_scraper_returns_empty_on_evaluate_exception():
 
 def test_scraper_extracts_sinaimg_avatar():
     """evaluate 返回含 sinaimg.cn 的 img 信息时，avatar 被正确抓出。"""
-    import asyncio
     page = _make_page(evaluate_result={
         "name": "",
         "avatar": "https://tvax2.sinaimg.cn/crop.0.0.512.512.180/abc123.jpg",

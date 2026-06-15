@@ -952,15 +952,14 @@ onBeforeUnmount(() => { closeSSEConnection() })
       .card-actions {
         display: flex;
         align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
+        gap: 6px;
       }
 
       .action-btn {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 6px 12px;
+        padding: 6px 8px;
         border: none;
         border-radius: 8px;
         font-size: 12px;

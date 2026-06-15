@@ -108,7 +108,12 @@ class WeiboPlatform(BasePlatform):
     # ------------------------------------------------------------------
 
     async def check_cookie(self, cookie_file: str) -> bool:
-        """Return True if the saved cookie file is still valid."""
+        """Return True if the saved cookie file is still valid.
+
+        微博失效不会重定向到 passport.weibo.com，而是渲染未登录界面（右上角
+        显示登录/注册按钮）。所以用顶部导航的 profile link 作为「已登录」的
+        唯一锚点：存在则 cookie 有效。
+        """
         cookie_path = str(Path(BASE_DIR / "cookiesFile" / cookie_file))
         if not os.path.exists(cookie_path):
             return False
@@ -122,12 +127,13 @@ class WeiboPlatform(BasePlatform):
                 await page.wait_for_load_state("domcontentloaded", timeout=10000)
                 await page.wait_for_load_state("networkidle", timeout=10000)
 
-                if _WEIBO_LOGIN_HOST in page.url:
-                    logger.info("[weibo] cookie expired, needs re-login")
-                    return False
-
-                logger.info("[weibo] cookie valid")
-                return True
+                # 顶部导航栏出现 a[href^="/u/"] 即视为已登录
+                profile_link = page.locator(
+                    '.woo-tab-nav a[href^="/u/"] img[src*="sinaimg.cn"]'
+                ).first
+                valid = await profile_link.count() > 0
+                logger.info(f"[weibo] cookie {'valid' if valid else 'expired, needs re-login'}")
+                return valid
             except Exception as exc:
                 logger.info(f"[weibo] cookie check error: {exc}")
                 return False

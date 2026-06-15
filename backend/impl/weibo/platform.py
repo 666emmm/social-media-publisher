@@ -38,31 +38,34 @@ class WeiboPlatform(BasePlatform):
     # ------------------------------------------------------------------
 
     async def login(self, id: str, status_queue: Queue, account_id=None) -> None:
-        """Perform Weibo login by navigating to creator centre and waiting for the
-        user to complete the SSO popup.
+        """Perform Weibo login.
 
-        Flow:
-        1. Open ``weibo.com/set/index``. If unauthenticated, the server redirects
-           to ``passport.weibo.com/sso/signin``.
-        2. Watch ``main_frame``'s ``framenavigated`` event with two flags:
-           ``enter_login`` and ``exit_login``. ``exit_login`` fires when the URL
-           leaves passport.weibo.com back to weibo.com/xxx.
-        3. Delegate to ``save_login_result`` to scrape profile, save cookie, write DB.
-        4. The browser is left open on failure (login_mode=True) so the user can
-           see what went wrong.
+        Real flow (per user testing):
+        1. Goto ``weibo.com/set/index``.
+        2. Scroll down to reveal the "登录" link in the top-right.
+        3. Click the "登录" link → triggers SSO popup at passport.weibo.com.
+        4. User completes login in the popup.
+        5. Main page returns to a weibo.com URL (login complete).
+        6. ``save_login_result`` runs on the now-authenticated main page.
         """
-        enter_login = asyncio.Event()
-        exit_login = asyncio.Event()
+        # Marker: any framenavigated AWAY from the initial set/index URL.
+        # Once we've seen such a navigation (popup open / SSO redirect), we wait
+        # for the main page to return to a weibo.com URL.
+        popup_opened = asyncio.Event()
+        login_done = asyncio.Event()
 
         async def _on_nav(frame):
             if frame != page.main_frame:
                 return
             url = frame.url
-            is_login_page = _WEIBO_LOGIN_HOST in url and _WEIBO_LOGIN_PATH in url
-            if is_login_page:
-                enter_login.set()
-            elif enter_login.is_set():
-                exit_login.set()
+            # The "login" event is: URL leaves the initial set/index page.
+            if popup_opened.is_set():
+                # We expect a return to weibo.com (not passport.weibo.com).
+                if _WEIBO_LOGIN_HOST not in url and "weibo.com" in url:
+                    login_done.set()
+            else:
+                if _WEIBO_LOGIN_HOST in url or url != _WEIBO_CREATOR_URL:
+                    popup_opened.set()
 
         browser = await self.create_browser(login_mode=True)
         success = False
@@ -76,9 +79,20 @@ class WeiboPlatform(BasePlatform):
                 )
                 await page.goto(_WEIBO_CREATOR_URL)
 
-                # Wait for the user to complete login (up to 300 s)
+                # Scroll down to reveal the "登录" link in the top-right
+                await page.evaluate("window.scrollTo(0, 800)")
+                await asyncio.sleep(0.5)
+
+                # Click the "登录" link by text (robust against hash class changes)
+                login_link = page.get_by_role("link", name="登录").first
+                await login_link.wait_for(state="visible", timeout=10000)
+                await login_link.click()
+                logger.info("[weibo] login link clicked, waiting for popup / redirect")
+
+                # Wait for the user to complete login (popup closes, main page
+                # returns to a weibo.com URL).
                 try:
-                    await asyncio.wait_for(exit_login.wait(), timeout=300)
+                    await asyncio.wait_for(login_done.wait(), timeout=300)
                     logger.info("[weibo] login completion detected")
                 except asyncio.TimeoutError:
                     logger.warning("[weibo] login timed out (300 s)")
@@ -86,6 +100,10 @@ class WeiboPlatform(BasePlatform):
                         json.dumps({"status": "500", "msg": "登录超时，请重试"})
                     )
                     return
+
+                # Give the page a moment to render authenticated content
+                await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                await asyncio.sleep(2)
 
                 await save_login_result(
                     context, page,

@@ -1,7 +1,6 @@
 """Weibo platform implementation — CloakBrowser."""
 
 import asyncio
-import json
 import os
 import threading
 from pathlib import Path
@@ -19,7 +18,7 @@ logger = get_channel_logger("weibo")
 # Constants
 # ---------------------------------------------------------------------------
 
-_WEIBO_CREATOR_URL = "https://weibo.com/set/index"
+_WEIBO_CREATOR_URL = "https://weibo.com/n/微博创作者中心"
 _WEIBO_LOGIN_HOST = "passport.weibo.com"
 _WEIBO_LOGIN_PATH = "/sso/signin"
 
@@ -40,32 +39,36 @@ class WeiboPlatform(BasePlatform):
     async def login(self, id: str, status_queue: Queue, account_id=None) -> None:
         """Perform Weibo login.
 
-        Real flow (per user testing):
-        1. Goto ``weibo.com/set/index``.
-        2. Scroll down to reveal the "登录" link in the top-right.
-        3. Click the "登录" link → triggers SSO popup at passport.weibo.com.
-        4. User completes login in the popup.
-        5. Main page returns to a weibo.com URL (login complete).
+        Real flow (per user testing, 2026-06-15):
+        1. Goto ``weibo.com/n/微博创作者中心`` (the creator centre home).
+        2. The "登录" link is in the top-right of the page; click it.
+        3. Clicking triggers a popup / new tab / redirect to
+           ``passport.weibo.com/sso/signin``.
+        4. User completes login in the popup (QR scan, phone, password, etc.).
+        5. After login, the main page auto-refreshes and shows the user's avatar
+           and nickname in the top nav (rendered as ``a[href^="/u/"]`` containing
+           an ``img[src*="sinaimg.cn"]``).
         6. ``save_login_result`` runs on the now-authenticated main page.
+
+        No timeout: the user may take as long as needed. Browser close → task
+        cancel (handled by ``login_mode=True`` in ``_browser.py``).
         """
-        # Marker: any framenavigated AWAY from the initial set/index URL.
-        # Once we've seen such a navigation (popup open / SSO redirect), we wait
-        # for the main page to return to a weibo.com URL.
-        popup_opened = asyncio.Event()
         login_done = asyncio.Event()
 
-        async def _on_nav(frame):
-            if frame != page.main_frame:
-                return
-            url = frame.url
-            # The "login" event is: URL leaves the initial set/index page.
-            if popup_opened.is_set():
-                # We expect a return to weibo.com (not passport.weibo.com).
-                if _WEIBO_LOGIN_HOST not in url and "weibo.com" in url:
-                    login_done.set()
-            else:
-                if _WEIBO_LOGIN_HOST in url or url != _WEIBO_CREATOR_URL:
-                    popup_opened.set()
+        async def _check_login_state():
+            """Poll the DOM for the post-login profile link."""
+            while not login_done.is_set():
+                try:
+                    has_profile = await page.locator(
+                        'a[href^="/u/"] img[src*="sinaimg.cn"]'
+                    ).count()
+                    if has_profile > 0:
+                        logger.info("[weibo] login detected (profile link in top nav)")
+                        login_done.set()
+                        return
+                except Exception as e:
+                    logger.debug(f"[weibo] login check iter error: {e}")
+                await asyncio.sleep(1)
 
         browser = await self.create_browser(login_mode=True)
         success = False
@@ -73,33 +76,21 @@ class WeiboPlatform(BasePlatform):
             context = await self.create_context(browser)
             try:
                 page = await context.new_page()
-                page.on(
-                    "framenavigated",
-                    lambda f: asyncio.create_task(_on_nav(f)),
-                )
+
                 await page.goto(_WEIBO_CREATOR_URL)
 
-                # Scroll down to reveal the "登录" link in the top-right
-                await page.evaluate("window.scrollTo(0, 800)")
+                # Scroll a small amount (200px) just in case, but rely on text selector
+                await page.evaluate("window.scrollTo(0, 200)")
                 await asyncio.sleep(0.5)
 
                 # Click the "登录" link by text (robust against hash class changes)
                 login_link = page.get_by_role("link", name="登录").first
                 await login_link.wait_for(state="visible", timeout=10000)
                 await login_link.click()
-                logger.info("[weibo] login link clicked, waiting for popup / redirect")
+                logger.info("[weibo] login link clicked, waiting for user to complete login")
 
-                # Wait for the user to complete login (popup closes, main page
-                # returns to a weibo.com URL).
-                try:
-                    await asyncio.wait_for(login_done.wait(), timeout=300)
-                    logger.info("[weibo] login completion detected")
-                except asyncio.TimeoutError:
-                    logger.warning("[weibo] login timed out (300 s)")
-                    status_queue.put(
-                        json.dumps({"status": "500", "msg": "登录超时，请重试"})
-                    )
-                    return
+                # Poll the DOM for the post-login profile link — no timeout
+                await _check_login_state()
 
                 # Give the page a moment to render authenticated content
                 await page.wait_for_load_state("domcontentloaded", timeout=15000)

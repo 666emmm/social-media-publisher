@@ -657,6 +657,7 @@ PLATFORM_SYNC_URLS = {
     8: "https://studio.youtube.com",
     9: "https://mp.v.qq.com/",
     10: "https://creator.iqiyi.com/",
+    11: "https://weibo.com/set/index",
 }
 
 
@@ -673,4 +674,5 @@ PLATFORM_SCRAPE_FNS = {
     6: scrape_baijiahao_profile,    # Baijiahao
     7: scrape_user_profile,         # TikTok
     8: scrape_youtube_profile,      # YouTube
+    11: scrape_weibo_profile,       # Weibo
 }

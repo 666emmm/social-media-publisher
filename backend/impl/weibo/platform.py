@@ -396,31 +396,19 @@ class WeiboPlatform(BasePlatform):
 
     @staticmethod
     async def _upload_video_file(page, file_path: str):
-        """上传视频主文件 — 用 patched click 拦截动态 file input。
+        """上传视频主文件 — 多重兜底(2026-06-16 v3)。
 
-        核心思路:patch ``HTMLInputElement.prototype.click``。微博前端
-        button click handler 必然要调 ``input.click()`` 才能打开 file picker
-        (用户才能选文件),所以我们在 file input 被 ``.click()`` 时:
-          1. 打上 ``data-weibo-upload='1'`` 标记
-          2. 强制 append 到 body(若尚未连接),保证 Playwright 找得到
-          3. **不调** 原始 click(不开 file picker)
+        CloakBrowser + 微博前端组合下,单一的 patch 路径不稳定:
+        22:21 那次走 ``input.click()`` 命中;22:25、22:29 那次 patch 三个
+        入口(click / dispatchEvent / showPicker)全不命中,但手动点击按钮
+        能触发 file picker。说明 CloakBrowser 在某些会话里会屏蔽 button
+        click 的副作用(不调任何 input API)。
 
-        然后用 Playwright ``set_input_files`` 走 CDP 直接设文件,自动触发
-        ``change`` 事件,微博前端 change handler 启动上传,上传完成后 UI
-        自动切换到表单(类型 radio 可见)。
-
-        为什么不用之前方案:
-        - ``dispatchEvent click``:合成事件 Chrome 不开 picker
-        - ``page.on('filechooser')`` / ``expect_file_chooser``:CloakBrowser
-          屏蔽 filechooser 事件,30s 超时
-        - click 后等 input 数量增加:动态 input 可能瞬时存在/不在 DOM,不可靠
-
-        流程:
-        1. patch ``HTMLInputElement.click``(idempotent,只 patch 一次)
-        2. click ``button[id^='video_button_upload']``(普通 Playwright click)
-        3. 等带标记的 file input 出现(最多 30s)
-        4. ``set_input_files`` 走 CDP 设文件 + 触发 change 事件
-        5. ``_wait_for_upload_form`` 等表单切换(类型 radio 可见)
+        多重兜底:
+        1. ``expect_file_chooser`` — Playwright 原生 API,优先用这个
+        2. Patch click / dispatchEvent / showPicker — 三大入口
+        3. MutationObserver 检测新 file input — 兜底(动态 input 加到 DOM)
+        4. 多种点击方式 — force=True / mouse.move+click / JS .click()
         """
         file_size = os.path.getsize(file_path)
         logger.info(
@@ -428,34 +416,70 @@ class WeiboPlatform(BasePlatform):
             os.path.basename(file_path), file_size / 1024 / 1024,
         )
 
-        # 1. Patch HTMLInputElement.prototype.click
-        #    关键三件事:
-        #    a) 给 file input 打 data-weibo-upload='1' 标记
-        #    b) 若 input 未连接 DOM,强制 append 到 body 并隐藏
-        #       (Playwright locator 只能查 DOM,detached 元素查不到)
-        #    c) 不调 origClick(不开 file picker,稍后走 set_input_files)
+        # 0. 安装 MutationObserver 兜底: 任何新加到 DOM 的 file input 都自动标记
+        await page.evaluate(r"""() => {
+            if (window.__weiboObserverInstalled) return;
+            window.__weiboObserverInstalled = true;
+            window.__weiboInitialInputCount =
+                document.querySelectorAll('input[type="file"]').length;
+            const observer = new MutationObserver(() => {
+                const inputs = document.querySelectorAll('input[type="file"]');
+                if (inputs.length > window.__weiboInitialInputCount) {
+                    for (let i = window.__weiboInitialInputCount;
+                         i < inputs.length; i++) {
+                        inputs[i].setAttribute('data-weibo-new', '1');
+                    }
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        }""")
+
+        # 1. Patch 三个入口
         patch_status = await page.evaluate(r"""() => {
-            if (window.__weiboClickPatched) return 'already-patched';
-            window.__weiboClickPatched = true;
+            if (window.__weiboAllPatched) return 'already-patched';
+            window.__weiboAllPatched = true;
+            const markInput = function (input) {
+                try {
+                    input.setAttribute('data-weibo-upload', '1');
+                    if (!input.isConnected) {
+                        input.style.display = 'none';
+                        document.body.appendChild(input);
+                    }
+                } catch (e) {}
+            };
+            // click
             const origClick = HTMLInputElement.prototype.click;
             HTMLInputElement.prototype.click = function () {
                 if (this && this.type === 'file') {
-                    try {
-                        this.setAttribute('data-weibo-upload', '1');
-                        if (!this.isConnected) {
-                            this.style.display = 'none';
-                            document.body.appendChild(this);
-                        }
-                    } catch (e) {
-                        /* noop — 标记失败时不影响后续 set_input_files 兜底 */
-                    }
+                    markInput(this);
                 } else {
                     return origClick.apply(this, arguments);
                 }
             };
+            // dispatchEvent(MouseEvent click)
+            const origDispatch = EventTarget.prototype.dispatchEvent;
+            EventTarget.prototype.dispatchEvent = function (event) {
+                if (this && this.type === 'file' && event &&
+                    event.type === 'click' && event instanceof MouseEvent) {
+                    markInput(this);
+                    return true;
+                }
+                return origDispatch.apply(this, arguments);
+            };
+            // showPicker
+            if (HTMLInputElement.prototype.showPicker) {
+                const origShow = HTMLInputElement.prototype.showPicker;
+                HTMLInputElement.prototype.showPicker = function () {
+                    if (this && this.type === 'file') {
+                        markInput(this);
+                    } else {
+                        return origShow.apply(this, arguments);
+                    }
+                };
+            }
             return 'patched';
         }""")
-        logger.info("[weibo] click patch status: %s", patch_status)
+        logger.info("[weibo] patch status: %s", patch_status)
 
         # 2. 找上传按钮
         upload_btn = page.locator("button[id^='video_button_upload']").first
@@ -468,37 +492,62 @@ class WeiboPlatform(BasePlatform):
 
         await upload_btn.wait_for(state="visible", timeout=10000)
 
-        # 3. 点击按钮(普通 Playwright click,模拟真实用户)
-        await upload_btn.click()
-        logger.info("[weibo] 已点击「上传视频」按钮")
+        # 3. 触发按钮 — 多重尝试,任一成功即可
+        triggered = False
 
-        # 4. 等带标记的 file input 出现
-        marked_sel = "input[type='file'][data-weibo-upload='1']"
+        # 方式 A: expect_file_chooser 优先(原生 Playwright API)
+        try:
+            async with page.expect_file_chooser(timeout=5000) as fc_info:
+                await upload_btn.click(force=True)
+            fc = await fc_info.value
+            await fc.set_files(file_path)
+            logger.info("[weibo] 已通过 expect_file_chooser 提交视频")
+            triggered = True
+        except Exception as e:
+            logger.info("[weibo] expect_file_chooser 方式失败: %s", e)
+
+        # 方式 B: 普通 click + 等带标记 input (patch 命中)
+        if not triggered:
+            try:
+                await upload_btn.click(force=True)
+                logger.info("[weibo] 已点击「上传视频」按钮(force=True)")
+            except Exception as e:
+                logger.warning("[weibo] force=True click 失败: %s", e)
+                await upload_btn.evaluate("el => el.click()")
+                logger.info("[weibo] 已点击「上传视频」按钮(JS .click())")
+
+        # 4. 等带标记的 input 出现(patch 命中 或 MutationObserver 命中)
+        marked_sel = (
+            "input[type='file'][data-weibo-upload='1'],"
+            "input[type='file'][data-weibo-new='1']"
+        )
         deadline = asyncio.get_event_loop().time() + 30
+        found_input = None
         while asyncio.get_event_loop().time() < deadline:
             try:
                 count = await page.locator(marked_sel).count()
+                if count > 0:
+                    found_input = page.locator(marked_sel).first
+                    logger.info("[weibo] 检测到标记的 file input(count=%d)", count)
+                    break
             except Exception as e:
                 logger.warning("[weibo] locator count 异常: %s", e)
-                count = 0
-            if count > 0:
-                break
             await asyncio.sleep(0.5)
-        else:
-            all_count = await page.locator("input[type='file']").count()
-            raise RuntimeError(
-                "[weibo] 30s 内未检测到带标记的 file input。"
-                f"当前 input[type=file] 数量: {all_count}。"
-                "可能原因: button click handler 没调 input.click(),"
-                "或 patch 被覆盖(检查 window.__weiboClickPatched)。"
-            )
 
-        # 5. set_input_files 走 CDP 设文件 + 触发 change 事件
-        file_input = page.locator(marked_sel).first
-        await file_input.set_input_files(file_path)
-        logger.info(
-            "[weibo] 视频文件已通过 patched input 提交: %s",
-            os.path.basename(file_path),
+        if found_input is not None:
+            await found_input.set_input_files(file_path)
+            logger.info(
+                "[weibo] 视频文件已通过 patched input 提交: %s",
+                os.path.basename(file_path),
+            )
+            return
+
+        # 5. 三重都失败
+        all_count = await page.locator("input[type='file']").count()
+        raise RuntimeError(
+            "[weibo] 30s 内未检测到带标记的 file input。"
+            f"input[type=file] 总数: {all_count}。"
+            "CloakBrowser 屏蔽了所有 click 路径,需要换策略。"
         )
 
     # ------------------------------------------------------------------

@@ -56,12 +56,12 @@ const statementField = PLATFORMS.WEIBO.settingsFields.find(f => f.key === 'conte
 const statementOptions = computed(() => statementField?.options || [])
 
 // 9 STANDARD_FIELDS 全部齐备(必含 aiContent,即使 PLATFORMS.WEIBO.defaultSettings 没这个 key)
+// 7 文本字段(panel 内部状态);images/coverImage 不显式声明,4 级合并时
+// undefined ?? common.images → 走公共区兜底(避免空数组阻挡 fallback)
 const WEIBO_DEFAULTS = {
   title: '',
   description: '',
   tags: [],
-  images: [],
-  coverImage: null,
   enableTimer: false,
   scheduleTime: '',
   aiContent: '',

@@ -947,6 +947,18 @@ const batchSetPlatforms = computed(() => {
 })
 function onBatchSetApply(checkedKeys, payload) {
   applyBatchSet(checkedKeys, payload)
+  // 如果当前查看的渠道在批量设范围内,强制刷新 form (watch [selectedPlatform,...] 不会自动触发)
+  if (selectedPlatform.value && checkedKeys.includes(selectedPlatform.value)) {
+    const merged = getMergedSettings()
+    for (const key of Object.keys(merged)) {
+      form[key] = merged[key]
+    }
+    for (const key of Object.keys(form)) {
+      if (!(key in merged)) {
+        delete form[key]
+      }
+    }
+  }
   ElMessage.success(`已批量设置到 ${checkedKeys.length} 个渠道`)
 }
 

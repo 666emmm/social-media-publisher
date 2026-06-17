@@ -179,11 +179,7 @@ class TestImagePublishEndpoint(unittest.TestCase):
         # 验证 setUp 的 fake_platform.publish_image 被调 2 次(weibo + 微博)
         self.assertEqual(self._fake_platform.publish_image.call_count, 2)
 
-        # 验证 get_platform 被以 platform_id=11 调用(weibo/微博 都映射到 11)
-        # 关键断言:platform_map 必须含 'weibo'→11 和 '微博'→11
-        # self._patches[0] 是 patch("impl.registry.get_platform", return_value=...)
-        # 通过 _patches[0].mock_calls 看不到 args(因为是 return_value MagicMock),
-        # 改用直接验证 publish_image 的 kwargs
+        # 验证 kwargs 透传正确
         call1 = self._fake_platform.publish_image.call_args_list[0]
         self.assertEqual(call1.kwargs['title'], '测试微博图集')
         self.assertEqual(call1.kwargs['desc'], '测试描述')

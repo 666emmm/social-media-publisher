@@ -33,19 +33,18 @@
           </span>
         </div>
         <div class="header-right">
-          <button class="draft-btn" @click="saveDraft">
-            <el-icon><Document /></el-icon>
+          <el-button :icon="Document" @click="saveDraft" class="header-btn">
             {{ currentDraftId ? '更新草稿' : '保存草稿' }}
-          </button>
-          <el-button :icon="MagicStick" @click="oneClickDialogOpen = true" :disabled="publishAccountIds.size === 0">
+          </el-button>
+          <el-button :icon="MagicStick" @click="oneClickDialogOpen = true" :disabled="publishAccountIds.size === 0" class="header-btn">
             一键填写
           </el-button>
-          <el-button :icon="Setting" @click="batchSetDialogOpen = true" :disabled="publishAccountIds.size === 0">
+          <el-button :icon="Setting" @click="batchSetDialogOpen = true" :disabled="publishAccountIds.size === 0" class="header-btn">
             批量设
           </el-button>
-          <button class="publish-btn" @click="publishAll" :disabled="publishing">
+          <el-button type="primary" :icon="Promotion" @click="publishAll" :disabled="publishing" class="header-btn header-btn--primary">
             {{ publishing ? '发布中...' : '一键发布' }}
-          </button>
+          </el-button>
         </div>
       </div>
 
@@ -258,7 +257,7 @@
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import {
   Upload, Picture, PictureFilled,
-  Document, FullScreen, MagicStick, Setting
+  Document, FullScreen, MagicStick, Setting, Promotion
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
@@ -1110,52 +1109,34 @@ onMounted(async () => {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 
-    .publish-btn {
-      display: inline-flex;
-      align-items: center;
-      padding: 10px 32px;
-      border: none;
-      border-radius: 12px;
-      background: linear-gradient(135deg, #8b5cf6, #6366f1);
-      color: #fff;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      outline: none;
-      font-family: inherit;
-      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.35);
-      letter-spacing: 0.04em;
-
-      &:hover {
-        box-shadow: 0 6px 28px rgba(139, 92, 246, 0.5);
-        transform: translateY(-1px);
+    .header-btn {
+      // el-button 默认 padding 8px 15px / font-size 14px / height 32px
+      // 想要更紧凑一点,小分辨率下自动缩
+      @media (max-width: 1280px) {
+        padding: 6px 12px !important;
+        font-size: 12px !important;
       }
-      &:active { transform: translateY(0) scale(0.98); }
-      &:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
     }
 
-    .draft-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 0 20px;
-      height: 40px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.04);
-      color: $text-secondary;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
+    .header-btn--primary {
+      // 一键发布: 保留项目渐变 + 阴影
+      background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
+      border: none !important;
+      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.35) !important;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 10px 24px !important;
 
       &:hover {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: rgba(255, 255, 255, 0.18);
-        color: $text-primary;
+        box-shadow: 0 6px 28px rgba(139, 92, 246, 0.5) !important;
+        transform: translateY(-1px);
+        opacity: 1 !important;
       }
+      &:active { transform: translateY(0) scale(0.98); }
+      &:disabled { opacity: 0.5 !important; cursor: not-allowed; transform: none; box-shadow: none !important; }
     }
   }
 }

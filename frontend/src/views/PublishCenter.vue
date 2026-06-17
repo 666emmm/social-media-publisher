@@ -41,6 +41,9 @@
           <el-button :icon="MagicStick" @click="oneClickDialogOpen = true">
             一键填写
           </el-button>
+          <el-button :icon="Setting" @click="batchSetDialogOpen = true" :disabled="publishAccountIds.size === 0">
+            批量设
+          </el-button>
           <button class="publish-btn" @click="publishAll" :disabled="publishing">
             {{ publishing ? '发布中...' : '一键发布' }}
           </button>
@@ -439,12 +442,18 @@
       type="video"
       @pick="handleOneClickFill"
     />
+
+    <BatchSetDialog
+      v-model="batchSetDialogOpen"
+      :platforms="batchSetPlatforms"
+      @apply="onBatchSetApply"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, nextTick, watch, onMounted } from 'vue'
-import { Upload, Picture, VideoCameraFilled, Delete, Document, WarningFilled, MagicStick } from '@element-plus/icons-vue'
+import { Upload, Picture, VideoCameraFilled, Delete, Document, WarningFilled, MagicStick, Setting } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
@@ -457,6 +466,7 @@ import { platformList, getPlatformByKey, platformKeyToId, platformNameToKey } fr
 import AccountSidebar from '@/components/AccountSidebar.vue'
 import AccountSelectDialog from '@/components/AccountSelectDialog.vue'
 import BatchPublishDialog from '@/components/BatchPublishDialog.vue'
+import BatchSetDialog from '@/components/BatchSetDialog.vue'
 import CoverCard from '@/components/CoverCard.vue'
 import CoverEditorDialog from '@/components/CoverEditorDialog.vue'
 import MaterialSelectDialog from '@/components/MaterialSelectDialog.vue'
@@ -467,6 +477,7 @@ import DouyinHotspotSelect from '@/components/douyin/HotspotSelect.vue'
 import DouyinTagSelect from '@/components/douyin/TagSelect.vue'
 import DouyinMixSelect from '@/components/douyin/MixSelect.vue'
 import { useAutoSave } from '@/composables/useAutoSave'
+import { useBatchSetApply } from '@/composables/useBatchSetApply'
 import { frameApi } from '@/api/frame'
 import { draftApi } from '@/api/draft'
 import { useRoute } from 'vue-router'
@@ -918,6 +929,26 @@ const materialLibraryCoverTarget = ref('landscape')
 const oneClickDialogOpen = ref(false)
 const materialLibraryVideoTarget = ref('landscape')
 const batchPublishDialogVisible = ref(false)
+
+// ========== 批量设 (Batch Set) ==========
+const batchSetDialogOpen = ref(false)
+const { applyBatchSet } = useBatchSetApply({
+  platformConfigs,
+  accountOverrides,
+  accountChecked,
+  accountStore,
+})
+const batchSetPlatforms = computed(() => {
+  return platformList.map(p => {
+    const platformAccounts = accountStore.accounts.filter(a => a.platform === p.name)
+    const selectedCount = platformAccounts.filter(a => publishAccountIds.has(a.id)).length
+    return { key: p.key, name: p.name, logo: p.logo, count: selectedCount }
+  })
+})
+function onBatchSetApply(checkedKeys, payload) {
+  applyBatchSet(checkedKeys, payload)
+  ElMessage.success(`已批量设置到 ${checkedKeys.length} 个渠道`)
+}
 
 // Batch publish state
 const publishing = ref(false)

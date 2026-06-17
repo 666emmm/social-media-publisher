@@ -728,7 +728,12 @@ class WeiboPlatform(BasePlatform):
         不完整(2026-06-17 实测)。这里先 wait_for 「上传封面」链接
         attached 再跑 JS。
         """
-        # 先等封面区域 DOM 完整(「上传封面」/「裁剪封面」链接 attached)
+        # 先等封面区域 DOM 完整 — 2026-06-17 实测:链接先于 picture 出现,
+        # walk-up 14 层都找不到 aspect div(整个页面 totalAspects=0)。
+        # 关键等待:link 所在 inner 容器(link 的祖父)里出现 <img>,这才是
+        # picture 真正渲染好的直接信号,比等 abstract 的 "div[style*=
+        # padding-bottom]" 可靠(后者会假阳性命中 padding-bottom:0 的
+        # 无关 div)。
         try:
             await page.get_by_text("上传封面").first.wait_for(
                 state="attached", timeout=10000,
@@ -737,8 +742,22 @@ class WeiboPlatform(BasePlatform):
             logger.warning("[weibo] 等「上传封面」链接超时: %s", e)
 
         try:
+            # link 的 xpath=../.. 是 inner 容器
+            # (_box_1ant3_2 / _a5lt_1gx9k_203),内含 picture + 链接区
+            inner = page.get_by_text("上传封面", exact=True).first.locator(
+                "xpath=../.."
+            )
+            await inner.locator("img").first.wait_for(
+                state="attached", timeout=10000,
+            )
+        except Exception as e:
+            logger.warning("[weibo] 等封面 picture(img) 超时: %s", e)
+
+        try:
             aspect, debug = await page.evaluate(r"""() => {
                 // 反向:从「上传封面」/「裁剪封面」链接向上找含 aspect div 的祖先
+                // aspect div 选择器收紧到要带 %,避开 padding-bottom:0 的假阳性
+                const ASPECT_SEL = 'div[style*="padding-bottom"][style*="%"]';
                 const links = document.querySelectorAll('a');
                 let coverLink = null;
                 for (const a of links) {
@@ -758,30 +777,49 @@ class WeiboPlatform(BasePlatform):
                     }];
                 }
 
+                // 调试:aspect div 全局统计 + 第一个 aspect div 的 style
+                const allAspects = document.querySelectorAll(ASPECT_SEL);
+                const debug = {
+                    totalAspects: allAspects.length,
+                    firstAspectStyle: allAspects[0]
+                        ? allAspects[0].getAttribute('style')
+                        : null,
+                    linkParentTag: coverLink.parentElement
+                        ? coverLink.parentElement.tagName
+                        : null,
+                    linkParentClass: coverLink.parentElement
+                        ? (coverLink.parentElement.className || '').substring(0, 80)
+                        : null,
+                    ancestorChain: [],
+                };
+
                 let p = coverLink.parentElement;
                 let depth = 0;
-                while (p && p !== document.body) {
-                    const aspectDiv = p.querySelector(
-                        'div[style*="padding-bottom"]'
-                    );
-                    if (aspectDiv) {
+                while (p && p !== document.body && depth < 20) {
+                    const aspectDiv = p.querySelector(ASPECT_SEL);
+                    const hasAspect = aspectDiv !== null;
+                    debug.ancestorChain.push({
+                        depth,
+                        tag: p.tagName,
+                        className: (p.className || '').substring(0, 80),
+                        hasAspect,
+                    });
+                    if (hasAspect) {
                         const m = (
                             aspectDiv.getAttribute('style') || ''
                         ).match(
                             /padding-bottom:\s*([0-9.]+)\s*%/i
                         );
                         if (m) {
+                            debug.matchedAt = depth;
+                            debug.matchedStyle = aspectDiv.getAttribute('style');
                             return [parseFloat(m[1]), null];
                         }
                     }
                     p = p.parentElement;
                     depth++;
                 }
-                return [null, {
-                    reason: 'aspect div not found in ancestors',
-                    coverLinkText: (coverLink.textContent || '').trim(),
-                    walkedDepth: depth,
-                }];
+                return [null, { reason: 'aspect div not found in ancestors', ...debug }];
             }""")
         except Exception as e:
             logger.warning("[weibo] 读取封面区域宽高比失败: %s", e)
@@ -1080,12 +1118,6 @@ class WeiboPlatform(BasePlatform):
         """点击页面右下角「发布」按钮。
 
         初始 disabled,表单填好后启用。用 role+name 定位避免 class 哈希漂移。
-
-        [调试模式 2026-06-17] 实际 ``publish_btn.click()`` 已注释掉,只打印
-        「模拟发布成功」日志,用于核对表单内容(标题/封面/正文/内容声明
-        等)是否准确。还原时把下面 ``=== 调试模式 ===`` 块里的
-        ``await publish_btn.click()`` 取消注释、并把调试日志改回原来的
-        ``[weibo] 已点击发布按钮`` 即可。
         """
         # get_by_role 只匹配可访问性树里的元素,hidden 元素(如未来 toast 的
         # 「再发一条视频」按钮)默认被排除,所以 .first 就是当前可见的发布按钮
@@ -1104,14 +1136,8 @@ class WeiboPlatform(BasePlatform):
         else:
             raise RuntimeError("[weibo] 发布按钮一直 disabled,表单未就绪")
 
-        # === 调试模式 START: 不实际点击,只打印模拟发布成功日志 ===
-        # await publish_btn.click()
-        # logger.info("[weibo] 已点击发布按钮")
-        logger.info(
-            "[weibo] [调试模式] 模拟发布成功 — 表单已就绪,发布按钮 enabled,"
-            "未实际点击。打开浏览器核对表单内容(标题/封面/正文/内容声明等)"
-        )
-        # === 调试模式 END ===
+        await publish_btn.click()
+        logger.info("[weibo] 已点击发布按钮")
 
     # ------------------------------------------------------------------
     # Helper: wait for publish success signal

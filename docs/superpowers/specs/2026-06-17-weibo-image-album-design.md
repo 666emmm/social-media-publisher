@@ -243,16 +243,27 @@ watch(() => form.description, (v) => { form.title = v || '' })
 **微博 panel 的 `WEIBO_DEFAULTS`**（与 XHS_DEFAULTS 同构，必须含 9 STANDARD_FIELDS 全部）：
 ```js
 const WEIBO_DEFAULTS = {
-  ...PLATFORMS.WEIBO.defaultSettings,  // title, description, videoType, weiboCategory, contentStatement
+  // 9 STANDARD_FIELDS (与 publishAll 循环对齐):
+  title: '',
+  description: '',
   tags: [],
-  enableTimer: false,
-  isOriginal: false,
-  scheduleTime: '',
   images: [],
   coverImage: null,
+  enableTimer: false,
+  scheduleTime: '',
+  aiContent: '',                 // 显式声明!PLATFORMS.WEIBO.defaultSettings 没有这个 key
+  isOriginal: false,
+  // 微博视频版残留字段(冗余但 panel 不显示、不传 publish_kwargs,无害):
+  videoType: '',
+  weiboCategory: [],
+  contentStatement: '',
 }
 ```
-> 注：`PLATFORMS.WEIBO.defaultSettings` 不含 `tags/enableTimer/isOriginal/scheduleTime/images/coverImage`（只有 5 个），必须显式补全以保证 9 STANDARD_FIELDS 全部存在；`videoType/weiboCategory` 是微博视频版专用字段，**冗余但无害**（panel 不显示、不传 publish_kwargs）。
+> **关键 1**：`aiContent` 必须显式声明 `''`，不能依赖 `...PLATFORMS.WEIBO.defaultSettings` spread（那里 key 是 `contentStatement`，spread 不会改名）。
+>
+> **关键 2**：9 STANDARD_FIELDS 全部齐备，4 级合并 `accountOv?.aiContent ?? platformOv?.aiContent ?? platformDefault?.aiContent ?? ''` 兜底为 `''`，不会被 undefined 卡住。
+>
+> **关键 3**：select 控件用 `v-model="form.aiContent"`，options 来自 `PLATFORMS.WEIBO.settingsFields.find(f => f.key === 'contentStatement').options`（平台 config key 与 form 字段名不同，panel 显式映射）。
 
 **`aiContent` 选项来源与后端 hardcode 一致性**：前端 `PLATFORMS.WEIBO.settingsFields` 里 `contentStatement.options` 必须是 5 个字符串（`无/内容为自主创作/内容为转载/内容由AI生成/内容为虚构演绎`），与后端 `_set_content_statement` 内 button 文本**字面量完全一致**。`value` 字段也用同样的字符串（不是 key），保证后端 `page.get_by_role("button", name=value, exact=True)` 能命中。
 
@@ -309,6 +320,8 @@ const WEIBO_DEFAULTS = {
 旧草稿 `platformConfigs` 不含 `weibo` key → `loadDraft` 时 `Object.entries(dd.platformConfigs)` 自然不遍历缺失 key，skip 即可（`if (panel && val)` 守卫只是顺便防 `val` 为空），**无破坏**。
 
 新草稿首次保存会写入 `platformConfigs.weibo = { title:'', description:'', tags:[], aiContent:'', ... }`。
+
+**草稿数据残留（无害）**：微博 panel 加载草稿时，restoreConfigs 会把 `videoType/weiboCategory/contentStatement` 写回 form（这些是微博视频版字段，微博图集 panel 不显示、不传 publish_kwargs）。类似 XHS panel 也有 `creationDeclaration` 残留 — 现状接受。
 
 ## 测试 / 验证
 

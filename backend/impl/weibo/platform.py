@@ -232,6 +232,84 @@ class WeiboPlatform(BasePlatform):
         return True
 
     # ------------------------------------------------------------------
+    # publish_image -- full Weibo image-album pipeline (sync entry point)
+    # ------------------------------------------------------------------
+
+    def publish_image(self, **kwargs) -> bool:
+        """Publish an image album to Weibo (sync wrapper).
+
+        入口仅做 kwargs 解包 + dry-run 早返回 + 调 _upload_all_images。
+        实际浏览器操作在 _upload_one_image。
+        """
+        dry_run = kwargs.get("dry_run", False)
+        if dry_run:
+            logger.info("[weibo] dry-run skip (publish_image)")
+            return True
+        asyncio.run(self._upload_all_images(**kwargs))
+        return True
+
+    # ------------------------------------------------------------------
+    # Internal: orchestrate all account uploads (one batch per account)
+    # ------------------------------------------------------------------
+
+    async def _upload_all_images(self, **kwargs):
+        """Create a browser per account, upload all images in the batch.
+
+        与 video 版 _upload_all 的关键区别:**单层账号循环** (图集是一账号
+        一次发完所有图),不是 files × accounts 笛卡尔积。
+        """
+        files = kwargs.get("files", []) or []
+        account_file = kwargs.get("account_file", []) or []
+        title = kwargs.get("title", "")
+        tags = kwargs.get("tags", []) or []
+        desc = kwargs.get("desc", "") or ""
+        ai_content = kwargs.get("ai_content", "") or ""
+        # 忽略字段(微博图集不支持)
+        # is_original / enableTimer / schedule_time_str / cover_path
+        _ = kwargs.get("is_original")  # noqa
+        _ = kwargs.get("enableTimer")  # noqa
+        _ = kwargs.get("schedule_time_str")  # noqa
+        _ = kwargs.get("cover_path")  # noqa
+
+        # 入口校验:微博图集服务端硬上限 18 张
+        if len(files) > 18:
+            raise ValueError(
+                f"[weibo] 图集最多 18 张,当前 {len(files)} 张"
+            )
+
+        file_path_list = [str(f) for f in files]
+        account_paths = [
+            str(Path(BASE_DIR / "cookiesFile") / f) for f in account_file
+        ]
+
+        # 单层账号循环(不是笛卡尔积!)
+        for cookie_path in account_paths:
+            await self._upload_one_image(
+                title=title,
+                file_path_list=file_path_list,
+                tags=tags,
+                account_file=cookie_path,
+                desc=desc,
+                ai_content=ai_content,
+            )
+
+    # ------------------------------------------------------------------
+    # Internal: upload one image album to one account
+    # ------------------------------------------------------------------
+
+    async def _upload_one_image(
+        self,
+        title: str,
+        file_path_list: list,
+        tags: list,
+        account_file: str,
+        desc: str = "",
+        ai_content: str = "",
+    ):
+        """Upload one image album to one Weibo account (待 Task 4 完整实现)."""
+        raise NotImplementedError("[weibo] _upload_one_image 待实现")
+
+    # ------------------------------------------------------------------
     # Internal: orchestrate all file × account uploads
     # ------------------------------------------------------------------
 

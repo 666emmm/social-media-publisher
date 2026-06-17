@@ -41,7 +41,7 @@
             一键填写
           </el-button>
           <el-button :icon="Setting" @click="batchSetDialogOpen = true" :disabled="publishAccountIds.size === 0" class="header-btn">
-            批量设
+            批量设置
           </el-button>
           <el-button type="primary" :icon="Promotion" @click="publishAll" :disabled="publishing" class="header-btn header-btn--primary">
             {{ publishing ? '发布中...' : '一键发布' }}

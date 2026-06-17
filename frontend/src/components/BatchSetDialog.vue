@@ -67,7 +67,6 @@
             <div v-else class="channel-logo channel-logo-fallback">{{ p.name?.charAt(0) }}</div>
             <div class="channel-name">{{ p.name }}</div>
             <div class="channel-count">{{ p.count }}</div>
-            <el-icon v-if="checkedKeys.has(p.key) && p.count > 0" class="check-icon"><Check /></el-icon>
           </div>
         </div>
       </el-form-item>
@@ -88,7 +87,6 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const MAX_TAGS = 10
@@ -230,20 +228,17 @@ function handleApply() {
   }
 
   .channel-count {
-    font-size: 11px;
-    color: $text-muted;
     flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: $bg-surface;
-    padding: 1px 6px;
-    border-radius: 8px;
-  }
-
-  .check-icon {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    color: $brand-start;
-    font-size: 12px;
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 500;
   }
 }
 

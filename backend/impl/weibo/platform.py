@@ -371,6 +371,158 @@ class WeiboPlatform(BasePlatform):
             await browser.close()
 
     # ------------------------------------------------------------------
+    # Helper: upload image files via hidden input[type=file]
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _upload_images(page, files: list):
+        """上传图集多张图 — 多重兜底(2026-06-17 v1)。
+
+        selector 策略:input[type=file][accept^='image/'][multiple]
+        (用户提供的 DOM 行 9-10:accept 以 image/* 开头,且带 multiple)
+        注意:input 祖父是 display:none,但 Playwright set_input_files 不要求
+        visible,只要求 attached + enabled。
+
+        多重兜底:
+        1. 直接 set_input_files(files) 命中 input
+        2. 失败则 expect_file_chooser + 点击「图片」trigger
+        3. 再失败则 patch click/dispatchEvent/showPicker + MutationObserver
+
+        等待完成:轮询「发送」按钮的 disabled 属性为 None(上传+表单就绪
+        → 启用);最多 5 分钟。
+        """
+        if not files:
+            logger.warning("[weibo] 无图片可上传")
+            return
+
+        logger.info("[weibo] 准备上传 %d 张图片", len(files))
+
+        # 0. 安装 MutationObserver 兜底(参考 video 版 _upload_video_file)
+        await page.evaluate(r"""() => {
+            if (window.__weiboImgObserverInstalled) return;
+            window.__weiboImgObserverInstalled = true;
+            window.__weiboImgInitialInputCount =
+                document.querySelectorAll('input[type="file"]').length;
+            const observer = new MutationObserver(() => {
+                const inputs = document.querySelectorAll('input[type="file"]');
+                if (inputs.length > window.__weiboImgInitialInputCount) {
+                    for (let i = window.__weiboImgInitialInputCount;
+                         i < inputs.length; i++) {
+                        inputs[i].setAttribute('data-weibo-img-new', '1');
+                    }
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        }""")
+
+        # 1. Patch 三个入口(参考 video 版)
+        patch_status = await page.evaluate(r"""() => {
+            if (window.__weiboImgAllPatched) return 'already-patched';
+            window.__weiboImgAllPatched = true;
+            const markInput = function (input) {
+                try {
+                    input.setAttribute('data-weibo-img-upload', '1');
+                    if (!input.isConnected) {
+                        input.style.display = 'none';
+                        document.body.appendChild(input);
+                    }
+                } catch (e) {}
+            };
+            const origClick = HTMLInputElement.prototype.click;
+            HTMLInputElement.prototype.click = function () {
+                if (this && this.type === 'file') {
+                    markInput(this);
+                } else {
+                    return origClick.apply(this, arguments);
+                }
+            };
+            const origDispatch = EventTarget.prototype.dispatchEvent;
+            EventTarget.prototype.dispatchEvent = function (event) {
+                if (this && this.type === 'file' && event &&
+                    event.type === 'click' && event instanceof MouseEvent) {
+                    markInput(this);
+                    return true;
+                }
+                return origDispatch.apply(this, arguments);
+            };
+            if (HTMLInputElement.prototype.showPicker) {
+                const origShow = HTMLInputElement.prototype.showPicker;
+                HTMLInputElement.prototype.showPicker = function () {
+                    if (this && this.type === 'file') {
+                        markInput(this);
+                    } else {
+                        return origShow.apply(this, arguments);
+                    }
+                };
+            }
+            return 'patched';
+        }""")
+        logger.info("[weibo] img patch status: %s", patch_status)
+
+        # 2. 找「图片」trigger
+        # selector:文本 "图片" 在 woo-pop-wrap 内,且 sibling 包含 image upload input
+        img_trigger = page.get_by_text("图片", exact=True).first
+        if await img_trigger.count() == 0:
+            raise RuntimeError("[weibo] 未找到「图片」工具图标")
+
+        # 3. 优先直接 set_input_files(接受 hidden input)
+        target_input_sel = (
+            "input[type='file'][accept^='image/'][multiple]"
+        )
+        try:
+            target_input = page.locator(target_input_sel).first
+            await target_input.wait_for(state="attached", timeout=10000)
+            await target_input.set_input_files(files)
+            logger.info("[weibo] 已通过 set_input_files 提交 %d 张图", len(files))
+        except Exception as e:
+            logger.info("[weibo] 直接 set_input_files 失败: %s", e)
+
+            # 兜底 1: expect_file_chooser + 点击 trigger
+            try:
+                async with page.expect_file_chooser(timeout=5000) as fc_info:
+                    await img_trigger.click(force=True)
+                fc = await fc_info.value
+                await fc.set_files(files)
+                logger.info("[weibo] 已通过 expect_file_chooser 提交")
+            except Exception as e2:
+                logger.info("[weibo] expect_file_chooser 失败: %s", e2)
+                # 兜底 2: 等带标记的 input 出现(patch 命中)
+                marked_sel = (
+                    "input[type='file'][data-weibo-img-upload='1'],"
+                    "input[type='file'][data-weibo-img-new='1']"
+                )
+                deadline = asyncio.get_event_loop().time() + 30
+                found = None
+                while asyncio.get_event_loop().time() < deadline:
+                    count = await page.locator(marked_sel).count()
+                    if count > 0:
+                        found = page.locator(marked_sel).first
+                        break
+                    await asyncio.sleep(0.5)
+                if found is not None:
+                    await found.set_input_files(files)
+                    logger.info("[weibo] 已通过 patched input 提交")
+                else:
+                    raise RuntimeError(
+                        f"[weibo] 30s 内未找到可用的 file input"
+                    )
+
+        # 4. 等待上传完成 — 轮询「发送」按钮 enabled(最稳判定)
+        send_btn = page.get_by_role("button", name="发送", exact=True).first
+        deadline = asyncio.get_event_loop().time() + 300  # 5 分钟
+        while asyncio.get_event_loop().time() < deadline:
+            try:
+                disabled = await send_btn.get_attribute("disabled")
+                if disabled is None:
+                    logger.info("[weibo] 图片已上传,发送按钮已启用")
+                    return
+            except Exception:
+                pass
+            await asyncio.sleep(2)
+
+        raise RuntimeError("[weibo] 5 分钟内图片未上传完成(发送按钮未启用)")
+
+    # ------------------------------------------------------------------
     # Internal: orchestrate all file × account uploads
     # ------------------------------------------------------------------
 

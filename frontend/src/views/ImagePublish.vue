@@ -23,7 +23,7 @@
       <!-- Top bar -->
       <div class="main-header">
         <div class="header-left">
-          <span class="page-title">图文发布</span>
+          <span class="page-title">图集发布</span>
           <span
             v-if="currentPlatformConfig"
             class="platform-tag"
@@ -129,6 +129,14 @@
             :account-id="selectedPlatform === 'kuaishou' ? selectedAccountId : null"
             :disabled="publishing"
             v-show="selectedPlatform === 'kuaishou'"
+            @config-changed="onChannelConfigChanged"
+            @publish-result="onPublishResult"
+          />
+          <WeiboImagePublishPanel
+            ref="weiboPanelRef"
+            :account-id="selectedPlatform === 'weibo' ? selectedAccountId : null"
+            :disabled="publishing"
+            v-show="selectedPlatform === 'weibo'"
             @config-changed="onChannelConfigChanged"
             @publish-result="onPublishResult"
           />
@@ -266,6 +274,7 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import DouyinImagePublishPanel from '@/components/douyin/ImagePublishPanel.vue'
 import XiaohongshuImagePublishPanel from '@/components/xiaohongshu/ImagePublishPanel.vue'
 import KuaishouImagePublishPanel from '@/components/kuaishou/ImagePublishPanel.vue'
+import WeiboImagePublishPanel from '@/components/weibo/ImagePublishPanel.vue'
 
 // ========== Stores & Config ==========
 const accountStore = useAccountStore()
@@ -274,7 +283,7 @@ appStore.loadAutoFillTitle()
 appStore.loadAutoSaveSettings()
 const route = useRoute()
 
-const IMAGE_PLATFORM_KEYS = ['xiaohongshu', 'douyin', 'kuaishou']
+const IMAGE_PLATFORM_KEYS = ['xiaohongshu', 'douyin', 'kuaishou', 'weibo']
 const IMAGE_PLATFORMS = platformList.filter(p => IMAGE_PLATFORM_KEYS.includes(p.key))
 
 // ========== Left Sidebar State ==========
@@ -361,9 +370,10 @@ const { hasChanges, startAutoSaveTimer } = useAutoSave(() => saveDraft())
 const douyinPanelRef = ref(null)
 const xiaohongshuPanelRef = ref(null)
 const kuaishouPanelRef = ref(null)
+const weiboPanelRef = ref(null)
 
 function getPanel(key) {
-  const map = { douyin: douyinPanelRef, xiaohongshu: xiaohongshuPanelRef, kuaishou: kuaishouPanelRef }
+  const map = { douyin: douyinPanelRef, xiaohongshu: xiaohongshuPanelRef, kuaishou: kuaishouPanelRef, weibo: weiboPanelRef }
   return map[key]?.value
 }
 
@@ -383,7 +393,7 @@ function onPublishResult({ accountName, status, message }) {
 function hasAccountOverride(accountId) {
   // Task 10：新增覆写层勾选 + panel 内部 accountOverrides 任一为真都算
   if (accountChecked[accountId] && hasAccountOverrideContent(accountId)) return true
-  for (const key of ['douyin', 'xiaohongshu', 'kuaishou']) {
+  for (const key of ['douyin', 'xiaohongshu', 'kuaishou', 'weibo']) {
     const panel = getPanel(key)
     if (panel && panel.hasAccountOverride(accountId)) return true
   }
@@ -584,7 +594,7 @@ async function saveDraft() {
   try {
     const allPlatformConfigs = {}
     const panelAccountOverrides = {}
-    for (const key of ['douyin', 'xiaohongshu', 'kuaishou']) {
+    for (const key of ['douyin', 'xiaohongshu', 'kuaishou', 'weibo']) {
       const panel = getPanel(key)
       if (panel) {
         const configs = panel.getConfigs()
@@ -835,7 +845,7 @@ function handleOneClickFill(record) {
 // ========== Old Draft Migration ==========
 function migrateOldDraftFormat(dd) {
   if (dd.commonConfig?.topics && Array.isArray(dd.commonConfig.topics)) {
-    for (const key of ['douyin', 'xiaohongshu', 'kuaishou']) {
+    for (const key of ['douyin', 'xiaohongshu', 'kuaishou', 'weibo']) {
       if (dd.platformConfigs?.[key]) {
         dd.platformConfigs[key].tags = [...dd.commonConfig.topics]
       }

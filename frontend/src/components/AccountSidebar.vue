@@ -7,7 +7,7 @@
 
     <div class="group-list">
       <div
-        v-for="group in accountGroups"
+        v-for="group in visibleAccountGroups"
         :key="group.key"
         :class="['group-wrap', { 'is-selected': selectedPlatform === group.key }]"
       >
@@ -55,9 +55,13 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { ArrowDown, ArrowRight, StarFilled, Close } from '@element-plus/icons-vue'
+import { useAppStore } from '@/stores/app'
 
-defineProps({
+const appStore = useAppStore()
+
+const props = defineProps({
   mode: {
     type: String,
     default: 'edit',
@@ -73,6 +77,12 @@ defineProps({
 })
 
 defineEmits(['toggle-group', 'select-account', 'remove-account', 'open-account-dialog'])
+
+// 过滤掉被渠道黑名单禁用的平台分组
+// group.key 已经是平台 key(如 'xiaohongshu'),无需再走 platformNameToKey
+const visibleAccountGroups = computed(() =>
+  props.accountGroups.filter(group => group.key && !appStore.isPlatformDisabled(group.key))
+)
 </script>
 
 <style lang="scss" scoped>

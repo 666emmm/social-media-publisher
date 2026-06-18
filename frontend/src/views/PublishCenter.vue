@@ -937,8 +937,13 @@ const { applyBatchSet } = useBatchSetApply({
   accountChecked,
   accountStore,
 })
+// 渠道个性化可见平台列表：过滤掉被拉黑的平台
+const visiblePlatformsForCustomize = computed(() =>
+  platformList.filter(p => !appStore.isPlatformDisabled(p.key))
+)
+
 const batchSetPlatforms = computed(() => {
-  return platformList.map(p => {
+  return visiblePlatformsForCustomize.value.map(p => {
     const platformAccounts = accountStore.accounts.filter(a => a.platform === p.name)
     const selectedCount = platformAccounts.filter(a => publishAccountIds.has(a.id)).length
     return { key: p.key, name: p.name, logo: p.logo, count: selectedCount }
@@ -1348,6 +1353,20 @@ onMounted(async () => {
   } catch (e) {
     console.error('加载账号列表失败:', e)
   }
+
+  // 清理 publishAccountIds 中属于黑名单平台的账号（本地清理，不写后端）
+  // Set 是发布页内存状态，重建一个新的 Set 来剔除被拉黑平台的账号
+  const filteredIds = new Set()
+  for (const id of publishAccountIds) {
+    const acc = accountStore.accounts.find(a => a.id === id)
+    if (!acc) continue
+    const key = platformNameToKey[acc.platform]
+    if (key && !appStore.isPlatformDisabled(key)) {
+      filteredIds.add(id)
+    }
+  }
+  publishAccountIds.clear()
+  filteredIds.forEach(id => publishAccountIds.add(id))
 
   const draftId = route.query.draft
   if (draftId) {

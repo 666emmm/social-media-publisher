@@ -1073,6 +1073,7 @@ async function onVideoUploaded(d) {
     stored_path: d.stored_path,
     size: d.file_size,
     type: d.mime_type,
+    duration: d.duration ?? 0,
   }
   if (videoUploadTarget.value === 'portrait') {
     currentEditTarget.value.videoPortrait = videoData

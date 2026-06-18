@@ -1432,6 +1432,9 @@ async function publishAll() {
     tencent_video: 'creationDeclaration',
     iqiyi: 'creationDeclaration',
     youtube: ['audience', 'alteredContent'],
+    tiktok: 'aiContent',
+    weibo: 'contentStatement',
+    // channels 不必填
   }
 
   for (const group of accountGroups.value) {

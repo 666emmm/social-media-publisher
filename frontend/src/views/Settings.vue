@@ -115,7 +115,7 @@
         >
           <img v-if="p.logo" :src="p.logo" :alt="p.name" class="chip-logo" />
           <span class="chip-name">{{ p.name }}</span>
-          <button class="chip-remove" type="button">
+          <button class="chip-remove" type="button" @click="removeFromBlacklist(p.key)">
             <el-icon><Close /></el-icon>
           </button>
         </div>
@@ -334,6 +334,16 @@ const disabledPlatformObjects = computed(() =>
 
 const blacklistDialogVisible = ref(false)
 const openBlacklistDialog = () => { blacklistDialogVisible.value = true }
+
+const removeFromBlacklist = async (key) => {
+  try {
+    await appStore.removeDisabledPlatform(key)
+    ElMessage.success('已从黑名单移除')
+  } catch (e) {
+    console.error('移除黑名单失败:', e)
+    ElMessage.error('移除失败,请重试')
+  }
+}
 
 const loading = ref(false)
 const saving = ref(false)

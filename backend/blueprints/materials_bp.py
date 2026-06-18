@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from flask import Blueprint, request, jsonify
+from services.ffmpeg_service import get_video_duration_safe
 
 materials_bp = Blueprint("materials", __name__, url_prefix="/api/materials")
 
@@ -100,6 +101,27 @@ def _async_extract_thumb(material_id: str, source_path: str):
         print(f"[materials] thumbnail extraction failed for {material_id}: {e}")
 
 
+def _async_probe_duration(material_id: str, source_path: str):
+    """后台异步识别视频时长并写库。失败不影响上传响应。"""
+    try:
+        from storage import resolve_material_path
+        local = resolve_material_path(source_path)
+        if not local or not os.path.isfile(local):
+            return
+        duration = get_video_duration_safe(local)
+        if duration <= 0:
+            return
+        conn = _get_db()
+        conn.execute(
+            "UPDATE materials SET duration = ? WHERE id = ?",
+            (duration, material_id),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[materials] duration probe failed for {material_id}: {e}")
+
+
 @materials_bp.route("/upload", methods=["POST"])
 def upload():
     """统一文件上传（流式：避免大文件 OOM）"""
@@ -155,6 +177,14 @@ def upload():
         if file_type == "video":
             threading.Thread(
                 target=_async_extract_thumb,
+                args=(file_id, relative_path),
+                daemon=True,
+            ).start()
+
+        # 视频素材后台识别 duration
+        if file_type == "video":
+            threading.Thread(
+                target=_async_probe_duration,
                 args=(file_id, relative_path),
                 daemon=True,
             ).start()

@@ -36,7 +36,9 @@ _PLATFORM_NAMES = {
 
 
 def _format_size(size_bytes: float) -> str:
-    """自适应单位：KB/MB/GB"""
+    """自适应单位：B/KB/MB/GB。inf/nan/负数返回"未知"。"""
+    if size_bytes is None or math.isnan(size_bytes) or math.isinf(size_bytes) or size_bytes < 0:
+        return "未知"
     if size_bytes < 1024:
         return f"{size_bytes:.1f} B"
     if size_bytes < 1024**2:
@@ -47,7 +49,9 @@ def _format_size(size_bytes: float) -> str:
 
 
 def _format_duration(seconds: float) -> str:
-    """自适应单位：秒 / 分秒 / 时分秒"""
+    """自适应单位：秒 / 分秒 / 时分秒。inf/nan/负数返回"未知"。"""
+    if seconds is None or math.isnan(seconds) or math.isinf(seconds) or seconds < 0:
+        return "未知"
     seconds = int(seconds)
     if seconds < 60:
         return f"{seconds} 秒"

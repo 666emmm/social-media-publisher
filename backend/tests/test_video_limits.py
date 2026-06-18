@@ -1,18 +1,18 @@
 """视频校验规则单元测试"""
-import pytest
+import math
 from util.video_limits import VIDEO_LIMITS, validate_video_for_platform, _format_size, _format_duration
 
 
 # ----- 平台规则完整性 -----
 
 def test_all_platforms_have_limits():
-    """11 个平台 + channels + weibo 必须都在规则表里"""
+    """恰好 11 个平台，不多不少"""
     expected_keys = {
         "tencent_video", "iqiyi", "douyin", "baijiahao", "weibo",
         "kuaishou", "bilibili", "xiaohongshu", "channels",
         "tiktok", "youtube",
     }
-    assert expected_keys.issubset(set(VIDEO_LIMITS.keys()))
+    assert set(VIDEO_LIMITS.keys()) == expected_keys
 
 
 def test_tencent_video_rules():
@@ -24,7 +24,7 @@ def test_tencent_video_rules():
 
 def test_baijiahao_unlimited_duration():
     """百家号最大时长为无限大"""
-    assert VIDEO_LIMITS["baijiahao"]["max_duration"] == float("inf")
+    assert VIDEO_LIMITS["baijiahao"]["max_duration"] == math.inf
 
 
 def test_weibo_min_15_seconds():
@@ -101,3 +101,18 @@ def test_format_duration_hours():
     result = _format_duration(3725)
     assert "1 小时" in result
     assert "2 分" in result
+
+
+def test_format_size_inf_returns_unknown():
+    assert _format_size(float("inf")) == "未知"
+
+
+def test_format_size_negative_returns_unknown():
+    assert _format_size(-100) == "未知"
+
+
+def test_format_duration_inf_returns_unknown():
+    """inf/nan/负数 安全返回，不会触发 int(inf) OverflowError"""
+    assert _format_duration(float("inf")) == "未知"
+    assert _format_duration(float("nan")) == "未知"
+    assert _format_duration(-10) == "未知"

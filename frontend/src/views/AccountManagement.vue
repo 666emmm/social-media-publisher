@@ -59,6 +59,15 @@
             <span class="user-name">{{ account.name }}</span>
             <div class="platform-row">
               <span class="platform-name">{{ account.platform }}</span>
+              <el-tag
+                v-if="isAccountDisabled(account)"
+                type="info"
+                size="small"
+                effect="plain"
+                class="disabled-tag"
+              >
+                已拉黑
+              </el-tag>
               <span :class="['status-badge', getStatusClass(account.status)]">
                 <span class="status-dot"></span>
                 {{ account.status }}
@@ -76,9 +85,16 @@
         <!-- 卡片底部：操作按钮 -->
         <div class="card-footer">
           <div class="card-actions">
-            <button v-if="account.status === '异常'" class="action-btn login" @click="handleReLogin(account)">
+            <button
+              v-if="account.status === '异常'"
+              class="action-btn login"
+              :class="{ 'is-blacklisted': isAccountDisabled(account) }"
+              :disabled="isAccountDisabled(account)"
+              :title="isAccountDisabled(account) ? '该渠道已被加入黑名单,请先在系统设置中移除' : ''"
+              @click="handleReLogin(account)"
+            >
               <el-icon><Key /></el-icon>
-              登录
+              {{ isAccountDisabled(account) ? '已拉黑' : '登录' }}
             </button>
             <button v-else class="action-btn check" @click="handleCheckAccount(account)" :disabled="checkingIds.has(account.id)">
               <el-icon v-if="checkingIds.has(account.id)" class="is-loading"><Loading /></el-icon>
@@ -87,14 +103,26 @@
                 检查
               </template>
             </button>
-            <button class="action-btn sync" @click="handleSyncProfile(account)" :disabled="account.status === '异常' || syncingIds.has(account.id)">
+            <button
+              class="action-btn sync"
+              :class="{ 'is-blacklisted': isAccountDisabled(account) }"
+              :disabled="isAccountDisabled(account) || account.status === '异常' || syncingIds.has(account.id)"
+              :title="isAccountDisabled(account) ? '该渠道已被加入黑名单,请先在系统设置中移除' : ''"
+              @click="handleSyncProfile(account)"
+            >
               <el-icon v-if="syncingIds.has(account.id)" class="is-loading"><Loading /></el-icon>
               <template v-else>
                 <el-icon><Refresh /></el-icon>
                 同步
               </template>
             </button>
-            <button class="action-btn creator" @click="handleOpenCreatorCenter(account)" :disabled="account.status === '异常'">
+            <button
+              class="action-btn creator"
+              :class="{ 'is-blacklisted': isAccountDisabled(account) }"
+              :disabled="isAccountDisabled(account) || account.status === '异常'"
+              :title="isAccountDisabled(account) ? '该渠道已被加入黑名单,请先在系统设置中移除' : ''"
+              @click="handleOpenCreatorCenter(account)"
+            >
               <el-icon><Link /></el-icon>
               创作中心
             </button>
@@ -195,10 +223,16 @@ import { accountApi } from '@/api/account'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
 import { http } from '@/utils/request'
-import { platformList, platformNameToId, platformCssMap, getPlatformByName, PLATFORMS } from '@/config/platforms'
+import { platformList, platformNameToId, platformNameToKey, platformCssMap, getPlatformByName, PLATFORMS } from '@/config/platforms'
 
 const accountStore = useAccountStore()
 const appStore = useAppStore()
+
+/** 平台是否已被加入黑名单（account.platform 是中文名,需先转为 key） */
+const isAccountDisabled = (account) => {
+  const key = platformNameToKey[account.platform]
+  return !!(key && appStore.isPlatformDisabled(key))
+}
 
 const activeTab = ref('all')
 const searchKeyword = ref('')
@@ -886,6 +920,11 @@ onBeforeUnmount(() => { closeSSEConnection() })
             color: $text-muted;
           }
 
+          .disabled-tag {
+            margin-left: 4px;
+            border-style: dashed;
+          }
+
           .status-badge {
             display: flex;
             align-items: center;
@@ -980,6 +1019,11 @@ onBeforeUnmount(() => { closeSSEConnection() })
         }
 
         &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        &.is-blacklisted {
           opacity: 0.5;
           cursor: not-allowed;
         }

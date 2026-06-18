@@ -470,6 +470,7 @@ import { getFileUrl } from '@/utils/storage'
 import { http } from '@/utils/request'
 import { accountApi } from '@/api/account'
 import { platformList, getPlatformByKey, platformKeyToId, platformNameToKey } from '@/config/platforms'
+import { validateVideoForPlatform } from '@/config/videoLimits'
 
 import AccountSidebar from '@/components/AccountSidebar.vue'
 import AccountSelectDialog from '@/components/AccountSelectDialog.vue'
@@ -1479,6 +1480,37 @@ async function publishAll() {
   if (accountsWithoutTitle.length > 0) errors.push({ type: '标题', accounts: accountsWithoutTitle })
   if (accountsWithoutVideoFormat.length > 0) errors.push({ type: '视频格式', accounts: accountsWithoutVideoFormat })
   if (accountsWithoutCover.length > 0) errors.push({ type: '封面', accounts: accountsWithoutCover })
+
+  // 3. 视频时长/大小校验
+  const accountsVideoInvalid = []
+  for (const group of accountGroups.value) {
+    if (group.accounts.length === 0) continue
+    for (const account of group.accounts) {
+      if (!publishAccountIds.has(account.id)) continue
+      const merged = resolveAccountConfig(group.key, account.id)
+      const platformKey = group.key
+
+      // 取有效视频（按 videoFormat 或兜底）
+      const fmt = merged.videoFormat
+      let video = null
+      if (fmt === 'landscape') video = merged.videoLandscape
+      else if (fmt === 'portrait') video = merged.videoPortrait
+      else video = merged.videoLandscape || merged.videoPortrait
+
+      if (!video || !video.duration || video.duration === 0) {
+        // 未上传视频的账号：跳过（必填标题会先拦住）
+        continue
+      }
+
+      const result = validateVideoForPlatform(platformKey, video.duration, video.size || 0)
+      if (!result.ok) {
+        accountsVideoInvalid.push(`${account.name}(${group.name}): ${result.error}`)
+      }
+    }
+  }
+  if (accountsVideoInvalid.length > 0) {
+    errors.push({ type: '视频校验', accounts: accountsVideoInvalid })
+  }
 
   if (errors.length > 0) {
     const maxShow = 3

@@ -241,7 +241,10 @@
                   class="setting-card"
                   :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }"
                 >
-                  <div class="setting-label" :style="{ color: currentPlatformConfig.color }">{{ field.label }}</div>
+                  <div class="setting-label" :style="{ color: currentPlatformConfig.color }">
+                    <span v-if="field.required" style="color: #f56c6c; margin-right: 2px;">*</span>
+                    {{ field.label }}
+                  </div>
                   <div v-if="field.description" class="setting-desc">{{ field.description }}</div>
 
                   <el-input

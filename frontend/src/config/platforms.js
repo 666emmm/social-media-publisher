@@ -63,9 +63,10 @@ export const PLATFORMS = {
       { key: 'location', label: '位置', type: 'select', placeholder: '选择位置' },
       { key: 'aiContent', label: 'AI生成内容', type: 'switch' },
       { key: 'isOriginal', label: '原创声明', type: 'radio', options: [{ label: '原创', value: true }, { label: '非原创', value: false }] },
+      { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
       { key: 'videoFormat', label: '视频格式', type: 'radio', options: [{ label: '横版', value: 'landscape' }, { label: '竖版', value: 'portrait' }] },
     ],
-    defaultSettings: { title: '', description: '', isDraft: false, location: '', aiContent: false, isOriginal: false, videoFormat: '' },
+    defaultSettings: { title: '', description: '', isDraft: false, location: '', aiContent: false, isOriginal: false, scheduleTime: '', videoFormat: '' },
   },
   DOUYIN: {
     id: 3,
@@ -199,9 +200,10 @@ export const PLATFORMS = {
         { label: '请理性适度消费', value: '请理性适度消费' },
         { label: '未成年人请在监护人指导下浏览', value: '未成年人请在监护人指导下浏览' },
       ] },
+      { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
       { key: 'videoFormat', label: '视频格式', type: 'radio', options: [{ label: '横版', value: 'landscape' }, { label: '竖版', value: 'portrait' }] },
     ],
-    defaultSettings: { title: '', description: '', aiContent: false, isOriginal: false, creationDeclaration: '', supplementaryDeclaration: '', videoFormat: '' },
+    defaultSettings: { title: '', description: '', aiContent: false, isOriginal: false, creationDeclaration: '', supplementaryDeclaration: '', scheduleTime: '', videoFormat: '' },
   },
   TIKTOK: {
     id: 7,

@@ -6,6 +6,12 @@
     </div>
 
     <div class="group-list">
+      <!-- 空态:edit 模式下没有已选账号时,显示提示 -->
+      <div v-if="mode === 'edit' && visibleAccountGroups.length === 0" class="empty-hint">
+        <p>暂无选中账号</p>
+        <p class="empty-sub">点击下方「添加账号」开始</p>
+      </div>
+
       <div
         v-for="group in visibleAccountGroups"
         :key="group.key"
@@ -78,10 +84,20 @@ const props = defineProps({
 
 defineEmits(['toggle-group', 'select-account', 'remove-account', 'open-account-dialog'])
 
-// 过滤掉被渠道黑名单禁用的平台分组
+// 过滤逻辑:
+// 1. 永远过滤掉被渠道黑名单禁用的平台分组
+// 2. edit 模式下,只显示「该平台下有 publishAccountIds 中已选账号」的分组(默认空,选了账号才出现)
+// 3. readonly 模式下,显示所有非黑名单平台分组(用于历史详情查看等场景)
 // group.key 已经是平台 key(如 'xiaohongshu'),无需再走 platformNameToKey
 const visibleAccountGroups = computed(() =>
-  props.accountGroups.filter(group => group.key && !appStore.isPlatformDisabled(group.key))
+  props.accountGroups.filter(group => {
+    if (!group.key || appStore.isPlatformDisabled(group.key)) return false
+    if (props.mode === 'edit') {
+      // edit 模式:必须有已选账号才显示分组
+      return group.accounts.some(a => props.publishAccountIds.has(a.id))
+    }
+    return true
+  })
 )
 </script>
 
@@ -206,6 +222,22 @@ const visibleAccountGroups = computed(() =>
       font-size: 12px;
       color: $text-muted;
       padding: 6px 0;
+    }
+  }
+
+  .group-list > .empty-hint {
+    padding: 48px 16px;
+    text-align: center;
+    color: $text-muted;
+    font-size: 13px;
+
+    p {
+      margin: 0 0 6px;
+    }
+
+    .empty-sub {
+      font-size: 11px;
+      opacity: 0.7;
     }
   }
 

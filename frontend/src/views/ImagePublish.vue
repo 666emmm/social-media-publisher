@@ -56,7 +56,7 @@
             <div class="bar purple"></div>
             <span class="section-label">公共配置</span>
             <span class="hint">所有账号共享</span>
-            <template v-if="currentPlatformConfig">
+            <template v-if="currentPlatformConfig && publishAccountIds.size > 0">
               <el-checkbox
                 v-model="platformChecked[selectedPlatform]"
                 @change="onPlatformCheckChange"
@@ -100,7 +100,7 @@
         <div class="divider"></div>
 
         <!-- ===== PLATFORM-SPECIFIC SETTINGS ===== -->
-        <div class="config-section" v-show="selectedPlatform">
+        <div class="config-section" v-show="selectedPlatform && publishAccountIds.size > 0">
           <div class="section-bar">
             <div class="bar" :style="{ background: currentPlatformConfig?.color }"></div>
             <span class="section-label">
@@ -144,8 +144,17 @@
           />
         </div>
 
+        <!-- No account selected hint -->
+        <div v-if="publishAccountIds.size === 0" class="no-platform-hint">
+          <div class="hint-icon">
+            <el-icon :size="48"><UserFilled /></el-icon>
+          </div>
+          <p>请先在左侧添加账号</p>
+          <p class="hint-sub">选择账号后才能配置对应渠道的发布设置</p>
+        </div>
+
         <!-- No platform selected hint -->
-        <div v-show="!selectedPlatform" class="no-platform-hint">
+        <div v-else-if="!selectedPlatform" class="no-platform-hint">
           <div class="hint-icon">
             <el-icon :size="48"><PictureFilled /></el-icon>
           </div>
@@ -257,7 +266,7 @@
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import {
   Upload, Picture, PictureFilled,
-  Document, FullScreen, MagicStick, Setting, Promotion
+  Document, FullScreen, MagicStick, Setting, Promotion, UserFilled
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAccountStore } from '@/stores/account'

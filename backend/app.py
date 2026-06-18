@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+import random
 import sqlite3
 import sys
 import threading
@@ -326,7 +327,11 @@ def get_tags():
 def create_tag():
     data = request.get_json()
     name = (data.get('name') or '').strip()
-    color = data.get('color') or '#8b5cf6'
+    color = data.get('color') or random.choice([
+        '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e',
+        '#f97316', '#f59e0b', '#10b981', '#14b8a6',
+        '#0ea5e9', '#3b82f6',
+    ])
     if not name:
         return jsonify({"code": 400, "msg": "标签名不能为空"}), 400
     try:

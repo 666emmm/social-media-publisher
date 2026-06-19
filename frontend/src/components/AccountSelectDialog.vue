@@ -122,7 +122,7 @@
         <span class="selected-count">已选择 {{ tempSelectedAccounts.length }} 个账号</span>
         <div class="dialog-footer-btns">
           <el-button @click="$emit('update:modelValue', false)">取消</el-button>
-          <el-button type="primary" @click="confirmSelection">确认添加</el-button>
+          <el-button type="primary" @click="confirmSelection">确认设置</el-button>
         </div>
       </div>
     </template>

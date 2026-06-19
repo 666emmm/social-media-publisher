@@ -41,7 +41,8 @@
               @click="$emit('select-account', account, group)"
             >
               <div class="account-avatar" :style="{ borderColor: group.color }">
-                {{ account.name ? account.name.charAt(0) : '?' }}
+                <img v-if="account.avatar" :src="proxyAvatar(account.avatar)" :alt="account.name">
+                <img v-else :src="getDefaultAvatar(account.name)" :alt="account.name">
               </div>
               <span class="account-name">{{ account.name }}</span>
               <span :class="['dot', account.status === '正常' ? 'on' : 'off']"></span>
@@ -64,6 +65,7 @@
 import { computed } from 'vue'
 import { ArrowDown, ArrowRight, StarFilled, Close } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores/app'
+import { getDefaultAvatar, proxyAvatar } from '@/utils/avatar'
 
 const appStore = useAppStore()
 
@@ -281,6 +283,13 @@ const visibleAccountGroups = computed(() =>
       flex-shrink: 0;
       border: 2px solid transparent;
       transition: all 0.2s ease;
+      overflow: hidden;
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
     }
 
     .account-name {

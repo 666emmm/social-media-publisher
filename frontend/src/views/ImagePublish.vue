@@ -561,6 +561,7 @@ function selectAccount(account, group) {
 // ========== Account Dialog ==========
 
 function onAccountConfirm(ids) {
+  publishAccountIds.clear()
   ids.forEach(id => {
     publishAccountIds.add(id)
   })

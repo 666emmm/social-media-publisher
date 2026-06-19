@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     title="选择账号"
-    width="960px"
+    width="80%"
     :close-on-click-modal="false"
     class="account-select-dialog"
     @update:model-value="$emit('update:modelValue', $event)"

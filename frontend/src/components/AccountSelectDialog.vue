@@ -39,7 +39,7 @@
         <div class="account-section-header">
           <span class="account-section-title">账号</span>
           <span class="account-section-count">已选 {{ tempSelectedAccounts.length }} / {{ accountStore.accounts.length }}</span>
-          <el-button size="small" link type="primary" class="ml-auto" :disabled="validFilteredAccounts.length === 0" @click="toggleSelectAll">
+          <el-button size="small" type="primary" plain class="ml-auto" :disabled="validFilteredAccounts.length === 0" @click="toggleSelectAll">
             {{ isAllSelected ? '取消全选' : '一键全选' }}
           </el-button>
         </div>

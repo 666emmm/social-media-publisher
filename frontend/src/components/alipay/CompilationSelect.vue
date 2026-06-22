@@ -32,7 +32,7 @@
         v-for="comp in compilationList"
         :key="comp.compilationId"
         :label="comp.title"
-        :value="comp.compilationId"
+        :value="comp.title"
       >
         <div class="compilation-option">
           <img
@@ -91,14 +91,15 @@ watch(() => props.accountId, () => {
 })
 
 // 外部值变化时同步;若列表里没有,用 data 补一个占位项保证回显
+// 注意:v-model 存的是合集 title(名字),不是 compilationId
 watch(() => props.modelValue, (val) => {
   selectedCompilationId.value = val || ''
-  if (val && !compilationList.value.find(c => c.compilationId === val)) {
-    if (props.data && props.data.compilationId === val) {
+  if (val && !compilationList.value.find(c => c.title === val)) {
+    if (props.data && props.data.title === val) {
       compilationList.value.unshift(props.data)
     } else {
       compilationList.value.unshift({
-        compilationId: val,
+        compilationId: '',
         title: val,
         coverUrl: '',
         category: '',
@@ -143,7 +144,7 @@ function handleClear() {
 
 function handleChange(val) {
   emit('update:modelValue', val || '')
-  const comp = compilationList.value.find(c => c.compilationId === val)
+  const comp = compilationList.value.find(c => c.title === val)
   emit('change', comp ? { ...comp, _searchKeyword: searchKeyword.value } : null)
 }
 

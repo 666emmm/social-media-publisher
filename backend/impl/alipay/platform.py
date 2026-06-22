@@ -703,29 +703,27 @@ class AlipayPlatform(BasePlatform):
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _set_compilation(page, compilation_value: str):
+    async def _set_compilation(page, compilation_name: str):
         """选择合集(发布流程的执行端)。
 
         前端 ``CompilationSelect`` 已经在发布前通过
-        ``/api/alipay/compilation-search`` 预览过合集列表并把用户选中的
-        合集传过来。本方法负责在真实发布页把这个合集点选上。
+        ``/api/alipay/compilation-search`` 预览过合集列表,用户选中的合集
+        **以名字(title)** 传过来(与抖音 MixSelect 存 mix_name 一致,
+        便于在草稿箱/发布历史里人读)。
 
-        参数 compilation_value 约定(与前端 CompilationSelect 的 emit 一致):
-            "<compilationId>"   — 优先按 id 精确匹配(最稳)
-            "<title>"           — 退化为按 title 文本匹配
+        参数 compilation_name: 合集名字(前端 v-model 绑的是 comp.title)
 
         流程(文档 ~/zfb.md):
         1. 定位合集 select 搜索框 ``input[id$='_compilationInfo']``
-        2. fill compilation_value 触发 queryCompilationsByPublicId.json
+        2. fill compilation_name 触发 queryCompilationsByPublicId.json
            (用 page.expect_response 同步等待,确保列表已返回)
         3. 等 ``[role="option"]`` 渲染
-        4. 优先按 compilationId 精确匹配 ``option[data-id]``;否则按 title
-           精确/模糊匹配;最后兜底点第一项
+        4. 按 title 精确匹配 → title 模糊包含 → 兜底放弃
 
         本方法与 ``alipay_bp.search_compilation`` 共享同一个支付宝接口,
         但职责不同:bp 是"搜索预览",这里是"真实点选"。
         """
-        if not compilation_value:
+        if not compilation_name:
             return
 
         compilation_input = page.locator(
@@ -746,10 +744,10 @@ class AlipayPlatform(BasePlatform):
                 timeout=10000,
             ):
                 await compilation_input.click()
-                await compilation_input.fill(compilation_value)
+                await compilation_input.fill(compilation_name)
                 logger.info(
-                    "[alipay] 已输入合集值「%s」,等待接口响应",
-                    compilation_value,
+                    "[alipay] 已输入合集名「%s」,等待接口响应",
+                    compilation_name,
                 )
         except Exception as e:
             logger.info(
@@ -766,48 +764,34 @@ class AlipayPlatform(BasePlatform):
         except Exception as e:
             logger.warning(
                 "[alipay] 合集下拉未渲染(可能无匹配合集「%s」): %s",
-                compilation_value, e,
+                compilation_name, e,
             )
             return
 
-        # 三级匹配:① 按 compilationId(data-id) ② 按 title 精确 ③ 按 title 模糊
+        # 两级匹配:① title 精确 ② title 模糊包含
         options = page.locator("[role='option']")
         count = await options.count()
         clicked = False
 
-        # ① compilationId 精确匹配
+        # ① title 精确匹配
         for i in range(count):
             opt = options.nth(i)
-            opt_id = await opt.get_attribute("data-id")
-            if opt_id and str(opt_id) == str(compilation_value):
+            title_attr = await opt.get_attribute("title")
+            if title_attr and title_attr.strip() == compilation_name:
                 await opt.click()
                 clicked = True
                 logger.info(
-                    "[alipay] 已选合集(按 compilationId=%s)",
-                    compilation_value,
+                    "[alipay] 已选合集(按 title 精确): %s",
+                    compilation_name,
                 )
                 break
 
-        # ② title 精确匹配
-        if not clicked:
-            for i in range(count):
-                opt = options.nth(i)
-                title_attr = await opt.get_attribute("title")
-                if title_attr and title_attr.strip() == compilation_value:
-                    await opt.click()
-                    clicked = True
-                    logger.info(
-                        "[alipay] 已选合集(按 title 精确): %s",
-                        compilation_value,
-                    )
-                    break
-
-        # ③ title 模糊包含
+        # ② title 模糊包含
         if not clicked:
             for i in range(count):
                 opt = options.nth(i)
                 title_attr = await opt.get_attribute("title") or ""
-                if compilation_value in title_attr:
+                if compilation_name in title_attr:
                     await opt.click()
                     clicked = True
                     logger.info(
@@ -819,7 +803,7 @@ class AlipayPlatform(BasePlatform):
         if not clicked:
             logger.warning(
                 "[alipay] 未找到匹配的合集「%s」,跳过合集设置",
-                compilation_value,
+                compilation_name,
             )
             try:
                 await page.keyboard.press("Escape")

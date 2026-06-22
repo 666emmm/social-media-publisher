@@ -6,4 +6,9 @@ export const alipayApi = {
   searchCompilation(accountId, keyword) {
     return http.get(`/api/alipay/compilation-search?account_id=${accountId}&keyword=${encodeURIComponent(keyword)}`)
   },
+
+  // 获取图集背景音乐列表(后端打开 short-content 页 + 拦截音乐列表接口,分页)
+  musicList(accountId, pageNum = 1) {
+    return http.get(`/api/alipay/music-list?account_id=${accountId}&page_num=${pageNum}`)
+  },
 }

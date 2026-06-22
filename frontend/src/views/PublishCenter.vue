@@ -681,6 +681,10 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     videoType: accountOv?.videoType ?? platformOv?.videoType ?? platformDefault?.videoType ?? '',
     weiboCategory: accountOv?.weiboCategory ?? platformOv?.weiboCategory ?? platformDefault?.weiboCategory ?? [],
     contentStatement: accountOv?.contentStatement ?? platformOv?.contentStatement ?? platformDefault?.contentStatement ?? '',
+    // 支付宝
+    authorStatement: accountOv?.authorStatement ?? platformOv?.authorStatement ?? platformDefault?.authorStatement ?? '',
+    compilation: accountOv?.compilation ?? platformOv?.compilation ?? platformDefault?.compilation ?? '',
+    compilationData: accountOv?.compilationData ?? platformOv?.compilationData ?? platformDefault?.compilationData ?? null,
   }
 }
 

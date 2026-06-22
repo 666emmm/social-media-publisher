@@ -122,6 +122,10 @@ from blueprints.douyin_image_bp import douyin_image_bp  # noqa: E402
 app.register_blueprint(douyin_image_bp)
 logger.info("[Startup] douyin_image_bp registered OK")
 
+from blueprints.alipay_bp import alipay_bp  # noqa: E402
+app.register_blueprint(alipay_bp)
+logger.info("[Startup] alipay_bp registered OK")
+
 from blueprints.materials_bp import materials_bp  # noqa: E402
 app.register_blueprint(materials_bp)
 logger.info("[Startup] materials_bp registered OK")
@@ -177,11 +181,11 @@ def _get_db_path():
 
 
 DB_PATH = _get_db_path()
-PLATFORM_MAP = {1: "小红书", 2: "视频号", 3: "抖音", 4: "快手", 5: "B站", 6: "百家号", 7: "TikTok", 8: "YouTube", 9: "腾讯视频", 10: "爱奇艺", 11: "微博"}
+PLATFORM_MAP = {1: "小红书", 2: "视频号", 3: "抖音", 4: "快手", 5: "B站", 6: "百家号", 7: "TikTok", 8: "YouTube", 9: "腾讯视频", 10: "爱奇艺", 11: "微博", 12: "支付宝"}
 PLATFORM_ID_TO_KEY = {
     1: 'xiaohongshu', 2: 'channels', 3: 'douyin', 4: 'kuaishou', 5: 'bilibili',
     6: 'baijiahao', 7: 'tiktok', 8: 'youtube', 9: 'tencent_video', 10: 'iqiyi',
-    11: 'weibo',
+    11: 'weibo', 12: 'alipay',
 }
 
 
@@ -743,6 +747,8 @@ def postVideo():
                 mini_link=mini_link,
                 mix_id=mix_id,
                 content_statement=data.get('contentStatement', ''),
+                author_statement=data.get('authorStatement', ''),
+                compilation=data.get('compilation', ''),
             ))
         else:
             result = publish_fn(
@@ -777,6 +783,8 @@ def postVideo():
                 mini_link=mini_link,
                 mix_id=mix_id,
                 content_statement=data.get('contentStatement', ''),
+                author_statement=data.get('authorStatement', ''),
+                compilation=data.get('compilation', ''),
             )
         if result:
             return jsonify({"code": 200, "msg": "发布任务已提交", "data": None}), 200
@@ -998,7 +1006,7 @@ def _before_publish():
 
         # [DEBUG 2026-06-10] 详细日志：把整个请求 body 的关键字段打印出来
         logger.info(
-            "[/postVideo REQUEST] batchId=%s account=%s type=%s title=%s fileList=%s videoLandscape.id=%s videoPortrait.id=%s coverLandscape.id=%s coverPortrait.id=%s creationDeclaration=%s aiContent=%s isOriginal=%s category=%s",
+            "[/postVideo REQUEST] batchId=%s account=%s type=%s title=%s fileList=%s videoLandscape.id=%s videoPortrait.id=%s coverLandscape.id=%s coverPortrait.id=%s creationDeclaration=%s aiContent=%s isOriginal=%s category=%s authorStatement=%s compilation=%s scheduleTime=%s enableTimer=%s tags=%s",
             batch_id, account_name, platform_type,
             data.get('title', ''),
             file_list,
@@ -1010,6 +1018,11 @@ def _before_publish():
             data.get('aiContent', ''),
             data.get('isOriginal', ''),
             data.get('category', ''),  # 新增：B 站分区字段（platformSettings.zone || 兜底）
+            data.get('authorStatement', ''),  # 支付宝作者声明(必填)
+            data.get('compilation', ''),  # 支付宝合集(名字)
+            data.get('scheduleTime', ''),  # 定时发布
+            data.get('enableTimer', ''),
+            data.get('tags', ''),
         )
 
         # account_configs 存：除了 fileList/accountList/type/thumbnail/batchId/accountId/accountName 之外的所有字段

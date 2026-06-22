@@ -334,6 +334,12 @@
                     filterable
                     class="cursor-pointer weibo-cascader"
                   />
+                  <AlipayCompilationSelect
+                    v-else-if="field.type === 'compilationSelect'"
+                    :account-id="selectedAccountId"
+                    v-model="form[field.key]"
+                    @change="(val) => handleAlipayCompilationChange(field.key, val)"
+                  />
                 </div>
               </template>
             </template>
@@ -491,6 +497,7 @@ import DouyinActivitySelect from '@/components/douyin/ActivitySelect.vue'
 import DouyinHotspotSelect from '@/components/douyin/HotspotSelect.vue'
 import DouyinTagSelect from '@/components/douyin/TagSelect.vue'
 import DouyinMixSelect from '@/components/douyin/MixSelect.vue'
+import AlipayCompilationSelect from '@/components/alipay/CompilationSelect.vue'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useBatchSetApply } from '@/composables/useBatchSetApply'
 import { frameApi } from '@/api/frame'
@@ -674,6 +681,10 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     videoType: accountOv?.videoType ?? platformOv?.videoType ?? platformDefault?.videoType ?? '',
     weiboCategory: accountOv?.weiboCategory ?? platformOv?.weiboCategory ?? platformDefault?.weiboCategory ?? [],
     contentStatement: accountOv?.contentStatement ?? platformOv?.contentStatement ?? platformDefault?.contentStatement ?? '',
+    // 支付宝
+    authorStatement: accountOv?.authorStatement ?? platformOv?.authorStatement ?? platformDefault?.authorStatement ?? '',
+    compilation: accountOv?.compilation ?? platformOv?.compilation ?? platformDefault?.compilation ?? '',
+    compilationData: accountOv?.compilationData ?? platformOv?.compilationData ?? platformDefault?.compilationData ?? null,
   }
 }
 
@@ -721,6 +732,7 @@ const platformConfigs = reactive({
   iqiyi: { title: '', description: '', creationDeclaration: '', riskWarning: '', enableCashActivity: false, scheduleTime: '', videoFormat: '', tags: [] },
   tencent_video: { title: '', description: '', creationDeclaration: [], scheduleTime: '', videoFormat: '', tags: [] },
   weibo: { title: '', description: '', videoType: '', weiboCategory: [], contentStatement: '', tags: [] },
+  alipay: { title: '', description: '', authorStatement: '', compilation: '', scheduleTime: '', videoFormat: '', tags: [] },
 })
 
 const accountOverrides = reactive({})
@@ -924,6 +936,16 @@ function handleDouyinMixChange(mix) {
   } else {
     form.mixId = ''
     form.mixData = null
+  }
+}
+
+// 支付宝合集选择回调:把选中的完整对象存到 form.compilationData 便于回显,
+// v-model 已把 compilationId 绑定到 form.compilation
+function handleAlipayCompilationChange(fieldKey, comp) {
+  if (comp) {
+    form.compilationData = comp
+  } else {
+    form.compilationData = null
   }
 }
 
@@ -1438,6 +1460,7 @@ async function publishAll() {
     youtube: ['audience', 'alteredContent'],
     tiktok: 'aiContent',
     weibo: 'contentStatement',
+    alipay: 'authorStatement',
     // channels 不必填
   }
 
@@ -1657,6 +1680,9 @@ async function publishAll() {
           : (merged.aiContent || ''),
         // 微博「内容声明」单独透传
         contentStatement: group.key === 'weibo' ? (merged.contentStatement || '') : '',
+        // 支付宝「作者声明」+「合集」单独透传(其他平台忽略)
+        authorStatement: merged.authorStatement || '',
+        compilation: merged.compilation || '',
         hotspot: merged.hotspotId || '',
         tag_type: merged.tagType || '',
         tag_value: merged.tagValue || '',

@@ -632,46 +632,60 @@ class AlipayPlatform(BasePlatform):
     async def _set_cover(page, cover_path):
         """上传封面。
 
-        流程(文档行 17-27):
+        流程(文档 ~/zfb.md 行 17-27):
         1. 点击"上传封面"区域(打开封面设置弹窗)
         2. 在弹窗里切换到"上传封面" tab(默认在"截取封面")
-        3. 找到隐藏 input[type=file][accept*='image'] 上传横版封面
-        4. 点击"完成"按钮
+           DOM: ``div.antd5-tabs-tab > div.antd5-tabs-tab-btn`` 文本="上传封面"
+        3. 切换后 panel 渲染隐藏 input[type=file][accept*='image'] 上传横版封面
+        4. 点击"完 成"按钮(文档实测按钮文本中间有空格,
+           data-aspm-desc="封面图选择-确认")
         """
         if not cover_path or not os.path.exists(cover_path):
             logger.info("[alipay] 无封面文件,跳过封面上传")
             return
 
-        # 1. 点击"上传封面"区域(文本节点,通过文本匹配)
-        upload_trigger = page.get_by_text("上传封面").first
+        # 1. 点击"上传封面"触发入口(页面上的封面区,非 tab)
+        #    DOM: div.z-10 文本="上传封面"(主表单的封面入口)
+        upload_trigger = page.locator(
+            "div.z-10", has_text="上传封面"
+        ).first
         try:
             await upload_trigger.wait_for(state="visible", timeout=10000)
-        except Exception as e:
-            logger.warning("[alipay] 未找到「上传封面」入口: %s", e)
-            return
+        except Exception:
+            # 兜底:用文本定位(可能命中多个,取第一个可见的)
+            upload_trigger = page.get_by_text("上传封面", exact=True).first
+            try:
+                await upload_trigger.wait_for(state="visible", timeout=5000)
+            except Exception as e:
+                logger.warning("[alipay] 未找到「上传封面」入口: %s", e)
+                return
 
         await upload_trigger.click()
-        await asyncio.sleep(1)
-        logger.info("[alipay] 已点击「上传封面」区域")
+        await asyncio.sleep(1.5)
+        logger.info("[alipay] 已点击「上传封面」入口,等待弹窗")
 
         # 2. 切换到"上传封面" tab(弹窗默认在"截取封面")
+        #    DOM: div.antd5-tabs-tab > div.antd5-tabs-tab-btn(文本="上传封面")
+        #    get_by_role("tab") 在 antd5 里常匹配不到,用文本+class 定位
         try:
-            upload_tab = page.get_by_role(
-                "tab", name="上传封面", exact=True
+            upload_tab = page.locator(
+                "div.antd5-tabs-tab-btn", has_text="上传封面"
             ).first
             await upload_tab.wait_for(state="visible", timeout=10000)
             await upload_tab.click()
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(1)
             logger.info("[alipay] 已切换到「上传封面」tab")
         except Exception as e:
-            logger.info("[alipay] 切换 tab 失败(可能已在目标 tab): %s", e)
+            logger.warning("[alipay] 切换「上传封面」tab 失败: %s", e)
+            # 不 return:可能已在目标 tab 或 tab 结构不同,继续尝试找 input
 
         # 3. 找隐藏 input[type=file][accept*='image'] 上传
+        #    切换 tab 后 panel 才渲染 input,等它出现
         file_input = page.locator(
             "input[type='file'][accept*='image']"
         ).first
         try:
-            await file_input.wait_for(state="attached", timeout=10000)
+            await file_input.wait_for(state="attached", timeout=15000)
             await file_input.set_input_files(cover_path)
             logger.info(
                 "[alipay] 已上传封面文件: %s", os.path.basename(cover_path)
@@ -684,17 +698,27 @@ class AlipayPlatform(BasePlatform):
                 pass
             return
 
-        # 等图片处理(上传 + 预览渲染)
+        # 等图片处理(上传 + 预览渲染 + 裁剪器就绪)
         await asyncio.sleep(3)
 
-        # 4. 点击"完成"按钮(文档行 27: data-aspm-desc="封面图选择-确认")
-        done_btn = page.get_by_role("button", name="完成", exact=True).first
+        # 4. 点击"完 成"按钮(文档实测文本中间有空格,data-aspm-desc=封面图选择-确认)
+        #    优先用 data-aspm-desc 精确定位,兜底用文本
+        done_btn = page.locator(
+            'button[data-aspm-desc="封面图选择-确认"]'
+        ).first
+        try:
+            await done_btn.wait_for(state="visible", timeout=10000)
+        except Exception:
+            # 兜底:文本匹配(antd5 button 内是 <span>完 成</span>)
+            done_btn = page.locator(
+                "button.antd5-btn-primary", has_text="完"
+            ).first
         try:
             await done_btn.wait_for(state="visible", timeout=10000)
             await done_btn.click(force=True)
-            logger.info("[alipay] 已点击封面「完成」按钮")
+            logger.info("[alipay] 已点击封面「完 成」按钮")
         except Exception as e:
-            logger.warning("[alipay] 点击封面「完成」按钮失败: %s", e)
+            logger.warning("[alipay] 点击封面确认按钮失败: %s", e)
 
         await asyncio.sleep(1)
 
@@ -758,9 +782,9 @@ class AlipayPlatform(BasePlatform):
 
         # 等 option 渲染
         try:
-            await page.locator("[role='option']").first.wait_for(
-                state="visible", timeout=10000
-            )
+            await page.locator(
+                "div.antd5-select-item-option"
+            ).first.wait_for(state="visible", timeout=10000)
         except Exception as e:
             logger.warning(
                 "[alipay] 合集下拉未渲染(可能无匹配合集「%s」): %s",
@@ -768,39 +792,50 @@ class AlipayPlatform(BasePlatform):
             )
             return
 
-        # 两级匹配:① title 精确 ② title 模糊包含
-        options = page.locator("[role='option']")
-        count = await options.count()
-        clicked = False
-
-        # ① title 精确匹配
-        for i in range(count):
-            opt = options.nth(i)
-            title_attr = await opt.get_attribute("title")
-            if title_attr and title_attr.strip() == compilation_name:
-                await opt.click()
-                clicked = True
-                logger.info(
-                    "[alipay] 已选合集(按 title 精确): %s",
-                    compilation_name,
-                )
-                break
-
-        # ② title 模糊包含
-        if not clicked:
-            for i in range(count):
-                opt = options.nth(i)
-                title_attr = await opt.get_attribute("title") or ""
-                if compilation_name in title_attr:
-                    await opt.click()
-                    clicked = True
-                    logger.info(
-                        "[alipay] 已选合集(按 title 模糊): %s",
-                        title_attr.strip(),
-                    )
-                    break
-
-        if not clicked:
+        # 合集 option 实测 DOM(~/zfb.md 用户反馈):
+        #   <div class="antd5-select-item-option">
+        #     <div class="antd5-select-item-option-content">
+        #       <div class="collectionItem___xxx"><span>一键分发系统</span><span>1</span></div>
+        #     </div>
+        #   </div>
+        # 注意:option 没有 title 属性!文字在 collectionItem > span:first-child
+        # 用 JS 遍历所有 option,按 collectionItem 内首个 span 文本匹配后点击
+        clicked = await page.evaluate(
+            """(name) => {
+                const options = document.querySelectorAll(
+                    'div.antd5-select-item-option'
+                );
+                // ① 精确匹配
+                for (const opt of options) {
+                    const span = opt.querySelector(
+                        'div[class*="collectionItem"] span:first-child'
+                    );
+                    if (span && span.textContent.trim() === name) {
+                        opt.click();
+                        return 'exact';
+                    }
+                }
+                // ② 模糊包含
+                for (const opt of options) {
+                    const span = opt.querySelector(
+                        'div[class*="collectionItem"] span:first-child'
+                    );
+                    if (span && span.textContent.includes(name)) {
+                        opt.click();
+                        return 'fuzzy:' + span.textContent.trim();
+                    }
+                }
+                return '';
+            }""",
+            compilation_name,
+        )
+        if clicked:
+            logger.info(
+                "[alipay] 已选合集(%s): %s",
+                "精确" if clicked == "exact" else "模糊",
+                compilation_name if clicked == "exact" else clicked,
+            )
+        else:
             logger.warning(
                 "[alipay] 未找到匹配的合集「%s」,跳过合集设置",
                 compilation_name,
@@ -818,15 +853,23 @@ class AlipayPlatform(BasePlatform):
 
     @staticmethod
     async def _set_author_statement(page, statement: str):
-        """选择作者声明(必填,文档行 76-81)。
+        """选择作者声明(必填,文档 ~/zfb.md 行 76-81)。
 
         6 个选项:内容无需标注 / 个人观点,仅供参考 / 内容由AI生成 /
         内容虚构演绎,仅供娱乐 / 内容含营销信息 / 内容为转载
 
+        DOM(文档实测):
+        - 锚点: ``label[title="作者声明"]``(form-item-label,稳定)
+        - select 容器: 同一 form-item 内的 ``div.antd5-select``
+        - trigger: ``div.antd5-select-selector``(点这里展开下拉)
+        - 搜索 input: ``input[id$='_tagList']`` 但 readonly+opacity:0,不能 fill
+        - option: ``div.antd5-select-item-option[title="内容由AI生成"]``
+          (作者声明的 option **有** title 属性,与合集不同)
+
         流程:
-        1. 点击作者声明 select(``input#*_tagList`` 的父级 antd5-select)
-        2. 等 ``[role="option"]`` 列表
-        3. 点 title == statement 的 option
+        1. 通过 label[title="作者声明"] 锚点定位同级 select
+        2. 点 .antd5-select-selector 展开下拉
+        3. 点 div.antd5-select-item-option[title="..."] 精确匹配
         """
         if not statement:
             logger.warning(
@@ -834,48 +877,59 @@ class AlipayPlatform(BasePlatform):
             )
             return
 
-        # tagList input(只读,父级是 antd5-select trigger)
-        taglist_input = page.locator("input[id$='_tagList']").first
+        # 1. 通过 label 锚点定位作者声明的 select 容器
+        #    label[title="作者声明"] → 爬到 form-item → 找内部 .antd5-select
+        select_container = page.locator(
+            'div.antd5-form-item:has(label[title="作者声明"]) '
+            'div.antd5-select'
+        ).first
         try:
-            await taglist_input.wait_for(state="attached", timeout=10000)
-        except Exception as e:
-            logger.warning("[alipay] 未找到作者声明 select: %s", e)
-            return
-
-        # 点父级 antd5-select 打开下拉
-        select_trigger = taglist_input.locator("xpath=ancestor::div[contains(@class,'antd5-select')][1]")
-        try:
-            await select_trigger.click(force=True)
-        except Exception:
-            # 兜底: 直接点 input 的祖父
-            await taglist_input.locator("xpath=../..").click(force=True)
-        await asyncio.sleep(0.8)
-
-        # 等 option 列表
-        try:
-            await page.locator("[role='option']").first.wait_for(
+            await select_container.wait_for(
                 state="visible", timeout=10000
             )
         except Exception as e:
-            logger.warning("[alipay] 作者声明下拉未渲染: %s", e)
+            logger.warning("[alipay] 未找到作者声明 select 容器: %s", e)
             return
 
-        # 点 title 完全匹配的 option
-        options = page.locator("[role='option']")
-        count = await options.count()
-        for i in range(count):
-            opt = options.nth(i)
-            title_attr = await opt.get_attribute("title")
-            if title_attr and title_attr.strip() == statement.strip():
-                await opt.click()
-                logger.info("[alipay] 已选作者声明: %s", statement)
-                await asyncio.sleep(0.5)
-                return
+        # 2. 点 .antd5-select-selector 展开下拉(antd5 的可点击区域)
+        selector_el = select_container.locator(
+            "div.antd5-select-selector"
+        ).first
+        try:
+            await selector_el.click()
+            await asyncio.sleep(0.8)
+            logger.info("[alipay] 已点击作者声明 selector,等待下拉")
+        except Exception as e:
+            logger.warning("[alipay] 点击作者声明 selector 失败: %s", e)
+            return
 
-        logger.warning(
-            "[alipay] 未找到作者声明选项「%s」,可选项数=%d",
-            statement, count,
-        )
+        # 3. 等 option 渲染,点 title 精确匹配项
+        target_opt = page.locator(
+            f'div.antd5-select-item-option[title="{statement.strip()}"]'
+        ).first
+        try:
+            await target_opt.wait_for(state="visible", timeout=10000)
+            await target_opt.click()
+            logger.info("[alipay] 已选作者声明: %s", statement)
+            await asyncio.sleep(0.5)
+            return
+        except Exception as e:
+            logger.warning(
+                "[alipay] 未找到作者声明选项「%s」: %s", statement, e
+            )
+
+        # 兜底:列出所有 option 的 title 辅助排查
+        try:
+            titles = await page.evaluate("""() => {
+                const opts = document.querySelectorAll(
+                    'div.antd5-select-item-option[title]'
+                );
+                return Array.from(opts).map(o => o.getAttribute('title'));
+            }""")
+            logger.info("[alipay] 当前下拉可选项: %s", titles)
+        except Exception:
+            pass
+
         try:
             await page.keyboard.press("Escape")
         except Exception:

@@ -3,7 +3,7 @@
     v-model="visible"
     title="选择音乐"
     direction="rtl"
-    size="500px"
+    size="520px"
     :before-close="handleClose"
   >
     <!-- 提示 -->
@@ -18,6 +18,7 @@
         v-for="music in pagedMusicList"
         :key="music.musicId || music.title"
         class="music-item"
+        :class="{ 'is-playing': playingId === (music.musicId || music.title) }"
         @mouseenter="hoverId = music.musicId || music.title"
         @mouseleave="hoverId = ''"
       >
@@ -40,7 +41,7 @@
         </div>
         <div class="music-right">
           <el-button
-            v-show="hoverId === (music.musicId || music.title)"
+            v-show="hoverId === (music.musicId || music.title) || playingId === (music.musicId || music.title)"
             type="primary"
             size="small"
             @click="handleSelect(music)"
@@ -50,9 +51,16 @@
         </div>
       </div>
 
-      <!-- 空状态 -->
-      <div v-if="!loading && musicList.length === 0" class="empty-state">
+      <!-- 空状态(无错误且无数据) -->
+      <div v-if="!loading && !errorMsg && musicList.length === 0" class="empty-state">
         <el-empty description="暂无音乐" />
+      </div>
+
+      <!-- 错误状态 -->
+      <div v-if="!loading && errorMsg" class="error-state">
+        <el-icon :size="36"><WarningFilled /></el-icon>
+        <p class="error-msg">{{ errorMsg }}</p>
+        <el-button type="primary" size="small" @click="fetchMusicList">重试</el-button>
       </div>
     </div>
 
@@ -60,15 +68,17 @@
     <template #footer>
       <div class="drawer-footer">
         <el-pagination
+          v-if="musicList.length > 0"
           v-model:current-page="pageNum"
           :page-size="PAGE_SIZE"
           :total="musicList.length"
           layout="prev, pager, next"
           :pager-count="7"
+          background
         />
         <div class="footer-tip">
           <el-icon><InfoFilled /></el-icon>
-          <span>音乐封面以发布后播放页面展示为准</span>
+          <span>共 {{ musicList.length }} 首 · 音乐封面以发布后播放页面展示为准</span>
         </div>
       </div>
     </template>
@@ -85,7 +95,7 @@
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { VideoPlay, VideoPause, InfoFilled } from '@element-plus/icons-vue'
+import { VideoPlay, VideoPause, InfoFilled, WarningFilled } from '@element-plus/icons-vue'
 import { alipayApi } from '@/api/alipay'
 
 const props = defineProps({
@@ -96,6 +106,7 @@ const emit = defineEmits(['update:modelValue', 'select'])
 
 const visible = ref(props.modelValue)
 const loading = ref(false)
+const errorMsg = ref('')
 // 全量音乐列表(queryAllMaterial.json 一次性返回全部)
 const allMusicList = ref([])
 const pageNum = ref(1)
@@ -121,7 +132,7 @@ const musicList = computed(() => allMusicList.value)
 
 watch(() => props.modelValue, (val) => {
   visible.value = val
-  if (val && allMusicList.value.length === 0) {
+  if (val && allMusicList.value.length === 0 && !errorMsg.value) {
     pageNum.value = 1
     fetchMusicList()
   }
@@ -135,15 +146,26 @@ watch(visible, (val) => {
 watch(pageNum, () => stopPlay())
 
 async function fetchMusicList() {
-  if (!props.accountId) return
+  if (!props.accountId) {
+    errorMsg.value = '未选择账号,无法获取音乐列表'
+    return
+  }
   loading.value = true
+  errorMsg.value = ''
   try {
     const resp = await alipayApi.musicList(props.accountId)
     if (resp.code === 200) {
       allMusicList.value = resp.data?.list || []
+      if (allMusicList.value.length === 0) {
+        errorMsg.value = '未获取到音乐数据(接口返回空列表)'
+      }
+    } else {
+      errorMsg.value = resp.msg || `获取失败 (code=${resp.code})`
+      allMusicList.value = []
     }
   } catch (e) {
     console.error('[支付宝音乐] 加载失败:', e)
+    errorMsg.value = e.message || '网络请求失败,请检查后端服务'
     allMusicList.value = []
   } finally {
     loading.value = false
@@ -215,7 +237,7 @@ function formatDuration(duration) {
 }
 
 function onImageError(e) {
-  e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjZjVmNWY1Ii8+PHRleHQgeD0iMjQiIHk9IjI4IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiPuWGm+S6rDwvdGV4dD48L3N2Zz4='
+  e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjMmEyYTRhIi8+PHRleHQgeD0iMjQiIHk9IjI4IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiM2NDc0OGIiIHRleHQtYW5jaG9yPSJtaWRkbGUiPuWGm+S6rDwvdGV4dD48L3N2Zz4='
 }
 
 onBeforeUnmount(() => stopPlay())
@@ -228,30 +250,37 @@ onBeforeUnmount(() => stopPlay())
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
-  color: #909399;
+  padding: 10px 16px;
+  color: $text-secondary;
   font-size: 12px;
+  background: rgba(22, 119, 255, 0.06);
   border-bottom: 1px solid $border;
 }
 
 .music-list {
-  height: calc(100% - 140px);
+  height: calc(100% - 130px);
   overflow-y: auto;
-  padding: 8px 16px;
+  padding: 8px 12px;
 }
 
 .music-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px;
-  border-radius: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
   margin-bottom: 4px;
   transition: background 0.2s;
   cursor: default;
+  border: 1px solid transparent;
 
   &:hover {
-    background: #F5F5F5;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  &.is-playing {
+    background: rgba(22, 119, 255, 0.08);
+    border-color: rgba(22, 119, 255, 0.2);
   }
 }
 
@@ -267,10 +296,11 @@ onBeforeUnmount(() => stopPlay())
   position: relative;
   width: 48px;
   height: 48px;
-  border-radius: 4px;
+  border-radius: 6px;
   overflow: hidden;
   flex-shrink: 0;
   cursor: pointer;
+  background: $bg-elevated;
 
   img {
     width: 100%;
@@ -284,7 +314,7 @@ onBeforeUnmount(() => stopPlay())
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.5);
     color: white;
     font-size: 20px;
     opacity: 0;
@@ -307,7 +337,7 @@ onBeforeUnmount(() => stopPlay())
 
 .music-title {
   font-size: 14px;
-  color: #333;
+  color: $text-primary;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -315,7 +345,7 @@ onBeforeUnmount(() => stopPlay())
 
 .music-duration {
   font-size: 12px;
-  color: #999;
+  color: $text-muted;
   margin-top: 4px;
 }
 
@@ -329,11 +359,28 @@ onBeforeUnmount(() => stopPlay())
   padding: 40px 0;
 }
 
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: $text-secondary;
+
+  .error-msg {
+    font-size: 13px;
+    text-align: center;
+    margin: 0;
+    line-height: 1.5;
+    word-break: break-all;
+  }
+}
+
 .drawer-footer {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 12px 16px;
   border-top: 1px solid $border;
 }
@@ -342,7 +389,7 @@ onBeforeUnmount(() => stopPlay())
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #909399;
+  color: $text-muted;
   font-size: 12px;
 }
 </style>

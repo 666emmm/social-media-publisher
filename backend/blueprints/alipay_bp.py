@@ -374,8 +374,20 @@ async def _fetch_music_list_via_browser(cookie_file: str) -> dict:
     """用 CloakBrowser 打开图集页 + 点添加音乐 + 精确拦截音乐列表响应。
 
     接口 queryAllMaterial.json 一次性返回全部音乐,无翻页。
+
+    注意:图集发布页的「添加音乐」按钮在表单完全渲染后才出现。
+    表单渲染需要先上传至少一张图片(与视频页「先上传空视频」同理),
+    所以这里会准备一张测试图,若按钮未自动出现则上传测试图触发表单。
     """
     cookie_path = _get_cookie_path(cookie_file)
+
+    # 准备测试图(1x1 JPEG),用于上传触发表单渲染
+    test_image = Path(BASE_DIR / ".alipay_music_test.jpg")
+    if not test_image.exists():
+        try:
+            _create_test_jpeg(test_image)
+        except Exception as e:
+            logger.warning(f"[音乐列表] 创建测试图失败(继续尝试): {e}")
 
     browser = await create_browser(headless=True)
     try:
@@ -384,6 +396,7 @@ async def _fetch_music_list_via_browser(cookie_file: str) -> dict:
             page = await context.new_page()
 
             # 1. 监听音乐素材接口(精确匹配 queryAllMaterial.json)
+            #    注册在 goto 之前,避免错过页面加载时触发的请求
             captured_response = None
 
             async def handle_response(response):
@@ -409,18 +422,46 @@ async def _fetch_music_list_via_browser(cookie_file: str) -> dict:
             await page.goto(_ALIPAY_SHORT_CONTENT_URL, timeout=60000)
             await page.wait_for_load_state("domcontentloaded", timeout=30000)
 
-            # 3. 等「添加音乐」按钮可见
-            logger.info("[音乐列表] 等待「添加音乐」按钮...")
+            # 3. 等「添加音乐」按钮可见 —— 若 3s 内没出现,上传测试图触发表单
+            add_music_btn = page.locator(
+                "button.ant-btn:has-text('添加音乐')"
+            ).first
             try:
-                add_music_btn = page.locator(
-                    "button.ant-btn:has-text('添加音乐')"
-                ).first
-                await add_music_btn.wait_for(state="visible", timeout=15000)
-            except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"未找到「添加音乐」按钮: {e}",
-                }
+                await add_music_btn.wait_for(state="visible", timeout=3000)
+                logger.info("[音乐列表] 「添加音乐」按钮已可见")
+            except Exception:
+                logger.info(
+                    "[音乐列表] 「添加音乐」按钮未直接出现,"
+                    "上传测试图触发表单渲染..."
+                )
+                if not test_image.exists():
+                    return {
+                        "success": False,
+                        "error": "「添加音乐」按钮未出现,且测试图创建失败",
+                    }
+                try:
+                    img_input = page.locator(
+                        "input[type='file'][accept*='image']"
+                    ).first
+                    await img_input.wait_for(state="attached", timeout=10000)
+                    await img_input.set_input_files(str(test_image))
+                    logger.info("[音乐列表] 已上传测试图,等表单渲染")
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "error": f"上传测试图失败: {e}",
+                    }
+                # 等表单渲染(添加音乐按钮出现)
+                try:
+                    await add_music_btn.wait_for(
+                        state="visible", timeout=20000
+                    )
+                    logger.info("[音乐列表] 上传后「添加音乐」按钮已可见")
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "error": f"上传测试图后仍未出现「添加音乐」按钮: {e}",
+                    }
 
             # 4. 点击打开 modal(触发 queryAllMaterial.json 请求)
             await add_music_btn.click()
@@ -444,10 +485,21 @@ async def _fetch_music_list_via_browser(cookie_file: str) -> dict:
                 await asyncio.sleep(0.1)
 
             if captured_response is None:
-                return {"success": False, "error": "未能拦截到音乐列表响应"}
+                return {
+                    "success": False,
+                    "error": "未能拦截到 queryAllMaterial.json 响应"
+                    "(可能页面未触发请求,检查 cookie 是否有效)",
+                }
 
             # 6. 解析响应,提取音乐数组并标准化
             items = _parse_music_response(captured_response)
+            if not items:
+                return {
+                    "success": False,
+                    "error": "响应已捕获但解析出 0 首音乐"
+                    f"(stat={captured_response.get('stat')})",
+                    "data": {"raw_sample": str(captured_response)[:500]},
+                }
 
             return {
                 "success": True,
@@ -461,6 +513,30 @@ async def _fetch_music_list_via_browser(cookie_file: str) -> dict:
             await context.close()
     finally:
         await browser.close()
+
+
+def _create_test_jpeg(path: Path):
+    """创建一个 1x1 像素的最小 JPEG(用于上传触发表单渲染)。"""
+    try:
+        from PIL import Image
+        img = Image.new('RGB', (1, 1), color='white')
+        img.save(str(path), 'JPEG')
+        return
+    except ImportError:
+        pass
+    # 无 PIL 时,写一个硬编码的最小 JPEG 文件头
+    path.write_bytes(
+        b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01'
+        b'\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\xff\xff\xff\xff'
+        b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'
+        b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'
+        b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'
+        b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'
+        b'\xff\xff\xff\xff\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01'
+        b'\x01\x11\x00\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00'
+        b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda'
+        b'\x00\x08\x01\x01\x00\x00?\x00\xfb\xff\xd9'
+    )
 
 
 def _parse_music_response(data: dict) -> list:

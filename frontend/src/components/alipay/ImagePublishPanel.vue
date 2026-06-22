@@ -35,6 +35,14 @@
       <el-button v-else :icon="Headset" @click="openMusicDrawer" :disabled="disabled">添加音乐</el-button>
     </div>
 
+    <div class="setting-card" style="grid-column: 1 / -1">
+      <div class="setting-label">作者声明 <span class="required">*</span></div>
+      <div class="setting-hint">支付宝图集作者声明仅支持「内容由AI生成」</div>
+      <el-select v-model="form.authorStatement" placeholder="请选择作者声明" :disabled="disabled" style="width: 100%;">
+        <el-option label="内容由AI生成" value="内容由AI生成" />
+      </el-select>
+    </div>
+
     <!-- 音乐选择抽屉 -->
     <MusicDrawer
       v-model="musicDrawerVisible"
@@ -165,6 +173,10 @@ defineExpose(publicApi)
   font-weight: 600;
   color: #1677FF;
   margin-bottom: 8px;
+}
+
+.required {
+  color: #f56c6c;
 }
 
 .setting-hint {

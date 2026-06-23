@@ -1265,14 +1265,14 @@ if __name__ == "__main__":
         logger.info(f"[Startup] DB verification FAILED: {_e}")
         logger.info(f"[Startup] SAU_DATA_DIR={os.environ.get('SAU_DATA_DIR')}")
 
-    # 启动后台任务：补全存量视频素材 duration=0 的数据
+    # 启动后台任务：补全存量视频素材 duration=0 的数据，以及缺失 orientation 的数据
     # （草稿/历史恢复走 DB 直读，绕过了「素材库选中→probe」，
     #  导致历史 duration=0 的数据漏识别，发布校验被跳过）
     try:
         from services.duration_repair import start_repair_in_background
         start_repair_in_background()
     except Exception as _e:
-        logger.warning("[Startup] 时长补全任务启动失败（不影响主服务）: %s", _e)
+        logger.warning("[Startup] 补全任务启动失败（不影响主服务）: %s", _e)
 
     port = int(os.environ.get("SAU_PORT", "5409"))
     if port == 5409:

@@ -404,16 +404,29 @@ class AlipayPlatform(BasePlatform):
 
     @staticmethod
     async def _upload_images(page, image_paths: list):
-        """上传多张图片 — 图集页 input[type=file][accept*='image'] multiple。
+        """逐张上传图片 — 图集页 input[type=file][accept*='image']。
 
         支付宝图集上传区 DOM(文档 ~/ZFB-tuji.md):
           <input type="file" accept="image/jpeg,image/png" multiple
                  style="display: none;">
 
-        与视频版 ``_upload_video_file`` 的差异:
-        - accept 是 image/* 而非 video/*
-        - 支持 multiple,一次性传多张(set_input_files 接受 list)
-        - 无需像视频那样上传后才渲染表单,这里上传完直接进入填表单
+        上传接口: https://mass.alipay.com/file/auth/upload
+        成功响应: {"code":0,"data":{"id":"A*PACJSqMSxtMAAAAAgBAAAAgAfah3AQ"}}
+        失败响应: code != 0
+
+        失败时 DOM 出现:
+          <div class="ant-upload-list-item ant-upload-list-item-error">
+            <span class="ant-upload-list-item-name" title="xxx.png">xxx.png</span>
+            <button title="删除文件">...</button>
+          </div>
+
+        流程:
+        1. 找到图片上传 input
+        2. 逐张上传:
+           a. 监听上传接口响应
+           b. set_input_files 单张图片
+           c. 等待上传完成(响应返回 或 错误 DOM 出现)
+           d. 如果失败 → 删除失败项 → 重试(最多 3 次)
         """
         valid_paths = [p for p in image_paths if p and os.path.exists(p)]
         if not valid_paths:
@@ -424,60 +437,114 @@ class AlipayPlatform(BasePlatform):
 
         total_size = sum(os.path.getsize(p) for p in valid_paths)
         logger.info(
-            "[alipay-image] 准备上传 %d 张图片(共 %.1f MB)",
+            "[alipay-image] 准备逐张上传 %d 张图片(共 %.1f MB)",
             len(valid_paths), total_size / 1024 / 1024,
         )
 
-        # 策略 1: 直接找图片专用的 input(accept 含 image)
+        # 找到图片上传 input
+        image_input = page.locator(
+            "input[type='file'][accept*='image']"
+        ).first
         try:
-            image_input = page.locator(
-                "input[type='file'][accept*='image']"
-            ).first
             await image_input.wait_for(state="attached", timeout=15000)
-            await image_input.set_input_files(valid_paths)
-            logger.info(
-                "[alipay-image] 已通过 set_input_files 提交 %d 张图片",
-                len(valid_paths),
-            )
-            return
-        except Exception as e:
-            logger.info("[alipay-image] 策略① image input 失败: %s", e)
-
-        # 策略 2: 任意 input[type=file] 兜底(过滤掉非图片 accept)
-        try:
+        except Exception:
+            # 兜底:找任意非 video 的 file input
             all_inputs = page.locator("input[type='file']")
             cnt = await all_inputs.count()
             for i in range(cnt):
                 fi = all_inputs.nth(i)
                 accept_val = (await fi.get_attribute("accept") or "").lower()
-                # 跳过 video 专用,接受 image 或空 accept
-                if "video" in accept_val:
-                    continue
-                await fi.set_input_files(valid_paths)
+                if "video" not in accept_val:
+                    image_input = fi
+                    break
+
+        # 逐张上传
+        uploaded_count = 0
+        for idx, img_path in enumerate(valid_paths):
+            max_retries = 3
+            for attempt in range(max_retries):
+                img_name = os.path.basename(img_path)
                 logger.info(
-                    "[alipay-image] 已通过兜底 input #%d 提交 %d 张图片",
-                    i, len(valid_paths),
+                    "[alipay-image] 上传图片 %d/%d: %s (尝试 %d/%d)",
+                    idx + 1, len(valid_paths), img_name, attempt + 1, max_retries,
                 )
-                return
-        except Exception as e:
-            logger.info("[alipay-image] 策略② 兜底 input 失败: %s", e)
 
-        # 策略 3: expect_file_chooser + 点击上传区
-        try:
-            upload_trigger = page.get_by_text("上传图片").first
-            async with page.expect_file_chooser(timeout=10000) as fc_info:
-                await upload_trigger.click(force=True)
-            fc = await fc_info.value
-            await fc.set_files(valid_paths)
-            logger.info(
-                "[alipay-image] 已通过 expect_file_chooser 提交 %d 张图片",
-                len(valid_paths),
-            )
-            return
-        except Exception as e:
-            logger.info("[alipay-image] 策略③ file_chooser 失败: %s", e)
+                # 使用可变对象存储响应,避免闭包问题
+                upload_result = {"response": None}
+                async def handle_upload_response(response):
+                    if "mass.alipay.com/file/auth/upload" in response.url:
+                        try:
+                            data = await response.json()
+                            upload_result["response"] = data
+                        except Exception:
+                            pass
 
-        raise RuntimeError("[alipay-image] 所有图片上传策略均失败")
+                page.on("response", handle_upload_response)
+
+                try:
+                    # 上传单张图片
+                    await image_input.set_input_files(img_path)
+                    await asyncio.sleep(0.5)  # 等待上传开始
+
+                    # 等待上传完成(响应返回 或 错误 DOM)
+                    for _ in range(100):  # 最多等 10s
+                        if upload_result["response"] is not None:
+                            break
+                        # 检查是否出现错误 DOM
+                        error_item = page.locator(
+                            f'.ant-upload-list-item-error:has-text("{img_name}")'
+                        ).first
+                        if await error_item.count() > 0:
+                            upload_result["response"] = {"code": -1, "error": "DOM error"}
+                            break
+                        await asyncio.sleep(0.1)
+
+                    upload_response = upload_result["response"]
+                    if upload_response is None:
+                        logger.warning("[alipay-image] 上传超时: %s", img_name)
+                        continue
+
+                    if upload_response.get("code") == 0:
+                        logger.info(
+                            "[alipay-image] 上传成功: %s (id=%s)",
+                            img_name, upload_response.get("data", {}).get("id", ""),
+                        )
+                        uploaded_count += 1
+                        # 等待上传完成后再继续下一张
+                        await asyncio.sleep(1)
+                        break  # 成功,跳出重试循环
+                    else:
+                        logger.warning(
+                            "[alipay-image] 上传失败: %s (code=%s)",
+                            img_name, upload_response.get("code"),
+                        )
+                        # 删除失败项
+                        try:
+                            delete_btn = page.locator(
+                                f'.ant-upload-list-item-error:has-text("{img_name}") '
+                                'button[title="删除文件"]'
+                            ).first
+                            if await delete_btn.count() > 0:
+                                await delete_btn.click()
+                                logger.info("[alipay-image] 已删除失败项: %s", img_name)
+                                await asyncio.sleep(0.5)
+                        except Exception as e:
+                            logger.warning("[alipay-image] 删除失败项异常: %s", e)
+
+                except Exception as e:
+                    logger.warning("[alipay-image] 上传异常: %s - %s", img_name, e)
+                finally:
+                    try:
+                        page.remove_listener("response", handle_upload_response)
+                    except Exception:
+                        pass
+
+        logger.info(
+            "[alipay-image] 图片上传完成: %d/%d 成功",
+            uploaded_count, len(valid_paths),
+        )
+        if uploaded_count == 0:
+            raise RuntimeError("[alipay-image] 所有图片上传均失败")
 
     # ------------------------------------------------------------------
     # Helper (image): wait for form interactive
@@ -515,12 +582,14 @@ class AlipayPlatform(BasePlatform):
     async def _set_music(page, music_title: str):
         """选择背景音乐(文档 ~/ZFB-tuji.md 行 14-22)。
 
+        支付宝音乐选择组件**没有搜索功能**，是分页显示(每页5首)。
+        因此需要**逐页翻页查找**目标音乐，直到找到或没有更多页。
+
         流程:
         1. 点「添加音乐」button.ant-btn 打开「选择音乐」modal
         2. 等 antd5-modal「选择音乐」打开
-        3. JS hover 目标项 → 让「使用」按钮显示(原本 opacity:0/visibility:hidden)
-        4. 点目标项内的 button:has-text("使用")
-        5. 等 modal 关闭
+        3. 循环:当前页查找 → 找到则点击使用 → 未找到则点下一页
+        4. 等 modal 关闭
 
         支付宝音乐项 DOM:
           <div class="...group" ...>
@@ -531,8 +600,10 @@ class AlipayPlatform(BasePlatform):
             </button>
           </div>
 
-        「使用」按钮默认隐藏(opacity:0 + visibility:hidden),
-        需要先在父级触发 mouseenter 才会显示。
+        分页 DOM:
+          <ul class="antd5-pagination">
+            <li title="Next Page" class="antd5-pagination-next">...</li>
+          </ul>
         """
         if not music_title:
             return
@@ -560,64 +631,90 @@ class AlipayPlatform(BasePlatform):
             logger.warning("[alipay-image] 音乐 modal 未打开: %s", e)
             return
 
-        # 3. JS:在所有音乐项里找 title 匹配 → mouseenter → 点「使用」
-        #    一次性在浏览器侧完成 hover + 点击,避免 Playwright hover 对
-        #    CSS-only visibility 切换的时序问题。
-        clicked = await page.evaluate(
-            """(name) => {
-                const modal = document.querySelector(
-                    'div.antd5-modal[aria-modal="true"]'
-                );
-                if (!modal) return 'no-modal';
-                // 音乐项容器:每项是一个 div(含 img + title div + 使用 button)
-                // 项内 <div title="xxx"> 是音乐名,或 <img alt="xxx">
-                const items = modal.querySelectorAll('div[class*="group"]');
-                const target = Array.from(items).find(el => {
-                    const t = el.querySelector('div[title]');
-                    const img = el.querySelector('img[alt]');
-                    const tn = t ? t.getAttribute('title') : '';
-                    const an = img ? img.getAttribute('alt') : '';
-                    return tn === name || an === name
-                        || (tn && tn.includes(name))
-                        || (an && an.includes(name));
-                });
-                if (!target) return 'not-found';
-                // 触发 hover(group-hover:opacity-100)
-                target.dispatchEvent(
-                    new MouseEvent('mouseenter', {bubbles: true})
-                );
-                target.dispatchEvent(
-                    new MouseEvent('mouseover', {bubbles: true})
-                );
-                // 找「使用」按钮(button > span 文本「使 用」中间有空格)
-                const btns = target.querySelectorAll('button');
-                for (const b of btns) {
-                    const txt = (b.textContent || '').replace(/\\s/g, '');
-                    if (txt === '使用') {
-                        b.style.visibility = 'visible';
-                        b.style.opacity = '1';
-                        b.click();
-                        return 'clicked';
-                    }
-                }
-                return 'no-btn';
-            }""",
-            music_title,
-        )
+        # 3. 逐页翻页查找目标音乐
+        max_pages = 20  # 安全上限,防止死循环
+        found = False
 
-        if clicked == "clicked":
-            logger.info("[alipay-image] 已选音乐: %s", music_title)
-        else:
-            logger.warning(
-                "[alipay-image] 选择音乐「%s」失败: %s", music_title, clicked,
+        for page_num in range(1, max_pages + 1):
+            logger.info("[alipay-image] 音乐查找: 第 %d 页,目标「%s」", page_num, music_title)
+
+            # 在当前页查找目标音乐
+            clicked = await page.evaluate(
+                """(name) => {
+                    const modal = document.querySelector(
+                        'div.antd5-modal[aria-modal="true"]'
+                    );
+                    if (!modal) return 'no-modal';
+                    // 音乐项容器:每项是一个 div(含 img + title div + 使用 button)
+                    const items = modal.querySelectorAll('div[class*="group"]');
+                    const target = Array.from(items).find(el => {
+                        const t = el.querySelector('div[title]');
+                        const img = el.querySelector('img[alt]');
+                        const tn = t ? t.getAttribute('title') : '';
+                        const an = img ? img.getAttribute('alt') : '';
+                        return tn === name || an === name
+                            || (tn && tn.includes(name))
+                            || (an && an.includes(name));
+                    });
+                    if (!target) return 'not-found';
+                    // 触发 hover(group-hover:opacity-100)
+                    target.dispatchEvent(
+                        new MouseEvent('mouseenter', {bubbles: true})
+                    );
+                    target.dispatchEvent(
+                        new MouseEvent('mouseover', {bubbles: true})
+                    );
+                    // 找「使用」按钮(button > span 文本「使 用」中间有空格)
+                    const btns = target.querySelectorAll('button');
+                    for (const b of btns) {
+                        const txt = (b.textContent || '').replace(/\\s/g, '');
+                        if (txt === '使用') {
+                            b.style.visibility = 'visible';
+                            b.style.opacity = '1';
+                            b.click();
+                            return 'clicked';
+                        }
+                    }
+                    return 'no-btn';
+                }""",
+                music_title,
             )
+
+            if clicked == "clicked":
+                logger.info("[alipay-image] 已选音乐: %s (第 %d 页)", music_title, page_num)
+                found = True
+                break
+            elif clicked != "not-found":
+                logger.warning("[alipay-image] 音乐查找异常: %s", clicked)
+                break
+
+            # 当前页未找到,尝试翻到下一页
+            try:
+                next_btn = page.locator(
+                    'li.antd5-pagination-next:not([aria-disabled="true"]):not(.antd5-pagination-disabled)'
+                ).first
+                # 检查下一页按钮是否可用
+                next_count = await next_btn.count()
+                if next_count == 0:
+                    logger.info("[alipay-image] 音乐「%s」未找到,已无更多页(共 %d 页)", music_title, page_num)
+                    break
+
+                await next_btn.click()
+                logger.info("[alipay-image] 翻到第 %d 页", page_num + 1)
+                await asyncio.sleep(1.0)  # 等待下一页加载
+            except Exception as e:
+                logger.info("[alipay-image] 翻页失败(可能已到最后一页): %s", e)
+                break
+
+        if not found:
+            logger.warning("[alipay-image] 未找到音乐「%s」,跳过音乐设置", music_title)
             try:
                 await page.keyboard.press("Escape")
             except Exception:
                 pass
             return
 
-        # 5. 等 modal 关闭(最多 8s)
+        # 4. 等 modal 关闭(最多 8s)
         try:
             await page.locator(
                 'div.antd5-modal[aria-modal="true"]:has-text("选择音乐")'
@@ -1295,18 +1392,17 @@ class AlipayPlatform(BasePlatform):
         6 个选项:内容无需标注 / 个人观点,仅供参考 / 内容由AI生成 /
         内容虚构演绎,仅供娱乐 / 内容含营销信息 / 内容为转载
 
-        DOM(文档实测):
+        DOM(用户实测):
         - 锚点: ``label[title="作者声明"]``(form-item-label,稳定)
-        - select 容器: 同一 form-item 内的 ``div.antd5-select``
-        - trigger: ``div.antd5-select-selector``(点这里展开下拉)
-        - 搜索 input: ``input[id$='_tagList']`` 但 readonly+opacity:0,不能 fill
-        - option: ``div.antd5-select-item-option[title="内容由AI生成"]``
-          (作者声明的 option **有** title 属性,与合集不同)
+        - select 容器: ``div.ant-select``(不是 antd5-select)
+        - trigger: ``div.ant-select-selector``(点这里展开下拉)
+        - 搜索 input: ``input#tagList`` readonly+opacity:0
+        - option: ``div.ant-select-item-option[title="内容由AI生成"]``
 
         流程:
-        1. 通过 label[title="作者声明"] 锚点定位同级 select
-        2. 点 .antd5-select-selector 展开下拉
-        3. 点 div.antd5-select-item-option[title="..."] 精确匹配
+        1. 通过 input#tagList 锚点定位同级 select
+        2. 点 div.ant-select-selector 展开下拉
+        3. 点 div.ant-select-item-option[title="..."] 精确匹配
         """
         if not statement:
             logger.warning(
@@ -1314,11 +1410,10 @@ class AlipayPlatform(BasePlatform):
             )
             return
 
-        # 1. 通过 label 锚点定位作者声明的 select 容器
-        #    label[title="作者声明"] → 爬到 form-item → 找内部 .antd5-select
+        # 1. 通过 input#tagList 定位作者声明的 select 容器
+        #    input#tagList 是作者声明下拉的搜索框(readonly)
         select_container = page.locator(
-            'div.antd5-form-item:has(label[title="作者声明"]) '
-            'div.antd5-select'
+            'div.ant-select:has(input#tagList)'
         ).first
         try:
             await select_container.wait_for(
@@ -1328,9 +1423,9 @@ class AlipayPlatform(BasePlatform):
             logger.warning("[alipay] 未找到作者声明 select 容器: %s", e)
             return
 
-        # 2. 点 .antd5-select-selector 展开下拉(antd5 的可点击区域)
+        # 2. 点 div.ant-select-selector 展开下拉
         selector_el = select_container.locator(
-            "div.antd5-select-selector"
+            "div.ant-select-selector"
         ).first
         try:
             await selector_el.click()
@@ -1342,7 +1437,7 @@ class AlipayPlatform(BasePlatform):
 
         # 3. 等 option 渲染,点 title 精确匹配项
         target_opt = page.locator(
-            f'div.antd5-select-item-option[title="{statement.strip()}"]'
+            f'div.ant-select-item-option[title="{statement.strip()}"]'
         ).first
         try:
             await target_opt.wait_for(state="visible", timeout=10000)
@@ -1359,7 +1454,7 @@ class AlipayPlatform(BasePlatform):
         try:
             titles = await page.evaluate("""() => {
                 const opts = document.querySelectorAll(
-                    'div.antd5-select-item-option[title]'
+                    'div.ant-select-item-option[title]'
                 );
                 return Array.from(opts).map(o => o.getAttribute('title'));
             }""")
@@ -1481,24 +1576,22 @@ class AlipayPlatform(BasePlatform):
 
     @staticmethod
     async def _wait_for_publish_success(page, timeout_s: int = 90, page_type: str = "video"):
-        """等待发布完成信号,并处理"发布请注意"优化提示弹窗。
+        """等待发布完成信号,并处理两种弹窗。
 
-        点完「确认发布」后,支付宝可能弹出一个 ``发布请注意`` 的 modal,
-        提示封面断字/优化项等,内有两个按钮:
-        - ``返回更换``(antd5-btn-primary) — 中止
-        - ``继续发布``(antd5-btn-default) — 跳过提示继续发布
+        点完「确认发布」后,支付宝可能弹出两种弹窗:
 
-        本方法的职责:监测这个弹窗,出现就**点「继续发布」**,
-        然后等 URL 跳转离开发布页 = 发布成功。
+        1. 「发布请注意」优化提示弹窗(antd5-modal)
+           - ``返回更换``(antd5-btn-primary) — 中止
+           - ``继续发布``(antd5-btn-default) — 跳过提示继续发布
+
+        2. 「发布请注意」确认弹窗(ant-modal-confirm)
+           - DOM: div.ant-modal.ant-modal-confirm
+           - ``取 消``(ant-btn-default)
+           - ``确认发布``(ant-btn-primary) — 点这个继续
 
         成功判据(OR):
         1. URL 跳转离开当前发布页(最可靠)
-           - video → "publish/short-video"
-           - image → "publish/short-content"
         2. 检测到"发布成功"文案
-
-        中间状态处理:
-        - 检测到 antd5-modal「发布请注意」→ 点「继续发布」按钮
 
         90s 内任一成功判据命中即视为成功。
         """
@@ -1508,13 +1601,11 @@ class AlipayPlatform(BasePlatform):
         )
         deadline = asyncio.get_event_loop().time() + timeout_s
         original_url = page.url
-        continue_clicked = False
+        modal_handled = False
 
         while asyncio.get_event_loop().time() < deadline:
-            # ---- 中间状态:「发布请注意」优化提示弹窗 ----
-            # DOM: div.antd5-modal[aria-modal="true"] 内含「发布请注意」文本
-            #      + 按钮「继续发布」(antd5-btn-default)
-            if not continue_clicked:
+            # ---- 弹窗 1:「发布请注意」优化提示弹窗(antd5-modal) ----
+            if not modal_handled:
                 try:
                     modal = page.locator(
                         'div.antd5-modal[aria-modal="true"]:has-text("发布请注意")'
@@ -1524,27 +1615,40 @@ class AlipayPlatform(BasePlatform):
                             "[alipay] 检测到「发布请注意」优化提示弹窗,"
                             "尝试点击「继续发布」"
                         )
-                        # 弹窗内打印优化项文案便于排查
-                        try:
-                            tip = await modal.locator(
-                                'div.text-\\[\\#666666\\]'
-                            ).first.text_content()
-                            logger.info("[alipay] 优化提示: %s", (tip or '')[:120])
-                        except Exception:
-                            pass
-
                         # 点「继续发布」按钮(antd5-btn-default,非 primary)
-                        # primary 是「返回更换」,不能点
                         continue_btn = modal.locator(
                             "button.antd5-btn-default:has-text('继续发布')"
                         ).first
                         await continue_btn.click()
-                        continue_clicked = True
+                        modal_handled = True
                         logger.info("[alipay] 已点击「继续发布」,等待跳转")
                         await asyncio.sleep(1)
                         continue
                 except Exception as e:
-                    logger.debug("[alipay] 检测弹窗异常(忽略): %s", e)
+                    logger.debug("[alipay] 检测弹窗1异常(忽略): %s", e)
+
+            # ---- 弹窗 2:「发布请注意」确认弹窗(ant-modal-confirm) ----
+            if not modal_handled:
+                try:
+                    confirm_modal = page.locator(
+                        'div.ant-modal.ant-modal-confirm:has-text("发布请注意")'
+                    )
+                    if await confirm_modal.count() > 0 and await confirm_modal.first.is_visible():
+                        logger.info(
+                            "[alipay] 检测到「发布请注意」确认弹窗,"
+                            "尝试点击「确认发布」"
+                        )
+                        # 点「确认发布」按钮(ant-btn-primary)
+                        confirm_btn = confirm_modal.locator(
+                            "button.ant-btn-primary:has-text('确认发布')"
+                        ).first
+                        await confirm_btn.click()
+                        modal_handled = True
+                        logger.info("[alipay] 已点击弹窗「确认发布」,等待跳转")
+                        await asyncio.sleep(1)
+                        continue
+                except Exception as e:
+                    logger.debug("[alipay] 检测弹窗2异常(忽略): %s", e)
 
             # ---- 成功判据 1: URL 跳转离开发布页(最可靠) ----
             try:
@@ -1570,7 +1674,7 @@ class AlipayPlatform(BasePlatform):
 
         raise RuntimeError(
             f"[alipay] 等待发布完成超时({timeout_s}s),"
-            f"是否点了继续发布: {continue_clicked}"
+            f"是否处理过弹窗: {modal_handled}"
         )
 
 

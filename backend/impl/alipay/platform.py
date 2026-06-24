@@ -124,8 +124,8 @@ class AlipayPlatform(BasePlatform):
     async def check_cookie(self, cookie_file: str) -> bool:
         """检查 cookie 是否仍然有效。
 
-        判据:用 cookie 打开创作中心首页,账号信息容器渲染出来即视为有效;
-        cookie 失效会停留在未登录态(不会重定向),账号信息容器不出现。
+        判据:用 cookie 打开生活号首页,如果没有跳转到登录页面即视为有效;
+        cookie 失效会被重定向到登录页(URL 中含 login/passport/authorize 等)。
         """
         cookie_path = str(Path(BASE_DIR / "cookiesFile" / cookie_file))
         if not os.path.exists(cookie_path):
@@ -137,15 +137,14 @@ class AlipayPlatform(BasePlatform):
             page = await context.new_page()
             try:
                 await page.goto(_ALIPAY_CREATOR_URL, timeout=30000)
-                await page.wait_for_load_state("domcontentloaded", timeout=10000)
-                await page.wait_for_load_state("networkidle", timeout=10000)
+                await page.wait_for_load_state("domcontentloaded", timeout=15000)
 
-                profile = page.locator(
-                    'div[class*="accountContainer"] div[class*="name"]'
-                ).first
-                valid = await profile.count() > 0
+                final_url = page.url
+                # 仍停留在生活号首页(没被重定向) → cookie 有效
+                valid = "c.alipay.com/page/life-account/index" in final_url
                 logger.info(
-                    f"[alipay] cookie {'有效' if valid else '失效,需重新登录'}"
+                    f"[alipay] cookie {'有效' if valid else '失效,需重新登录'} "
+                    f"(final_url={final_url})"
                 )
                 return valid
             except Exception as exc:

@@ -322,32 +322,32 @@ class ZhihuPlatform(BasePlatform):
                 await self._wait_upload_complete(page)
                 await asyncio.sleep(2)
 
-                # 3. 设置封面
-                if thumbnail_path:
-                    await self._set_thumbnail(page, thumbnail_path)
-
-                # 4. 填写标题（≤50 字符）
+                # 3. 填写标题（≤50 字符）— 先填表，避免封面弹窗异常时遮挡表单
                 await self._fill_title(page, title)
 
-                # 5. 填写简介 + 标签（≤2000 字符，标签用 #xxx + 空格激活）
+                # 4. 填写简介 + 标签（≤2000 字符，标签用 #xxx + 空格激活）
                 await self._fill_desc_and_tags(page, desc, tags)
 
-                # 6. 视频标记（弹窗）
+                # 5. 视频标记（弹窗）
                 await self._set_video_mark(page, creation_declaration)
 
-                # 7. 原创视频开关（默认开启，确保勾选状态）
+                # 6. 原创视频开关（默认开启，确保勾选状态）
                 await self._ensure_original_checked(page)
 
-                # 8. 所属领域
+                # 7. 所属领域
                 if category:
                     await self._set_category(page, category)
 
-                # 9. 定时发布
+                # 8. 定时发布
                 is_scheduled = (
                     isinstance(publish_date, int) and publish_date != 0
                 ) or (not isinstance(publish_date, int) and publish_date)
                 if is_scheduled:
                     await self._set_schedule_time(page, publish_date)
+
+                # 9. 设置封面（放最后；任何异常都先 Escape 关弹窗，不影响提交）
+                if thumbnail_path:
+                    await self._set_thumbnail(page, thumbnail_path)
 
                 # 提交前截图
                 try:
@@ -530,8 +530,10 @@ class ZhihuPlatform(BasePlatform):
     async def _set_thumbnail(page, thumbnail_path: str):
         """设置视频封面（spec 第 28-34 行）。
 
-        流程: 点击「选择视频封面」→ 切换到「本地上传」tab →
-        文件 input → 点击「确认选择」。
+        关键点：知乎上传页有多个 image input（描述区也有一个），
+        不能用 ``input[accept*=image].first`` —— 会拿到描述区的 input，
+        设了文件也不会触发封面上传。改用 file_chooser 拦截原生文件
+        选择器，最稳。任何异常都 Escape 关弹窗，不阻塞后续步骤。
         """
         import os
 
@@ -543,7 +545,7 @@ class ZhihuPlatform(BasePlatform):
         logger.info("[设置封面] 开始设置封面")
 
         try:
-            # 1. 点击「选择视频封面」
+            # 1. 点击「选择视频封面」打开弹窗
             edit_btn = page.locator(
                 '.VideoUploadForm-imageEditButton, '
                 '[class*="VideoUploadForm-imageEditButton"]'
@@ -560,22 +562,105 @@ class ZhihuPlatform(BasePlatform):
             logger.info("[设置封面] 已切换到「本地上传」")
             await asyncio.sleep(1)
 
-            # 3. 上传封面文件（弹窗内的隐藏 input=file）
-            file_input = page.locator('input[type="file"][accept*="image"]').first
-            await file_input.wait_for(state="attached", timeout=10000)
-            await file_input.set_input_files(thumbnail_path)
-            logger.info("[设置封面] 封面文件已选择")
+            # 3. 上传封面文件 —— 优先用 file_chooser（点 dropzone 触发原生选器）
+            uploaded = False
+            try:
+                async with page.expect_file_chooser(timeout=5000) as fc_info:
+                    # dropzone 区域：弹窗内的虚线框/上传区
+                    dropzone = page.locator(
+                        '.Modal-content [class*="Dropzone"], '
+                        '.Modal-content [class*="dropzone"], '
+                        '.Modal-content [class*="upload"], '
+                        '[role="dialog"] [class*="Dropzone"], '
+                        '[role="dialog"] [class*="upload"]'
+                    ).first
+                    await dropzone.wait_for(state="visible", timeout=5000)
+                    await dropzone.click()
+                file_chooser = await fc_info.value
+                await file_chooser.set_files(thumbnail_path)
+                uploaded = True
+                logger.info("[设置封面] ✓ file_chooser 方式上传成功")
+            except Exception as e:
+                logger.info(f"[设置封面] file_chooser 方式失败，兜底直设 input: {e}")
+
+            # 兜底：scope 到 Modal 内找 input（避开描述区 EditorArea 的 image input）
+            if not uploaded:
+                try:
+                    # 弹窗根：Modal-content 或 [role=dialog]
+                    modal_input = page.locator(
+                        '.Modal-content input[type="file"], '
+                        '[role="dialog"] input[type="file"]'
+                    ).first
+                    await modal_input.wait_for(state="attached", timeout=5000)
+                    await modal_input.set_input_files(thumbnail_path)
+                    uploaded = True
+                    logger.info("[设置封面] ✓ Modal 内 input 命中")
+                except Exception as e:
+                    logger.info(f"[设置封面] Modal 内 input 兜底失败: {e}")
+
+            # 再兜底：排除 EditorArea/WritePinV2-Form 的 image input
+            if not uploaded:
+                try:
+                    inputs_info = await page.evaluate("""() => {
+                        const inputs = [...document.querySelectorAll('input[type="file"][accept*="image"]')];
+                        const filtered = inputs.filter(inp => {
+                            let el = inp;
+                            while (el) {
+                                if (el.classList && (
+                                    el.classList.contains('EditorArea') ||
+                                    el.classList.contains('WritePinV2-Form') ||
+                                    el.classList.contains('InputLike')
+                                )) return false;
+                                el = el.parentElement;
+                            }
+                            return true;
+                        });
+                        return filtered.length;
+                    }""")
+                    logger.info(f"[设置封面] 排除编辑区后剩 {inputs_info} 个 image input")
+                    if inputs_info > 0:
+                        # 用 evaluate 找到这个 input 并直接设值（playwright 定位用）
+                        # 实际策略：先点 dropzone，再用 file_chooser
+                        raise RuntimeError("无法可靠定位封面 input")
+                except Exception as e:
+                    logger.info(f"[设置封面] 排除法失败: {e}")
+
+            if not uploaded:
+                raise RuntimeError("封面文件未能上传到弹窗")
+
+            # 4. 等待封面预览出现 = 上传完成（30s 给图片处理留足时间）
+            logger.info("[设置封面] 等待封面预览/确认按钮...")
+            preview_found = False
+            for _ in range(30):
+                try:
+                    # 「重新上传」按钮出现 = 已上传，可重选
+                    repl = page.locator(
+                        '.Modal-content button:has-text("重新上传"), '
+                        '[role="dialog"] button:has-text("重新上传")'
+                    )
+                    if await repl.count() > 0 and await repl.first.is_visible():
+                        preview_found = True
+                        logger.info("[设置封面] ✓ 检测到「重新上传」按钮，封面已上传")
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
+
+            if not preview_found:
+                logger.info("[设置封面] 等待 30s 仍未检测到封面上传成功标志")
+
+            # 5. 点击「确认选择」
+            confirm_btn = page.locator(
+                '.Modal-content button:has-text("确认选择"), '
+                '[role="dialog"] button:has-text("确认选择"), '
+                '.Modal-content button.Button--primary:has-text("确认"), '
+                '[role="dialog"] button.Button--primary:has-text("确认")'
+            ).first
+            await confirm_btn.wait_for(state="visible", timeout=15000)
+            await confirm_btn.click()
+            logger.info("[设置封面] ✓ 已点击「确认选择」")
             await asyncio.sleep(2)
 
-            # 4. 点击「确认选择」
-            confirm_btn = page.locator(
-                'button:has-text("确认选择"), '
-                'button.Button--primary:has-text("确认")'
-            ).first
-            await confirm_btn.wait_for(state="visible", timeout=10000)
-            await confirm_btn.click()
-            logger.info("[设置封面] 已点击「确认选择」")
-            await asyncio.sleep(2)
         except Exception as exc:
             logger.info(f"[设置封面] 设置封面失败（非致命）: {exc}")
             try:
@@ -583,6 +668,12 @@ class ZhihuPlatform(BasePlatform):
                     path=str(log_dir / "zhihu_cover_error.png"),
                     full_page=True,
                 )
+            except Exception:
+                pass
+            # 关掉可能仍打开的弹窗，避免遮挡后续步骤
+            try:
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(0.5)
             except Exception:
                 pass
 

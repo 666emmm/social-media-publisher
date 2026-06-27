@@ -790,6 +790,7 @@ _PLATFORM_ID_MAP = {
     11: ('weibo', '微博'),
     12: ('alipay', '支付宝'),
     13: ('toutiao', '今日头条'),
+    14: ('zhihu', '知乎'),
 }
 
 

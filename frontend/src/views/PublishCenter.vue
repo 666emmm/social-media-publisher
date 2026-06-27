@@ -234,6 +234,14 @@
               </div>
             </template>
 
+            <!-- 小红书专属卡片(合集为账号级,选中账号后才显示) -->
+            <template v-if="selectedPlatform === 'xiaohongshu' && selectedAccountId">
+              <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
+                <div class="setting-label" :style="{ color: currentPlatformConfig.color }">加入合集</div>
+                <XhsCollectionSelect :account-id="selectedAccountId" v-model="form.collectionName" :data="form.collectionData" @change="handleXhsCollectionChange" />
+              </div>
+            </template>
+
             <!-- settingsFields（排除已在通用字段渲染的） -->
             <template v-for="field in currentPlatformConfig.settingsFields" :key="field.key">
               <template v-if="field.key !== 'title' && field.key !== 'description' && field.key !== 'videoFormat'">
@@ -258,22 +266,23 @@
                     v-else-if="field.type === 'switch'"
                     v-model="form[field.key]"
                   />
-                  <div v-else-if="field.type === 'radio'" class="radio-row">
+                  <div v-else-if="field.type === 'radio'" class="radio-row" :class="{ 'is-disabled': field.disabledWhen && form[field.disabledWhen.key] === field.disabledWhen.value }">
                     <label
                       v-for="opt in field.options"
                       :key="String(opt.value)"
-                      class="radio-item cursor-pointer"
+                      :class="['radio-item', { 'cursor-pointer': !(field.disabledWhen && form[field.disabledWhen.key] === field.disabledWhen.value), 'is-disabled': field.disabledWhen && form[field.disabledWhen.key] === field.disabledWhen.value }]"
                     >
                       <input
                         type="radio"
                         :name="(selectedAccountId || selectedPlatform) + '-' + field.key"
                         :value="opt.value"
                         v-model="form[field.key]"
+                        :disabled="field.disabledWhen && form[field.disabledWhen.key] === field.disabledWhen.value"
                         class="cursor-pointer"
                       />
                       <span
                         :class="['radio-text', { on: form[field.key] === opt.value }]"
-                        :style="form[field.key] === opt.value ? { borderColor: currentPlatformConfig.color, color: currentPlatformConfig.color } : {}"
+                        :style="form[field.key] === opt.value && !(field.disabledWhen && form[field.disabledWhen.key] === field.disabledWhen.value) ? { borderColor: currentPlatformConfig.color, color: currentPlatformConfig.color } : {}"
                       >{{ opt.label }}</span>
                     </label>
                   </div>
@@ -323,6 +332,23 @@
                     value-format="YYYY-MM-DD HH:mm:ss"
                     size="small"
                     class="cursor-pointer"
+                  />
+                  <el-date-picker
+                    v-else-if="field.type === 'date'"
+                    v-model="form[field.key]"
+                    type="date"
+                    :placeholder="field.placeholder"
+                    :disabled-date="(date) => date > new Date()"
+                    value-format="YYYY-MM-DD"
+                    size="small"
+                    class="cursor-pointer"
+                  />
+                  <XhsPoiSelect
+                    v-else-if="field.type === 'poiSelect'"
+                    :account-id="selectedAccountId"
+                    v-model="form[field.key]"
+                    :data="form[field.key + 'Data']"
+                    @change="(val) => handleXhsPoiChange(field.key, val)"
                   />
                   <el-cascader
                     v-else-if="field.type === 'cascader'"
@@ -505,6 +531,8 @@ import DouyinActivitySelect from '@/components/douyin/ActivitySelect.vue'
 import DouyinHotspotSelect from '@/components/douyin/HotspotSelect.vue'
 import DouyinTagSelect from '@/components/douyin/TagSelect.vue'
 import DouyinMixSelect from '@/components/douyin/MixSelect.vue'
+import XhsCollectionSelect from '@/components/xiaohongshu/CollectionSelect.vue'
+import XhsPoiSelect from '@/components/xiaohongshu/PoiSelect.vue'
 import AlipayCompilationSelect from '@/components/alipay/CompilationSelect.vue'
 import PrePublishCheckDialog from '@/components/PrePublishCheckDialog.vue'
 import { useAutoSave } from '@/composables/useAutoSave'
@@ -512,6 +540,14 @@ import { useBatchSetApply } from '@/composables/useBatchSetApply'
 import { frameApi } from '@/api/frame'
 import { draftApi } from '@/api/draft'
 import { useRoute } from 'vue-router'
+
+// 抖音描述里独立 #xxx 话题计数(与后端 douyin/platform.py 的 _HASHTAG_PATTERN 同语义):
+// 行首或空白后的 # 才算话题开头,不匹配 "a#b" / "http://x#anchor" / "##" / 孤立 "#"
+const DESC_HASHTAG_RE = /(?:^|\s)#[^\s#]+/gm
+function countDescriptionHashtags(desc) {
+  if (!desc) return 0
+  return (desc.match(DESC_HASHTAG_RE) || []).length
+}
 
 // ========== Stores & Config ==========
 const accountStore = useAccountStore()
@@ -686,6 +722,16 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     // 平台特有字段 4 级合并（账号 > 渠道 > 平台默认）—— 补回 xiaohongshu 漏的
     collection: accountOv?.collection ?? platformOv?.collection ?? platformDefault?.collection ?? '',
     groupChat: accountOv?.groupChat ?? platformOv?.groupChat ?? platformDefault?.groupChat ?? '',
+    // 小红书合集(账号级配置)
+    collectionId: accountOv?.collectionId ?? platformOv?.collectionId ?? platformDefault?.collectionId ?? '',
+    collectionName: accountOv?.collectionName ?? platformOv?.collectionName ?? platformDefault?.collectionName ?? '',
+    collectionData: accountOv?.collectionData ?? platformOv?.collectionData ?? platformDefault?.collectionData ?? null,
+    // 小红书内容来源声明联动字段(平台级)
+    xhsSourceType: accountOv?.xhsSourceType ?? platformOv?.xhsSourceType ?? platformDefault?.xhsSourceType ?? '',
+    xhsShootLocation: accountOv?.xhsShootLocation ?? platformOv?.xhsShootLocation ?? platformDefault?.xhsShootLocation ?? '',
+    xhsShootLocationData: accountOv?.xhsShootLocationData ?? platformOv?.xhsShootLocationData ?? platformDefault?.xhsShootLocationData ?? null,
+    xhsShootDate: accountOv?.xhsShootDate ?? platformOv?.xhsShootDate ?? platformDefault?.xhsShootDate ?? '',
+    xhsRepostSource: accountOv?.xhsRepostSource ?? platformOv?.xhsRepostSource ?? platformDefault?.xhsRepostSource ?? '',
     // 微博
     videoType: accountOv?.videoType ?? platformOv?.videoType ?? platformDefault?.videoType ?? '',
     weiboCategory: accountOv?.weiboCategory ?? platformOv?.weiboCategory ?? platformDefault?.weiboCategory ?? [],
@@ -736,7 +782,7 @@ const landscapeCoverFrames = computed(() =>
 // ========== Per-platform Config ==========
 const platformConfigs = reactive({
   douyin: { title: '', description: '', tags: [], aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', activityId: [], hotspotId: '', hotspotData: null, selectedTag: null, tagType: '', tagValue: '', mixId: '', mixData: null },
-  xiaohongshu: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
+  xiaohongshu: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [], collectionId: '', collectionName: '', collectionData: null },
   kuaishou: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
   bilibili: { title: '', description: '', zone: '', tags: [], creationDeclaration: '', isOriginal: false, scheduleTime: '', videoFormat: '' },
   channels: { title: '', description: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
@@ -835,6 +881,15 @@ watch([selectedPlatform, selectedAccountId], () => {
     }
   }
 }, { immediate: true })
+
+// 小红书:内容来源声明选「来源转载」时,转载内容不能声明原创 →
+// 强制把原创声明还原为「非原创」(false)。切换回自主拍摄/其他声明时由用户重新勾选。
+watch(() => form.xhsSourceType, (val) => {
+  if (selectedPlatform.value === 'xiaohongshu' && val === 'repost' && form.isOriginal !== false) {
+    form.isOriginal = false
+    ElMessage.info('已切换为来源转载，原创声明已自动改为非原创')
+  }
+})
 
 watch(form, (newVal) => {
   const platformKey = selectedPlatform.value
@@ -961,6 +1016,27 @@ function handleAlipayCompilationChange(fieldKey, comp) {
     form.compilationData = comp
   } else {
     form.compilationData = null
+  }
+}
+
+// 小红书合集选择回调:v-model 已把 collectionName 绑到 form.collectionName,
+// 这里把完整对象(含 id)存到 form.collectionData,并把 id 同步到 form.collectionId
+function handleXhsCollectionChange(col) {
+  if (col) {
+    form.collectionId = col.id || ''
+    form.collectionData = col
+  } else {
+    form.collectionId = ''
+    form.collectionData = null
+  }
+}
+
+// 小红书拍摄地点(POI)选择回调:存完整对象到 <key>Data,publishData 取 poi 名称
+function handleXhsPoiChange(fieldKey, poi) {
+  if (poi) {
+    form[fieldKey + 'Data'] = poi
+  } else {
+    form[fieldKey + 'Data'] = null
   }
 }
 
@@ -1615,6 +1691,49 @@ async function publishAll() {
     errors.push({ type: '百家号描述/标签', accounts: baijiahaoAccountsNoTag })
   }
 
+  // ===== 抖音专属校验:话题总数 ≤ 5(描述 #xxx + 官方活动 + 标签) =====
+  const douyinAccountsTooManyTopics = []
+  for (const group of accountGroups.value) {
+    if (group.key !== 'douyin') continue
+    for (const account of group.accounts) {
+      if (!publishAccountIds.has(account.id)) continue
+      const merged = resolveAccountConfig('douyin', account.id)
+      const dh = countDescriptionHashtags(merged.description)
+      const ac = (merged.activityId || []).length
+      const tc = (merged.tags || []).length
+      const total = dh + ac + tc
+      if (total > 5) {
+        douyinAccountsTooManyTopics.push(
+          `${account.name}(抖音) 话题 ${total} 个超过 5 个(描述#${dh} + 活动${ac} + 标签${tc})`
+        )
+      }
+    }
+  }
+  if (douyinAccountsTooManyTopics.length > 0) {
+    errors.push({ type: '抖音话题', accounts: douyinAccountsTooManyTopics })
+  }
+
+  // ===== 小红书专属校验:话题总数 ≤ 10(描述 #xxx + 标签) =====
+  const xhsAccountsTooManyTopics = []
+  for (const group of accountGroups.value) {
+    if (group.key !== 'xiaohongshu') continue
+    for (const account of group.accounts) {
+      if (!publishAccountIds.has(account.id)) continue
+      const merged = resolveAccountConfig('xiaohongshu', account.id)
+      const dh = countDescriptionHashtags(merged.description)
+      const tc = (merged.tags || []).length
+      const total = dh + tc
+      if (total > 10) {
+        xhsAccountsTooManyTopics.push(
+          `${account.name}(小红书) 话题 ${total} 个超过 10 个(描述#${dh} + 标签${tc})`
+        )
+      }
+    }
+  }
+  if (xhsAccountsTooManyTopics.length > 0) {
+    errors.push({ type: '小红书话题', accounts: xhsAccountsTooManyTopics })
+  }
+
   if (errors.length > 0) {
     const maxShow = 3
     const body = errors.map(e => {
@@ -1634,12 +1753,31 @@ async function publishAll() {
     return
   }
 
-  // 校验抖音平台官方活动 + 标签数量
+  // 校验抖音平台话题总数(描述 #xxx + 官方活动 + 标签) ≤ 5
   if (selectedPlatform.value === 'douyin') {
+    const dh = countDescriptionHashtags(form.description)
     const ac = form.activityId?.length || 0
     const tc = form.tags?.length || 0
-    if (ac + tc > 5) {
-      ElMessage.error(`官方活动(${ac}) + 标签(${tc}) 超过 5 个`)
+    const total = dh + ac + tc
+    if (total > 5) {
+      ElMessage.error(`抖音话题(${total}) 超过 5 个(描述#${dh} + 活动${ac} + 标签${tc})`)
+      return
+    }
+  }
+
+  // 校验小红书平台话题总数(描述 #xxx + 标签) ≤ 10
+  if (selectedPlatform.value === 'xiaohongshu') {
+    const dh = countDescriptionHashtags(form.description)
+    const tc = form.tags?.length || 0
+    const total = dh + tc
+    if (total > 10) {
+      ElMessage.error(`小红书话题(${total}) 超过 10 个(描述#${dh} + 标签${tc})`)
+      return
+    }
+    // 标题长度校验(≤ 20 字,emoji 按 3 算)
+    const titleResult = validateTitleForPlatform('xiaohongshu', form.title || '')
+    if (!titleResult.ok) {
+      ElMessage.error(titleResult.error)
       return
     }
   }
@@ -1740,6 +1878,8 @@ async function publishAll() {
         activities: merged.activityId || [],
         fileList: [selectedVideo.stored_path],
         videoFormat: videoFormat,
+        // 视频素材方向(horizontal/vertical/square):小红书据此选择对应方向封面
+        videoOrientation: selectedVideo.orientation || '',
         accountList: [account.filePath],
         thumbnailLandscape: thumbnailLandscapeMaterial ? thumbnailLandscapeMaterial.stored_path : '',
         thumbnailPortrait: thumbnailPortraitMaterial ? thumbnailPortraitMaterial.stored_path : '',
@@ -1772,6 +1912,14 @@ async function publishAll() {
         tag_value: merged.tagValue || '',
         mini_link: merged.selectedTag?.type === 'miniapp' ? (merged.selectedTag._searchKeyword || '') : '',
         mix_id: merged.mixId || '',
+        // 小红书合集(账号级配置):collectionId 给后端定位,collectionName 兜底匹配
+        collectionId: merged.collectionId || '',
+        collectionName: merged.collectionName || '',
+        // 小红书内容来源声明(平台级):自主拍摄需拍摄地点+日期,来源转载需转载来源
+        xhsSourceType: merged.xhsSourceType || '',
+        xhsShootLocation: merged.xhsShootLocation || '',
+        xhsShootDate: merged.xhsShootDate || '',
+        xhsRepostSource: merged.xhsRepostSource || '',
         // Other platform fields (修：channels isDraft 同)
         isDraft: merged.isDraft || false,
         // creationDeclaration 走 merged（已含 platformDefault 兜底）
@@ -2511,6 +2659,15 @@ function formatSize(bytes) {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+
+    // 禁用态(如小红书选「来源转载」时原创声明禁用)
+    &.is-disabled {
+      .radio-item.is-disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+    }
   }
 
   .radio-item {

@@ -47,11 +47,18 @@ export const PLATFORMS = {
         { label: '内容包含营销广告', value: '内容包含营销广告' },
         { label: '内容来源声明', value: '内容来源声明' },
       ] },
-      { key: 'isOriginal', label: '原创声明', type: 'radio', options: [{ label: '原创', value: true }, { label: '非原创', value: false }] },
+      // 内容来源声明联动字段(aiContent === '内容来源声明' 时显示)
+      { key: 'xhsSourceType', label: '内容来源类型', type: 'radio', options: [{ label: '自主拍摄', value: 'self' }, { label: '来源转载', value: 'repost' }], visibleWhen: { key: 'aiContent', value: '内容来源声明' } },
+      { key: 'xhsShootLocation', label: '拍摄地点', type: 'poiSelect', placeholder: '搜索拍摄地点', visibleWhen: { key: 'xhsSourceType', value: 'self' } },
+      { key: 'xhsShootDate', label: '拍摄日期', type: 'date', placeholder: '选择拍摄日期', visibleWhen: { key: 'xhsSourceType', value: 'self' } },
+      { key: 'xhsRepostSource', label: '转载来源', type: 'input', placeholder: '请输入媒体名称', visibleWhen: { key: 'xhsSourceType', value: 'repost' } },
+      // 原创声明:选择了「来源转载」时禁用(转载内容不能声明原创),并自动还原为非原创。
+      // disabledWhen 条件命中时单选项灰掉不可勾。
+      { key: 'isOriginal', label: '原创声明', type: 'radio', options: [{ label: '原创', value: true }, { label: '非原创', value: false }], disabledWhen: { key: 'xhsSourceType', value: 'repost' } },
       { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
       { key: 'videoFormat', label: '视频格式', type: 'radio', options: [{ label: '横版', value: 'landscape' }, { label: '竖版', value: 'portrait' }] },
     ],
-    defaultSettings: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', enableTimer: false },
+    defaultSettings: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', enableTimer: false, xhsSourceType: '', xhsShootLocation: '', xhsShootDate: '', xhsRepostSource: '' },
   },
   CHANNELS: {
     id: 2,

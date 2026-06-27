@@ -130,6 +130,10 @@ from blueprints.toutiao_bp import toutiao_bp  # noqa: E402
 app.register_blueprint(toutiao_bp)
 logger.info("[Startup] toutiao_bp registered OK")
 
+from blueprints.xiaohongshu_bp import xiaohongshu_bp  # noqa: E402
+app.register_blueprint(xiaohongshu_bp)
+logger.info("[Startup] xiaohongshu_bp registered OK")
+
 from blueprints.materials_bp import materials_bp  # noqa: E402
 app.register_blueprint(materials_bp)
 logger.info("[Startup] materials_bp registered OK")
@@ -693,6 +697,13 @@ def postVideo():
         logger.info(f"发布视频校验失败: {err}")
         return jsonify({"code": 400, "msg": err}), 400
 
+    # 标题长度校验（如小红书 ≤ 20 字，emoji 按 3 算）
+    from util.video_limits import validate_title_for_platform
+    ok, err = validate_title_for_platform(platform.platform_key, data.get('title', '') or '')
+    if not ok:
+        logger.info(f"发布标题校验失败: {err}")
+        return jsonify({"code": 400, "msg": err}), 400
+
     try:
         # Resolve file paths through storage abstraction
         file_list = [_resolve_material_path(f) for f in data.get('fileList', [])]
@@ -759,6 +770,16 @@ def postVideo():
                 collection_id=data.get('collection', ''),
                 extend_link=data.get('extendLink', False),
                 extend_link_url=data.get('extendLinkUrl', ''),
+                # 视频素材方向(horizontal/vertical/square),小红书据此选封面
+                video_orientation=data.get('videoOrientation', ''),
+                # 小红书合集(账号级配置,用 xhs_ 前缀避免与头条 collection_id 冲突)
+                xhs_collection_id=data.get('collectionId', ''),
+                xhs_collection_name=data.get('collectionName', ''),
+                # 小红书内容来源声明(平台级):自主拍摄/来源转载
+                xhs_source_type=data.get('xhsSourceType', ''),
+                xhs_shoot_location=data.get('xhsShootLocation', ''),
+                xhs_shoot_date=data.get('xhsShootDate', ''),
+                xhs_repost_source=data.get('xhsRepostSource', ''),
             ))
         else:
             result = publish_fn(
@@ -801,6 +822,16 @@ def postVideo():
                 collection_id=data.get('collection', ''),
                 extend_link=data.get('extendLink', False),
                 extend_link_url=data.get('extendLinkUrl', ''),
+                # 视频素材方向(horizontal/vertical/square),小红书据此选封面
+                video_orientation=data.get('videoOrientation', ''),
+                # 小红书合集(账号级配置,用 xhs_ 前缀避免与头条 collection_id 冲突)
+                xhs_collection_id=data.get('collectionId', ''),
+                xhs_collection_name=data.get('collectionName', ''),
+                # 小红书内容来源声明(平台级):自主拍摄/来源转载
+                xhs_source_type=data.get('xhsSourceType', ''),
+                xhs_shoot_location=data.get('xhsShootLocation', ''),
+                xhs_shoot_date=data.get('xhsShootDate', ''),
+                xhs_repost_source=data.get('xhsRepostSource', ''),
             )
         if result:
             return jsonify({"code": 200, "msg": "发布任务已提交", "data": None}), 200

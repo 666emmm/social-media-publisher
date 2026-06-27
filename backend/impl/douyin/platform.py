@@ -7,6 +7,7 @@ Chromium) with automatic Playwright fallback.
 """
 
 import asyncio
+import re
 import threading
 from pathlib import Path
 from queue import Queue
@@ -221,7 +222,8 @@ class DouyinPlatform(BasePlatform):
         - ``thumbnail_portrait_path`` (*str*, optional)
         - ``productLink`` (*str*, optional)
         - ``productTitle`` (*str*, optional)
-        - ``desc`` (*str*, optional)
+        - ``desc`` (*str*, optional) -- 描述里的 ``#xxx`` 会计入话题总数,
+          与 ``tags``、官方活动 ``activities`` 合并上限 5 个,超过将被前置校验拦截。
         - ``schedule_time_str`` (*str*, optional)
         - ``ai_content`` (*str*, optional)
         """
@@ -238,6 +240,14 @@ class DouyinPlatform(BasePlatform):
         files = kwargs.get("files", [])
         tags = kwargs.get("tags", []) or []
         activities = kwargs.get("activities", []) or []
+
+        # ===== 前置校验:话题总数 ≤ 5(描述里的 #xxx + 标签 + 官方活动) =====
+        desc = kwargs.get("desc", "") or ""
+        ok, err = self._validate_publish_params(desc, tags, activities)
+        if not ok:
+            logger.error("[发布视频] 抖音前置校验失败: %s", err)
+            raise ValueError(err)
+
         account_file = kwargs.get("account_file", [])
         enableTimer = kwargs.get("enableTimer", False)
         videos_per_day = kwargs.get("videos_per_day", 1)
@@ -247,7 +257,6 @@ class DouyinPlatform(BasePlatform):
         thumbnail_portrait_path = kwargs.get("thumbnail_portrait_path", "")
         product_link = kwargs.get("productLink", "")
         product_title = kwargs.get("productTitle", "")
-        desc = kwargs.get("desc", "")
         schedule_time_str = kwargs.get("schedule_time_str", "")
         ai_content = kwargs.get("ai_content", "")
         hotspot = kwargs.get("hotspot", "")
@@ -521,6 +530,48 @@ class DouyinPlatform(BasePlatform):
                 await context.close()
         finally:
             await browser.close()
+
+    # ------------------------------------------------------------------
+    # Helper: 前置校验 - 话题总数 ≤ 5(描述 #xxx + 标签 + 官方活动)
+    # ------------------------------------------------------------------
+
+    # 描述里话题正则:# 在行首或空白后,后跟非空白非 # 字符(独立话题)。
+    # 不匹配 "a#b" / "http://x#anchor" / "##" / 孤立 "#"
+    _HASHTAG_PATTERN = re.compile(r"(?:^|\s)#[^\s#]+", re.MULTILINE)
+
+    @classmethod
+    def _count_hashtags(cls, text: str) -> int:
+        """统计描述文本里独立的 #xxx 话题数量。
+
+        - 行首或空白后的 ``#`` 才算话题开头(避免 ``a#b``、``http://x#anchor`` 误判)。
+        - ``##``、孤立 ``#`` 不计数。
+        """
+        if not text:
+            return 0
+        return len(cls._HASHTAG_PATTERN.findall(text))
+
+    @staticmethod
+    def _validate_publish_params(desc: str, tags: list, activities: list) -> tuple[bool, str]:
+        """校验话题总数,返回 (ok, msg)。
+
+        规则:描述里的 ``#xxx`` + 标签数 + 官方活动数 ≤ 5
+        (抖音一条视频最多 5 个话题,超出发布页会拒绝)。
+        """
+        desc = desc or ""
+        tags = tags or []
+        activities = activities or []
+        total = (
+            DouyinPlatform._count_hashtags(desc)
+            + len(tags)
+            + len(activities)
+        )
+        if total > 5:
+            return False, (
+                f"抖音话题总数 {total} 超过 5 个"
+                f"(描述 #xxx {DouyinPlatform._count_hashtags(desc)} + 标签 {len(tags)}"
+                f" + 官方活动 {len(activities)}),请删减"
+            )
+        return True, ""
 
     # ------------------------------------------------------------------
     # Helper: fill title, description, tags

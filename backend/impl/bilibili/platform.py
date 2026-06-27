@@ -40,7 +40,7 @@ _UPLOAD_WAIT_POLLS = _UPLOAD_WAIT_SECONDS * 2  # 0.5s/次 → 28800 次
 
 # 调试开关:True = 走到提交按钮时只输出参数日志、不实际点击提交(便于检查内容);
 # False = 正常点击提交。验证完发布内容无误后改回 False 即可。
-_PUBLISH_DRY_RUN = True
+_PUBLISH_DRY_RUN = False
 
 # B 站标题禁止的字符:emoji(非 BMP 字符) + HTML 危险字符(<>\"'&)。
 # 其他字符(中文、英文、数字、全角/半角标点、常见符号)全部允许。

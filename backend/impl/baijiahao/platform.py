@@ -584,10 +584,13 @@ class BaijiahaoPlatform(BasePlatform):
             logger.warning("[填写标题] 未找到描述输入框，跳过填充")
             return
 
-        # 1. 输入描述文本
+        # 1. 清空编辑器 + 输入描述文本
         await editor.click()
         await asyncio.sleep(0.3)
+        # 先全选再删除,确保输入框是空的(避免残留视频素材 ID 等随机字符串)
         await page.keyboard.press("Control+a")
+        await asyncio.sleep(0.1)
+        await page.keyboard.press("Delete")
         await asyncio.sleep(0.1)
         if desc_text:
             await page.keyboard.type(desc_text, delay=50)

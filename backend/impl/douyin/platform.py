@@ -31,6 +31,10 @@ logger = get_channel_logger("douyin")
 DOUYIN_PUBLISH_STRATEGY_IMMEDIATE = "immediate"
 DOUYIN_PUBLISH_STRATEGY_SCHEDULED = "scheduled"
 
+# 调试开关:True = 走到发布按钮时只输出参数日志、不实际点击发布(便于检查内容);
+# False = 正常点击发布。验证完发布内容无误后改回 False 即可。
+_PUBLISH_DRY_RUN = True
+
 
 class DouyinPlatform(BasePlatform):
     platform_id = 3
@@ -503,6 +507,33 @@ class DouyinPlatform(BasePlatform):
                     logger.info("[定时发布] 开始设置定时发布...")
                     await self._set_schedule_time(page, publish_date)
                     logger.info("[定时发布] 定时发布设置完成")
+
+                # 调试:输出本次发布的全部参数(便于人工核对填写是否正确)
+                logger.info("=" * 60)
+                logger.info("[发布调试] ===== 本次发布参数汇总 (dry_run=%s) =====", _PUBLISH_DRY_RUN)
+                logger.info("[发布调试] 标题(title)       : %s", title)
+                logger.info("[发布调试] 视频文件(file_path): %s", file_path)
+                logger.info("[发布调试] 描述(desc)        : %s", desc[:100] if desc else "(无)")
+                logger.info("[发布调试] 标签(tags)        : %s (共 %d 个)", tags, len(tags))
+                logger.info("[发布调试] 封面(thumbnail)   : %s", thumbnail_path or "(无)")
+                logger.info("[发布调试] 发布策略(strategy): %s", publish_strategy)
+                logger.info("[发布调试] 定时时间(publish_date): %s", publish_date)
+                logger.info("[发布调试] 官方活动(activities): %s", activities or "(无)")
+                logger.info("[发布调试] 热点(hotspot)     : %s", hotspot or "(无)")
+                logger.info("[发布调试] 标签类型(tag_type): %s", tag_type or "(无)")
+                logger.info("[发布调试] ========================================")
+                logger.info("=" * 60)
+
+                if _PUBLISH_DRY_RUN:
+                    logger.warning("[发布调试] DRY_RUN 已开启 —— 跳过实际点击发布,流程到此结束(不发布)")
+                    logger.info("[发布调试] DRY_RUN: 浏览器保持打开,等待你手动关闭窗口后再结束...")
+                    try:
+                        while browser.is_connected():
+                            await asyncio.sleep(1)
+                        logger.info("[发布调试] 检测到浏览器已关闭,流程结束")
+                    except Exception:
+                        pass
+                    return
 
                 # Click publish and wait for redirect
                 logger.info("[发布] 正在点击发布按钮...")

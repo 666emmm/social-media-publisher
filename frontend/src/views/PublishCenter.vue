@@ -242,6 +242,14 @@
               </div>
             </template>
 
+            <!-- B 站专属卡片(合集为账号级,选中账号后才显示) -->
+            <template v-if="selectedPlatform === 'bilibili' && selectedAccountId">
+              <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
+                <div class="setting-label" :style="{ color: currentPlatformConfig.color }">选择合集</div>
+                <BiliCollectionSelect :account-id="selectedAccountId" v-model="form.biliCollectionName" :data="form.biliCollectionData" @change="handleBiliCollectionChange" />
+              </div>
+            </template>
+
             <!-- settingsFields（排除已在通用字段渲染的） -->
             <template v-for="field in currentPlatformConfig.settingsFields" :key="field.key">
               <template v-if="field.key !== 'title' && field.key !== 'description' && field.key !== 'videoFormat'">
@@ -516,7 +524,7 @@ import { getFileUrl } from '@/utils/storage'
 import { http } from '@/utils/request'
 import { accountApi } from '@/api/account'
 import { platformList, getPlatformByKey, platformKeyToId, platformNameToKey } from '@/config/platforms'
-import { validateVideoForPlatform, validateTitleForPlatform } from '@/config/videoLimits'
+import { validateVideoForPlatform, validateTitleForPlatform, validateDescForPlatform } from '@/config/videoLimits'
 
 import AccountSidebar from '@/components/AccountSidebar.vue'
 import AccountSelectDialog from '@/components/AccountSelectDialog.vue'
@@ -532,6 +540,7 @@ import DouyinHotspotSelect from '@/components/douyin/HotspotSelect.vue'
 import DouyinTagSelect from '@/components/douyin/TagSelect.vue'
 import DouyinMixSelect from '@/components/douyin/MixSelect.vue'
 import XhsCollectionSelect from '@/components/xiaohongshu/CollectionSelect.vue'
+import BiliCollectionSelect from '@/components/bilibili/CollectionSelect.vue'
 import XhsPoiSelect from '@/components/xiaohongshu/PoiSelect.vue'
 import AlipayCompilationSelect from '@/components/alipay/CompilationSelect.vue'
 import PrePublishCheckDialog from '@/components/PrePublishCheckDialog.vue'
@@ -745,6 +754,9 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     collection: accountOv?.collection ?? platformOv?.collection ?? platformDefault?.collection ?? '',
     extendLink: accountOv?.extendLink ?? platformOv?.extendLink ?? platformDefault?.extendLink ?? false,
     extendLinkUrl: accountOv?.extendLinkUrl ?? platformOv?.extendLinkUrl ?? platformDefault?.extendLinkUrl ?? '',
+    // B 站合集(账号级)
+    biliCollectionName: accountOv?.biliCollectionName ?? platformOv?.biliCollectionName ?? platformDefault?.biliCollectionName ?? '',
+    biliCollectionData: accountOv?.biliCollectionData ?? platformOv?.biliCollectionData ?? platformDefault?.biliCollectionData ?? null,
   }
 }
 
@@ -784,7 +796,7 @@ const platformConfigs = reactive({
   douyin: { title: '', description: '', tags: [], aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', activityId: [], hotspotId: '', hotspotData: null, selectedTag: null, tagType: '', tagValue: '', mixId: '', mixData: null },
   xiaohongshu: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [], collectionId: '', collectionName: '', collectionData: null },
   kuaishou: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
-  bilibili: { title: '', description: '', zone: '', tags: [], creationDeclaration: '', isOriginal: false, scheduleTime: '', videoFormat: '' },
+  bilibili: { title: '', description: '', zone: '', tags: [], creationDeclaration: '', isOriginal: false, scheduleTime: '', videoFormat: '', biliCollectionName: '', biliCollectionData: null },
   channels: { title: '', description: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
   baijiahao: { title: '', description: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
   tiktok: { title: '', description: '', aiContent: false, isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
@@ -1037,6 +1049,16 @@ function handleXhsPoiChange(fieldKey, poi) {
     form[fieldKey + 'Data'] = poi
   } else {
     form[fieldKey + 'Data'] = null
+  }
+}
+
+// B 站合集选择回调:v-model 已把 biliCollectionName 绑到 form,
+// 这里把完整对象存到 form.biliCollectionData
+function handleBiliCollectionChange(col) {
+  if (col) {
+    form.biliCollectionData = col
+  } else {
+    form.biliCollectionData = null
   }
 }
 
@@ -1782,6 +1804,20 @@ async function publishAll() {
     }
   }
 
+  // 校验 B 站标题≤80字 + 简介≤2000字(emoji 按 3 算)
+  if (selectedPlatform.value === 'bilibili') {
+    const titleResult = validateTitleForPlatform('bilibili', form.title || '')
+    if (!titleResult.ok) {
+      ElMessage.error(titleResult.error)
+      return
+    }
+    const descResult = validateDescForPlatform('bilibili', form.description || '')
+    if (!descResult.ok) {
+      ElMessage.error(descResult.error)
+      return
+    }
+  }
+
   // ===== 表单校验全部通过后，进行 Cookie 预检 =====
   if (publishAccountIds.size > 0 && prePublishCheckRef.value) {
     const accountsToCheck = accountStore.accounts.filter(a => publishAccountIds.has(a.id))
@@ -1912,6 +1948,8 @@ async function publishAll() {
         tag_value: merged.tagValue || '',
         mini_link: merged.selectedTag?.type === 'miniapp' ? (merged.selectedTag._searchKeyword || '') : '',
         mix_id: merged.mixId || '',
+        // B 站合集(账号级配置)
+        biliCollectionName: merged.biliCollectionName || '',
         // 小红书合集(账号级配置):collectionId 给后端定位,collectionName 兜底匹配
         collectionId: merged.collectionId || '',
         collectionName: merged.collectionName || '',

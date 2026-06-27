@@ -134,6 +134,10 @@ from blueprints.xiaohongshu_bp import xiaohongshu_bp  # noqa: E402
 app.register_blueprint(xiaohongshu_bp)
 logger.info("[Startup] xiaohongshu_bp registered OK")
 
+from blueprints.bilibili_bp import bilibili_bp  # noqa: E402
+app.register_blueprint(bilibili_bp)
+logger.info("[Startup] bilibili_bp registered OK")
+
 from blueprints.materials_bp import materials_bp  # noqa: E402
 app.register_blueprint(materials_bp)
 logger.info("[Startup] materials_bp registered OK")
@@ -697,11 +701,17 @@ def postVideo():
         logger.info(f"发布视频校验失败: {err}")
         return jsonify({"code": 400, "msg": err}), 400
 
-    # 标题长度校验（如小红书 ≤ 20 字，emoji 按 3 算）
-    from util.video_limits import validate_title_for_platform
+    # 标题长度校验（如小红书 ≤ 20 字，B 站 ≤ 80 字，emoji 按 3 算）
+    from util.video_limits import validate_title_for_platform, validate_desc_for_platform
     ok, err = validate_title_for_platform(platform.platform_key, data.get('title', '') or '')
     if not ok:
         logger.info(f"发布标题校验失败: {err}")
+        return jsonify({"code": 400, "msg": err}), 400
+
+    # 简介长度校验（如 B 站 ≤ 2000 字，emoji 按 3 算）
+    ok, err = validate_desc_for_platform(platform.platform_key, data.get('description', '') or '')
+    if not ok:
+        logger.info(f"发布简介校验失败: {err}")
         return jsonify({"code": 400, "msg": err}), 400
 
     try:
@@ -780,6 +790,8 @@ def postVideo():
                 xhs_shoot_location=data.get('xhsShootLocation', ''),
                 xhs_shoot_date=data.get('xhsShootDate', ''),
                 xhs_repost_source=data.get('xhsRepostSource', ''),
+                # B 站合集(账号级)
+                bili_collection_name=data.get('biliCollectionName', ''),
             ))
         else:
             result = publish_fn(
@@ -832,6 +844,8 @@ def postVideo():
                 xhs_shoot_location=data.get('xhsShootLocation', ''),
                 xhs_shoot_date=data.get('xhsShootDate', ''),
                 xhs_repost_source=data.get('xhsRepostSource', ''),
+                # B 站合集(账号级)
+                bili_collection_name=data.get('biliCollectionName', ''),
             )
         if result:
             return jsonify({"code": 200, "msg": "发布任务已提交", "data": None}), 200

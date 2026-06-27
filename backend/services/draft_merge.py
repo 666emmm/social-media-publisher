@@ -396,4 +396,6 @@ def build_platform_kwargs(merged, common, account):
         'xhs_shoot_location': merged.get('xhsShootLocation', '') or '',
         'xhs_shoot_date': merged.get('xhsShootDate', '') or '',
         'xhs_repost_source': merged.get('xhsRepostSource', '') or '',
+        # B 站合集(账号级)
+        'bili_collection_name': merged.get('biliCollectionName', '') or '',
     }

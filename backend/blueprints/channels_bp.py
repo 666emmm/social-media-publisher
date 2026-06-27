@@ -130,10 +130,18 @@ async def _fetch_collections_via_browser(cookie_file: str) -> dict:
 
             # 2. 点击「选择合集」入口
             # DOM: div.display-text 里的「选择合集」文案
-            logger.info("[合集列表] 点击「选择合集」入口...")
+            # 需要等待页面加载完成(「选择合集」文案出现)再点击
+            logger.info("[合集列表] 等待页面加载完成(选择合集入口出现)...")
             entry = page.get_by_text("选择合集", exact=True)
-            if await entry.count() == 0:
-                return {"success": False, "error": "未找到「选择合集」入口"}
+            ready = False
+            for _ in range(60):  # 最多等 30s
+                if await entry.count() > 0:
+                    ready = True
+                    break
+                await asyncio.sleep(0.5)
+            if not ready:
+                return {"success": False, "error": "页面加载超时,未找到「选择合集」入口"}
+            logger.info("[合集列表] 点击「选择合集」入口...")
             await entry.first.click()
             logger.info("[合集列表] 已点击,等待合集浮层弹出...")
             await asyncio.sleep(1.5)

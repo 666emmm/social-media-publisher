@@ -858,9 +858,8 @@ class ChannelsPlatform(BasePlatform):
     async def check_cookie(self, cookie_file: str) -> bool:
         """Check whether the saved cookie file is still valid.
 
-        Opens the Channels upload page and checks whether the login form
-        (``扫码登录``) or the authenticated UI (``发表视频`` / ``微信小店``)
-        is visible.
+        访问 https://channels.weixin.qq.com/platform,
+        如果页面停留没有重定向到登录页,就代表登录成功。
         """
         logger.info("=== check_cookie 开始 === cookie_file=%s", cookie_file)
         cookie_path = str(Path(BASE_DIR / "cookiesFile" / cookie_file))
@@ -881,37 +880,26 @@ class ChannelsPlatform(BasePlatform):
 
             try:
                 page = await context.new_page()
-                logger.info("check_cookie: page created, 正在跳转到: %s", TENCENT_UPLOAD_URL)
+                # 访问 /platform 页面(不是 /platform/post/create)
+                check_url = "https://channels.weixin.qq.com/platform"
+                logger.info("check_cookie: 正在跳转到: %s", check_url)
 
-                await page.goto(TENCENT_UPLOAD_URL, wait_until="domcontentloaded")
+                await page.goto(check_url, wait_until="domcontentloaded")
                 logger.info("check_cookie: domcontentloaded 完成")
 
-                await asyncio.sleep(2)
-                await page.wait_for_load_state("networkidle")
-                logger.info("check_cookie: networkidle 完成")
+                await asyncio.sleep(3)
 
                 final_url = page.url
                 logger.info("check_cookie: 最终 URL = %s", final_url)
 
-                try:
-                    title = await page.title()
-                    logger.info("check_cookie: 页面标题 = %s", title)
-                except Exception as e:
-                    logger.warning("check_cookie: 获取页面标题失败: %s", e)
-
-                # 关键检查：如果跳转到 login.html 说明 cookie 失效
-                if "login.html" in final_url:
-                    logger.info("check_cookie: [FAIL] 已跳转到登录页，Cookie 失效 | URL: %s", final_url)
+                # 如果重定向到登录页(含 login),说明 cookie 失效
+                if "login" in final_url.lower():
+                    logger.info("check_cookie: [FAIL] 已重定向到登录页，Cookie 失效 | URL: %s", final_url)
                     return False
 
-                # 如果停留在 channels.weixin.qq.com（没有跳转到 login.html）说明 cookie 有效
-                if "channels.weixin.qq.com" in final_url:
-                    logger.info("check_cookie: [SUCCESS] 停留在 channels.weixin.qq.com，Cookie 有效 | URL: %s", final_url)
-                    return True
-
-                # 其他情况（跳转到其他域名）说明 cookie 失效
-                logger.info("check_cookie: [FAIL] 已跳转到外部域名，Cookie 失效 | URL: %s", final_url)
-                return False
+                # 如果页面停留(没有重定向到登录页),说明 cookie 有效
+                logger.info("check_cookie: [SUCCESS] 页面停留未重定向，Cookie 有效 | URL: %s", final_url)
+                return True
             except Exception as exc:
                 logger.error("check_cookie: [EXCEPTION] 发生异常: %s", exc)
                 import traceback

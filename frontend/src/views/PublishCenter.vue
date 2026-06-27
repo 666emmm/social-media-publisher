@@ -668,6 +668,8 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     alteredContent: accountOv?.alteredContent ?? platformOv?.alteredContent ?? platformDefault?.alteredContent,
     // 修：zone 字段也走 4 级合并（B 站分区），账号级填的 zone 才能进 publishData
     zone: accountOv?.zone ?? platformOv?.zone ?? platformDefault?.zone ?? '',
+    // 知乎「所属领域」4 级合并
+    category: accountOv?.category ?? platformOv?.category ?? platformDefault?.category ?? '',
     // 平台特有字段 4 级合并（账号 > 渠道 > 平台默认）—— 补回漏的
     // 抖音
     activityId: accountOv?.activityId ?? platformOv?.activityId ?? platformDefault?.activityId ?? [],
@@ -748,6 +750,7 @@ const platformConfigs = reactive({
   weibo: { title: '', description: '', videoType: '', weiboCategory: [], contentStatement: '', tags: [] },
   alipay: { title: '', description: '', authorStatement: '', compilation: '', scheduleTime: '', videoFormat: '', tags: [] },
   toutiao: { title: '', description: '', creationDeclaration: [], enableGenerateImage: true, collection: '', extendLink: false, extendLinkUrl: '', scheduleTime: '', videoFormat: '', tags: [] },
+  zhihu: { title: '', description: '', creationDeclaration: '内容无需标注', category: '', scheduleTime: '', videoFormat: '', tags: [] },
 })
 
 const accountOverrides = reactive({})
@@ -1665,6 +1668,9 @@ async function publishAll() {
     currentPublishingAccount.value = account.name
     publishProgress.value = Math.floor((i / allTasks.length) * 100)
 
+    // DEBUG: dump merged 关键字段，便于排查前端到底有没有 category
+    console.log('[ZHIHU DEBUG] platform=' + group.key + ' merged.category=' + JSON.stringify(merged.category) + ' platformConfigs[zhihu].category=' + JSON.stringify(platformConfigs['zhihu']?.category) + ' form.category=' + JSON.stringify(form.category))
+
     const videoFormat = merged.videoFormat || ''
 
     let selectedVideo
@@ -1713,10 +1719,18 @@ async function publishAll() {
         dailyTimes: ['10:00'],
         startDays: 0,
         // 修：账号级填的 zone 才能进 publishData
-        // 微博分类走 cascader(数组 [channel_name, sub_name]);其他平台用 zone 或数值
+        // 微博分类走 cascader(数组 [channel_name, sub_name])
+        // 知乎用 settingsFields.category(中文字符串)，绕开 mergeConfig 链路直接
+        // 从 platformConfigs/accountOverrides 兜底拿，避免字段丢失
+        // 其他平台用 zone(B 站分区 tid)或数值兜底
         category: group.key === 'weibo'
           ? (Array.isArray(merged.weiboCategory) ? merged.weiboCategory : [])
-          : (merged.zone || (merged.isOriginal ? 1 : 0)),
+          : group.key === 'zhihu'
+          ? (accountOverrides[account.id]?.category
+              ?? platformConfigs['zhihu']?.category
+              ?? merged.category
+              ?? '')
+          : (merged.zone ?? merged.category ?? (merged.isOriginal ? 1 : 0)),
         // 微博的「类型」(原创/二创/转载)走 aiContent 字段透传给后端
         aiContent: group.key === 'weibo'
           ? (merged.videoType || '')

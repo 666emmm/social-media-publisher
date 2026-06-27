@@ -733,20 +733,25 @@ async def scrape_zhihu_profile(page):
             logger.info(f"[zhihu] 点击头像下拉失败 (可能已在主页): {e}")
 
         # 2. 点击「我的主页」链接
+        # href 在 DOM 里是完整 URL (https://www.zhihu.com/people/xxx)，
+        # 不能用 [href^="/people/"] 匹配；用文案「我的主页」+ 排除关怀版
+        # (/aria/people/) 最稳。
         profile_link = page.locator(
-            '.AppHeaderProfileMenu-item[href^="/people/"]'
+            '.AppHeaderProfileMenu-item:has-text("我的主页"), '
+            'a.Menu-item:has-text("我的主页")'
         ).first
-        href = None
+        navigated = False
         try:
-            if await profile_link.count() > 0:
-                href = await profile_link.get_attribute("href")
-                await profile_link.click()
-                logger.info(f"[zhihu] 跳转我的主页: {href}")
+            await profile_link.wait_for(state="visible", timeout=5000)
+            href = await profile_link.get_attribute("href") or ""
+            await profile_link.click()
+            logger.info(f"[zhihu] 点击「我的主页」成功，href={href}")
+            navigated = True
         except Exception as e:
             logger.info(f"[zhihu] 点击「我的主页」失败: {e}")
 
         # 3. 等待跳转完成（URL 应包含 /people/）
-        if href:
+        if navigated:
             try:
                 await page.wait_for_url("**/people/**", timeout=15000)
             except Exception:

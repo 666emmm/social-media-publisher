@@ -18,6 +18,7 @@ VIDEO_LIMITS: dict[str, dict] = {
     "tiktok":        {"min_duration": 5,    "max_duration": 3600,             "max_size": 16 * 1024**3, "max_title_length": math.inf},  # 5s~60min,  16G
     "youtube":       {"min_duration": 5,    "max_duration": 36000,            "max_size": 16 * 1024**3, "max_title_length": math.inf},  # 5s~600min,16G
     "alipay":        {"min_duration": 5,    "max_duration": math.inf,         "max_size": 8 * 1024**3,  "max_title_length": math.inf},   # 5s~无,    8G(文档:≤8G,时长不限)
+    "zhihu":         {"min_duration": 0,    "max_duration": math.inf,         "max_size": math.inf,     "max_title_length": math.inf},   # 文档:时长大小不限
 }
 
 
@@ -34,6 +35,7 @@ _PLATFORM_NAMES = {
     "tiktok": "TikTok",
     "youtube": "YouTube",
     "alipay": "支付宝",
+    "zhihu": "知乎",
 }
 
 

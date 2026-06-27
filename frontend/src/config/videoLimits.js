@@ -21,6 +21,7 @@ export const VIDEO_LIMITS = {
   tiktok:        { minDuration: 5,    maxDuration: 3600,         maxSize: 16 * GB, maxTitleLength: Infinity },
   youtube:       { minDuration: 5,    maxDuration: 36000,        maxSize: 16 * GB, maxTitleLength: Infinity },
   alipay:        { minDuration: 5,    maxDuration: Infinity,     maxSize: 8 * GB,  maxTitleLength: Infinity },   // 文档:≤8G,时长不限
+  zhihu:         { minDuration: 0,    maxDuration: Infinity,     maxSize: Infinity, maxTitleLength: Infinity }, // 文档:时长大小不限
 }
 
 const PLATFORM_NAMES = {
@@ -36,6 +37,7 @@ const PLATFORM_NAMES = {
   tiktok: 'TikTok',
   youtube: 'YouTube',
   alipay: '支付宝',
+  zhihu: '知乎',
 }
 
 export function formatSize(sizeBytes) {

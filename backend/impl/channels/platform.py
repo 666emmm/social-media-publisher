@@ -724,6 +724,32 @@ async def _set_schedule_time(page, publish_date) -> None:
     await page.locator("div.input-editor").click()
 
 
+async def _dismiss_i_know_dialog(page) -> bool:
+    """Dismiss the '我知道了' popup if present.
+
+    视频号偶尔会在点击「发表」后弹出一个「我知道了」提示框(发布须知/平台规则提醒),
+    阻塞后续跳转等待。函数尝试多种选择器定位按钮,命中可见则点击关闭。
+    返回 True 表示确实关闭了一个弹窗,False 表示当前没弹窗或定位失败(被忽略)。
+    """
+    selectors = (
+        'div.weui-desktop-dialog button:has-text("我知道了")',
+        'div.weui-desktop-dialog button.weui-desktop-btn_primary:has-text("我知道了")',
+        # 兜底:其它变体也按 kuaishou 既有套路去匹配 span 文本
+        'button[type="button"] span:text("我知道了")',
+    )
+    for sel in selectors:
+        try:
+            btn = page.locator(sel).first
+            if await btn.count() and await btn.is_visible():
+                await btn.click()
+                logger.info("[发布] 检测到「我知道了」弹窗,已点击关闭")
+                await asyncio.sleep(0.5)  # 等弹窗动画消失
+                return True
+        except Exception:
+            continue
+    return False
+
+
 async def _submit_publish(page, is_draft: bool = False) -> None:
     """Click the publish (or save-draft) button and wait for navigation."""
     while True:
@@ -742,6 +768,14 @@ async def _submit_publish(page, is_draft: bool = False) -> None:
                 )
                 if await publish_button.count():
                     await publish_button.click()
+                    # 视频号偶尔弹出「我知道了」提醒框,先关掉再等跳转
+                    if await _dismiss_i_know_dialog(page):
+                        # 弹窗关掉后,需要再次点击「发表」才能真正提交
+                        publish_button = page.locator(
+                            'div.form-btns button:has-text("发表")'
+                        )
+                        if await publish_button.count():
+                            await publish_button.click()
                 await page.wait_for_url(TENCENT_MANAGE_URL, timeout=30000)
                 logger.info("[发布] video published successfully")
             break

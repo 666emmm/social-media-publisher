@@ -189,7 +189,7 @@
             <!-- 通用标签输入 -->
             <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
               <div class="setting-label" :style="{ color: currentPlatformConfig.color }">标签</div>
-              <div class="setting-hint">{{ selectedPlatform === 'douyin' ? '官方活动 + 标签最多 5 个，按回车确认' : '输入标签内容，按回车确认' }}</div>
+              <div class="setting-hint">{{ selectedPlatform === 'douyin' ? '官方活动 + 标签最多 5 个，按回车确认' : selectedPlatform === 'kuaishou' ? '输入标签内容，按回车确认（最多 4 个）' : '输入标签内容，按回车确认' }}</div>
               <el-input
                 v-model="tagInput"
                 placeholder="输入标签内容，按回车添加"
@@ -558,14 +558,7 @@ import { useBatchSetApply } from '@/composables/useBatchSetApply'
 import { frameApi } from '@/api/frame'
 import { draftApi } from '@/api/draft'
 import { useRoute } from 'vue-router'
-
-// 抖音描述里独立 #xxx 话题计数(与后端 douyin/platform.py 的 _HASHTAG_PATTERN 同语义):
-// 行首或空白后的 # 才算话题开头,不匹配 "a#b" / "http://x#anchor" / "##" / 孤立 "#"
-const DESC_HASHTAG_RE = /(?:^|\s)#[^\s#]+/gm
-function countDescriptionHashtags(desc) {
-  if (!desc) return 0
-  return (desc.match(DESC_HASHTAG_RE) || []).length
-}
+import { HASHTAG_RE as DESC_HASHTAG_RE, countDescriptionHashtags, useAutoExtractHashtags } from '@/utils/hashtag'
 
 // ========== Stores & Config ==========
 const accountStore = useAccountStore()
@@ -983,6 +976,13 @@ function addTag() {
       return
     }
   }
+  if (selectedPlatform.value === 'kuaishou') {
+    const tc = form.tags?.length || 0
+    if (tc >= 4) {
+      ElMessage.warning('快手标签最多 4 个')
+      return
+    }
+  }
   form.tags.push(tag)
   tagInput.value = ''
 }
@@ -990,6 +990,19 @@ function addTag() {
 function removeTag(index) {
   form.tags.splice(index, 1)
 }
+
+// 自动提取描述中的 #xxx 到标签数组,并从描述中清除 #xxx 字样
+// maxTags 反应式跟随 selectedPlatform:抖音 5 个(活动+标签总数),其他平台不限
+// 但 description 在切平台/账号时会被覆盖(form 重置),所以挂个 watch 即可
+useAutoExtractHashtags({
+  form,
+  descKey: 'description',
+  tagKey: 'tags',
+  // 抖音活动+标签总数 ≤ 5;快手标签 ≤ 4;其他平台不限
+  maxTags: selectedPlatform.value === 'douyin' ? 5 : (selectedPlatform.value === 'kuaishou' ? 4 : undefined),
+  // 抖音:活动数也算占用,需要预留位置;其他平台不预留
+  getReservedTagCount: () => (selectedPlatform.value === 'douyin' ? (form.activityId?.length || 0) : 0),
+})
 
 // ========== Douyin-specific Methods ==========
 function handleDouyinActivityChange(activity) {
@@ -1781,6 +1794,25 @@ async function publishAll() {
     errors.push({ type: '小红书话题', accounts: xhsAccountsTooManyTopics })
   }
 
+  // ===== 快手专属校验:标签 ≤ 4 个 =====
+  const kuaishouAccountsTooManyTags = []
+  for (const group of accountGroups.value) {
+    if (group.key !== 'kuaishou') continue
+    for (const account of group.accounts) {
+      if (!publishAccountIds.has(account.id)) continue
+      const merged = resolveAccountConfig('kuaishou', account.id)
+      const tc = (merged.tags || []).length
+      if (tc > 4) {
+        kuaishouAccountsTooManyTags.push(
+          `${account.name}(快手) 标签最多 4 个,当前 ${tc} 个`
+        )
+      }
+    }
+  }
+  if (kuaishouAccountsTooManyTags.length > 0) {
+    errors.push({ type: '快手标签', accounts: kuaishouAccountsTooManyTags })
+  }
+
   if (errors.length > 0) {
     const maxShow = 3
     const body = errors.map(e => {
@@ -1825,6 +1857,15 @@ async function publishAll() {
     const titleResult = validateTitleForPlatform('xiaohongshu', form.title || '')
     if (!titleResult.ok) {
       ElMessage.error(titleResult.error)
+      return
+    }
+  }
+
+  // 校验快手平台标签 ≤ 4 个
+  if (selectedPlatform.value === 'kuaishou') {
+    const tc = form.tags?.length || 0
+    if (tc > 4) {
+      ElMessage.error(`快手标签最多 4 个,当前 ${tc} 个`)
       return
     }
   }

@@ -104,7 +104,7 @@ export function validateVideoForPlatform(platformKey, durationSec, sizeBytes) {
  * 用于标题/描述长度校验。JS 字符串的 .length 是 UTF-16 单元数（emoji 是 2），
  * 也不能直接用 codepoint 数（emoji 是 1），所以用遍历算。
  */
-function countCharsWithEmoji(s) {
+export function countCharsWithEmoji(s) {
   if (!s) return 0
   let n = 0
   for (const ch of s) {

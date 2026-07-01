@@ -532,7 +532,7 @@ import { getFileUrl } from '@/utils/storage'
 import { http } from '@/utils/request'
 import { accountApi } from '@/api/account'
 import { platformList, getPlatformByKey, platformKeyToId, platformNameToKey } from '@/config/platforms'
-import { validateVideoForPlatform, validateTitleForPlatform, validateDescForPlatform } from '@/config/videoLimits'
+import { validateVideoForPlatform, validateTitleForPlatform, validateDescForPlatform, countCharsWithEmoji } from '@/config/videoLimits'
 
 import AccountSidebar from '@/components/AccountSidebar.vue'
 import AccountSelectDialog from '@/components/AccountSelectDialog.vue'
@@ -1719,6 +1719,45 @@ async function publishAll() {
   }
   if (accountsVideoInvalid.length > 0) {
     errors.push({ type: '视频校验', accounts: accountsVideoInvalid })
+  }
+
+  // ===== 爱奇艺专属校验:标题 ≤30 字符、描述+标签 ≤450 字符(emoji 按 3 算) =====
+  const iqiyiTitleAccounts = []   // 标题超 30 字符的账号
+  const iqiyiDescAccounts = []    // 描述+标签总长超 450 的账号
+  for (const group of accountGroups.value) {
+    if (group.key !== 'iqiyi') continue
+    for (const account of group.accounts) {
+      if (!publishAccountIds.has(account.id)) continue
+      const merged = resolveAccountConfig('iqiyi', account.id)
+
+      // 1. 标题:用 countCharsWithEmoji 复用 emoji=3 规则
+      const titleChars = countCharsWithEmoji(merged.title || '')
+      if (titleChars > 30) {
+        iqiyiTitleAccounts.push(
+          `${account.name}(爱奇艺) 标题 ${titleChars} 字符,超过 30`
+        )
+      }
+
+      // 2. 描述 + 标签拼接(同 baijiahao 已有拼接规则,前端 useAutoExtractHashtags
+      //    会把 #xxx 从描述抽到 tags,所以这里"描述+标签"即"最终填到文本框的总长")
+      const desc = merged.description || ''
+      const tags = merged.tags || []
+      const parts = [desc]
+      if (tags.length > 0) parts.push(tags.map(t => `#${t}`).join(' '))
+      const full = parts.filter(Boolean).join(' ').trim()
+      const charCount = countCharsWithEmoji(full)
+      if (charCount > 450) {
+        iqiyiDescAccounts.push(
+          `${account.name}(爱奇艺) 描述+标签共 ${charCount} 字符,超过 450`
+        )
+      }
+    }
+  }
+  if (iqiyiTitleAccounts.length > 0) {
+    errors.push({ type: '爱奇艺标题', accounts: iqiyiTitleAccounts })
+  }
+  if (iqiyiDescAccounts.length > 0) {
+    errors.push({ type: '爱奇艺描述/标签', accounts: iqiyiDescAccounts })
   }
 
   // ===== 百家号专属校验:描述+标签总字符 ≤ 50(emoji 按 3 算),最多 10 标签 =====

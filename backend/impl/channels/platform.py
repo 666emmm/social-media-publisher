@@ -1169,9 +1169,9 @@ class ChannelsPlatform(BasePlatform):
                         logger.info("[上传视频] 简介: %s", desc)
                         logger.info("[上传视频] 标签: %s", tags)
 
-                        browser = await self.create_browser(
-                            headless=False, humanize=True
-                        )
+                        # 无头模式发布;不开 humanize(no_viewport=True 与拟人化鼠标轨迹冲突,
+                        # 会抛 "Viewport size not available")
+                        browser = await self.create_browser(headless=True)
                         try:
                             context = await self.create_context(
                                 browser, storage_state=cookie_path

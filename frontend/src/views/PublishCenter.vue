@@ -256,6 +256,10 @@
                 <div class="setting-label" :style="{ color: currentPlatformConfig.color }">选择合集</div>
                 <ChannelsCollectionSelect :account-id="selectedAccountId" v-model="form.channelsCollectionName" :data="form.channelsCollectionData" @change="handleChannelsCollectionChange" />
               </div>
+              <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
+                <div class="setting-label" :style="{ color: currentPlatformConfig.color }">位置</div>
+                <ChannelsLocationSelect :account-id="selectedAccountId" v-model="form.channelsLocationName" :data="form.channelsLocationData" @change="handleChannelsLocationChange" />
+              </div>
             </template>
 
             <!-- settingsFields（排除已在通用字段渲染的） -->
@@ -550,6 +554,7 @@ import DouyinMixSelect from '@/components/douyin/MixSelect.vue'
 import XhsCollectionSelect from '@/components/xiaohongshu/CollectionSelect.vue'
 import BiliCollectionSelect from '@/components/bilibili/CollectionSelect.vue'
 import ChannelsCollectionSelect from '@/components/channels/CollectionSelect.vue'
+import ChannelsLocationSelect from '@/components/channels/LocationSelect.vue'
 import XhsPoiSelect from '@/components/xiaohongshu/PoiSelect.vue'
 import AlipayCompilationSelect from '@/components/alipay/CompilationSelect.vue'
 import PrePublishCheckDialog from '@/components/PrePublishCheckDialog.vue'
@@ -765,6 +770,9 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     // 视频号合集(账号级)
     channelsCollectionName: accountOv?.channelsCollectionName ?? platformOv?.channelsCollectionName ?? platformDefault?.channelsCollectionName ?? '',
     channelsCollectionData: accountOv?.channelsCollectionData ?? platformOv?.channelsCollectionData ?? platformDefault?.channelsCollectionData ?? null,
+    // 视频号位置(账号级,空=不显示位置)
+    channelsLocationName: accountOv?.channelsLocationName ?? platformOv?.channelsLocationName ?? platformDefault?.channelsLocationName ?? '',
+    channelsLocationData: accountOv?.channelsLocationData ?? platformOv?.channelsLocationData ?? platformDefault?.channelsLocationData ?? null,
   }
 }
 
@@ -805,7 +813,7 @@ const platformConfigs = reactive({
   xiaohongshu: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [], collectionId: '', collectionName: '', collectionData: null },
   kuaishou: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
   bilibili: { title: '', description: '', zone: '', tags: [], creationDeclaration: '', isOriginal: false, scheduleTime: '', videoFormat: '', biliCollectionName: '', biliCollectionData: null },
-  channels: { title: '', description: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [], channelsCollectionName: '', channelsCollectionData: null, location: '' },
+  channels: { title: '', description: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [], channelsCollectionName: '', channelsCollectionData: null, channelsLocationName: '', channelsLocationData: null },
   baijiahao: { title: '', description: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
   tiktok: { title: '', description: '', aiContent: false, isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
   youtube: { title: '', description: '', audience: 'not_kids', alteredContent: false, scheduleTime: '', videoFormat: '', tags: [] },
@@ -1097,6 +1105,15 @@ function handleChannelsCollectionChange(col) {
     form.channelsCollectionData = col
   } else {
     form.channelsCollectionData = null
+  }
+}
+
+// 视频号位置选择回调
+function handleChannelsLocationChange(loc) {
+  if (loc) {
+    form.channelsLocationData = loc
+  } else {
+    form.channelsLocationData = null
   }
 }
 
@@ -2071,8 +2088,8 @@ async function publishAll() {
         biliCollectionName: merged.biliCollectionName || '',
         // 视频号合集(账号级配置)
         channelsCollectionName: merged.channelsCollectionName || '',
-        // 视频号位置(平台级,空=不显示位置)
-        channelsLocationName: merged.location || '',
+        // 视频号位置(账号级,空=不显示位置)
+        channelsLocationName: merged.channelsLocationName || '',
         // 小红书合集(账号级配置):collectionId 给后端定位,collectionName 兜底匹配
         collectionId: merged.collectionId || '',
         collectionName: merged.collectionName || '',

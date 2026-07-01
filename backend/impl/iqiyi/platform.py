@@ -408,11 +408,8 @@ class IqiyiPlatform(BasePlatform):
                 await self._fill_title(page, title or desc)
 
                 # Step 4: Fill description (tags 以 #XXX 格式追加)
-                full_desc = desc or ""
-                if tags:
-                    tag_str = " ".join(f"#{t}" for t in tags)
-                    full_desc = f"{full_desc} {tag_str}".strip()
-                await self._fill_description(page, full_desc)
+                # _fill_description 内部负责「描述 + 标签」拼接 + 450 字符截断
+                await self._fill_description(page, desc or "", tags=tags or [])
 
                 # Step 5: Click cash activity if enabled
                 if enable_cash_activity:
@@ -487,11 +484,18 @@ class IqiyiPlatform(BasePlatform):
     # Form field helpers
     # ------------------------------------------------------------------
 
+    # 爱奇艺平台硬性字符上限
+    TITLE_MAX_LEN = 30
+    DESC_MAX_LEN = 450  # 描述文本框最大字符数(包含 #xxx 标签的总长度)
+
     @staticmethod
     async def _fill_title(page, title: str):
-        """Fill the video title."""
+        """Fill the video title. 爱奇艺标题上限 30 字符。"""
         if not title:
             return
+
+        # 截断到 30 字符(iqiyi TITLE_MAX_LEN)
+        safe_title = title[: IqiyiPlatform.TITLE_MAX_LEN]
 
         # Target: input.catalog-desc-title-input input[type="text"]
         # or just find by placeholder
@@ -513,13 +517,61 @@ class IqiyiPlatform(BasePlatform):
 
         # 清空后输入(跨平台:Mac 用 Cmd+A,其他用 Ctrl+A)
         # 传 element= 让 clear_and_type 走 fill('') 稳定路径(原生 <input> 元素)
-        await clear_and_type(page, title[:30], element=title_input)
-        logger.info("[填写标题] 标题已填写: %s", title[:30])
+        await clear_and_type(page, safe_title, element=title_input)
+        if len(title) > IqiyiPlatform.TITLE_MAX_LEN:
+            logger.warning(
+                "[填写标题] 标题超 %d 字符,已截断 (原 %d 字符)",
+                IqiyiPlatform.TITLE_MAX_LEN, len(title),
+            )
+        logger.info("[填写标题] 标题已填写: %s", safe_title)
 
     @staticmethod
-    async def _fill_description(page, desc: str):
-        """Fill the video description."""
-        if not desc:
+    def _compose_description(desc: str, tags, limit: int):
+        """拼接「描述 + #xxx 标签」,保证总长不超过 limit。
+
+        策略:描述优先,标签后补。贪心从前往后放标签,放不下则砍掉最后一个,
+        直到总长 ≤ limit 为止。如果描述本身已超 limit,截断描述,放弃所有标签。
+
+        Returns:
+            (full_text, included_tags)  -- included_tags 是实际塞进文本的标签子集
+        """
+        desc = desc or ""
+        if not tags:
+            return desc[:limit], []
+        # 先尝试全量
+        for n in range(len(tags), 0, -1):
+            tag_str = " ".join(f"#{t}" for t in tags[:n])
+            candidate = f"{desc} {tag_str}".strip()
+            if len(candidate) <= limit:
+                if n < len(tags):
+                    logger.warning(
+                        "[填写简介] 描述总长 %d 字符 + %d 个标签(共 %d)将超 %d,"
+                        "仅保留前 %d 个标签 (%s)",
+                        len(desc), len(tags), len(candidate), limit, n,
+                        [t for t in tags[:n]],
+                    )
+                return candidate, list(tags[:n])
+        # 一个标签都放不下:截断描述,放弃所有标签
+        truncated = desc[:limit]
+        logger.warning(
+            "[填写简介] 描述本身已 %d 字符,放不下任何 #xxx 标签,已截断描述",
+            len(desc),
+        )
+        return truncated, []
+
+    @staticmethod
+    async def _fill_description(page, desc: str, tags=None):
+        """Fill the video description. 爱奇艺描述上限 450 字符(包含 #xxx 标签)。
+
+        Args:
+            page: Playwright 页面
+            desc: 原始描述文本(不应包含 #xxx,前端 useAutoExtractHashtags 会抽取)
+            tags: 标签列表(裸字符串,不含 #),会拼成 "#t1 #t2..." 追加到描述末尾
+        """
+        full_text, _included = IqiyiPlatform._compose_description(
+            desc, tags or [], IqiyiPlatform.DESC_MAX_LEN
+        )
+        if not full_text:
             return
 
         desc_textarea = page.locator(
@@ -535,8 +587,8 @@ class IqiyiPlatform(BasePlatform):
 
         # 清空后输入(跨平台:Mac 用 Cmd+A,其他用 Ctrl+A)
         # 传 element= 让 clear_and_type 走 fill('') 稳定路径(原生 <textarea> 元素)
-        await clear_and_type(page, desc[:450], element=desc_textarea)
-        logger.info("[填写简介] Description filled: %s", desc[:50])
+        await clear_and_type(page, full_text, element=desc_textarea)
+        logger.info("[填写简介] Description filled: %s", full_text[:50])
 
     @staticmethod
     async def _set_creation_declaration(page, declaration: str):

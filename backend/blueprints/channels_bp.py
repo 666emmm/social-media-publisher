@@ -113,8 +113,8 @@ async def _fetch_collections_via_browser(cookie_file: str) -> dict:
     """
     cookie_path = _get_cookie_path(cookie_file)
 
-    # 开发阶段:有头模式
-    browser = await create_browser(headless=False)
+    # 无头模式:不弹浏览器窗口
+    browser = await create_browser(headless=True)
     try:
         context = await create_context(browser, storage_state=cookie_path)
         try:
@@ -235,8 +235,8 @@ async def _fetch_locations_via_browser(cookie_file: str, keyword: str) -> dict:
     """
     cookie_path = _get_cookie_path(cookie_file)
 
-    # 开发阶段:有头模式
-    browser = await create_browser(headless=False)
+    # 无头模式:不弹浏览器窗口
+    browser = await create_browser(headless=True)
     try:
         context = await create_context(browser, storage_state=cookie_path)
         try:

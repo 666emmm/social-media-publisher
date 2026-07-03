@@ -238,7 +238,17 @@
             <template v-if="selectedPlatform === 'xiaohongshu' && selectedAccountId">
               <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
                 <div class="setting-label" :style="{ color: currentPlatformConfig.color }">加入合集</div>
-                <XhsCollectionSelect :account-id="selectedAccountId" v-model="form.collectionName" :data="form.collectionData" @change="handleXhsCollectionChange" />
+                <RemoteSearchSelect
+                  v-model="form.collectionName"
+                  :data="form.collectionData"
+                  :fetcher="fetchXhsCollections"
+                  :field-map="xhsCollectionFieldMap"
+                  search-mode="frontend"
+                  empty-behavior="load-all"
+                  placeholder="输入合集名称搜索"
+                  search-placeholder="输入合集名称,按回车搜索"
+                  @change="handleXhsCollectionChange"
+                />
               </div>
             </template>
 
@@ -557,7 +567,9 @@ import ChannelsCollectionSelect from '@/components/channels/CollectionSelect.vue
 import ChannelsLocationSelect from '@/components/channels/LocationSelect.vue'
 import XhsPoiSelect from '@/components/xiaohongshu/PoiSelect.vue'
 import AlipayCompilationSelect from '@/components/alipay/CompilationSelect.vue'
+import RemoteSearchSelect from '@/components/common/RemoteSearchSelect.vue'
 import PrePublishCheckDialog from '@/components/PrePublishCheckDialog.vue'
+import { xhsApi } from '@/api/xiaohongshu'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useBatchSetApply } from '@/composables/useBatchSetApply'
 import { frameApi } from '@/api/frame'
@@ -1078,6 +1090,24 @@ function handleXhsCollectionChange(col) {
     form.collectionId = ''
     form.collectionData = null
   }
+}
+
+// 小红书合集 —— RemoteSearchSelect 数据源与字段映射
+// 后端一次返回全量合集,前端按关键词过滤(searchMode=frontend + load-all)
+async function fetchXhsCollections(keyword) {
+  const resp = await xhsApi.getCollections(selectedAccountId.value)
+  const all = resp.data?.list || []
+  const kw = keyword?.trim().toLowerCase()
+  return {
+    list: kw ? all.filter(c => c.name?.toLowerCase().includes(kw)) : all
+  }
+}
+const xhsCollectionFieldMap = {
+  label: 'name',
+  key: 'id',
+  desc: (item) => item.note_num != null
+    ? (item.note_num > 0 ? `共 ${item.note_num} 篇` : '暂无内容')
+    : ''
 }
 
 // 小红书拍摄地点(POI)选择回调:存完整对象到 <key>Data,publishData 取 poi 名称

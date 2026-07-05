@@ -157,39 +157,10 @@
             </div>
           </div>
 
-          <!-- 视频格式 + 标签 各占50% -->
-          <div class="settings-grid" style="grid-template-columns: 1fr 1fr;">
-            <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
-              <div class="setting-label" :style="{ color: currentPlatformConfig.color }">视频格式</div>
-              <div class="radio-row">
-                <label
-                  v-for="opt in videoFormatOptions"
-                  :key="opt.value"
-                  :class="['radio-item', 'cursor-pointer', { disabled: opt.disabled }]"
-                >
-                  <input
-                    type="radio"
-                    :name="(selectedAccountId || selectedPlatform) + '-videoFormat'"
-                    :value="opt.value"
-                    v-model="form.videoFormat"
-                    :disabled="opt.disabled"
-                    class="cursor-pointer"
-                  />
-                  <span
-                    :class="['radio-text', { on: form.videoFormat === opt.value, muted: opt.disabled }]"
-                    :style="form.videoFormat === opt.value ? { borderColor: currentPlatformConfig.color, background: currentPlatformConfig.color, color: '#fff' } : {}"
-                  >{{ opt.label }}</span>
-                </label>
-              </div>
-              <div v-if="!commonConfig.videoLandscape && !commonConfig.videoPortrait" class="setting-desc" style="font-size: 12px;">
-                请先上传视频
-              </div>
-            </div>
-
-            <!-- 通用标签输入 -->
-            <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
-              <div class="setting-label" :style="{ color: currentPlatformConfig.color }">标签</div>
-              <div class="setting-hint">{{ selectedPlatform === 'douyin' ? '官方活动 + 标签最多 5 个，按回车确认' : selectedPlatform === 'kuaishou' ? '输入标签内容，按回车确认（最多 4 个）' : '输入标签内容，按回车确认' }}</div>
+          <!-- 通用标签输入 -->
+          <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
+            <div class="setting-label" :style="{ color: currentPlatformConfig.color }">标签</div>
+            <div class="setting-hint">{{ selectedPlatform === 'douyin' ? '官方活动 + 标签最多 5 个，按回车确认' : selectedPlatform === 'kuaishou' ? '输入标签内容，按回车确认（最多 4 个）' : '输入标签内容，按回车确认' }}</div>
               <el-input
                 v-model="tagInput"
                 placeholder="输入标签内容，按回车添加"
@@ -206,7 +177,6 @@
                   :disable-transitions="false"
                 >#{{ tag }}</el-tag>
               </div>
-            </div>
           </div>
 
           <!-- 平台特有配置（抖音专属卡片 + settingsFields 合并到同一网格） -->
@@ -220,7 +190,16 @@
 
               <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
                 <div class="setting-label" :style="{ color: currentPlatformConfig.color }">关联热点</div>
-                <DouyinHotspotSelect v-model="form.hotspotId" :data="form.hotspotData" @change="handleDouyinHotspotChange" />
+                <RemoteSearchSelect
+                  v-model="form.hotspotId"
+                  :data="form.hotspotData"
+                  :fetcher="fetchDouyinHotspots"
+                  :field-map="douyinHotspotFieldMap"
+                  search-mode="backend"
+                  placeholder="输入热点词搜索"
+                  search-placeholder="输入热点词,按回车搜索"
+                  @change="handleDouyinHotspotChange"
+                />
               </div>
 
               <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
@@ -230,7 +209,16 @@
 
               <div v-if="selectedAccountId" class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
                 <div class="setting-label" :style="{ color: currentPlatformConfig.color }">添加合集</div>
-                <DouyinMixSelect :account-id="selectedAccountId" v-model="form.mixId" :data="form.mixData" @change="handleDouyinMixChange" />
+                <RemoteSearchSelect
+                  v-model="form.mixId"
+                  :data="form.mixData"
+                  :fetcher="fetchDouyinMixes"
+                  :field-map="{ label: 'mix_name', key: 'mix_id', desc: 'desc', cover: 'cover_url.url_list.0' }"
+                  search-mode="frontend"
+                  empty-behavior="load-all"
+                  placeholder="选择合集"
+                  @change="handleDouyinMixChange"
+                />
               </div>
             </template>
 
@@ -256,7 +244,17 @@
             <template v-if="selectedPlatform === 'bilibili' && selectedAccountId">
               <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
                 <div class="setting-label" :style="{ color: currentPlatformConfig.color }">选择合集</div>
-                <BiliCollectionSelect :account-id="selectedAccountId" v-model="form.biliCollectionName" :data="form.biliCollectionData" @change="handleBiliCollectionChange" />
+                <RemoteSearchSelect
+                  v-model="form.biliCollectionName"
+                  :data="form.biliCollectionData"
+                  :fetcher="fetchBiliCollections"
+                  :field-map="{ label: 'name' }"
+                  search-mode="frontend"
+                  empty-behavior="load-all"
+                  placeholder="输入合集名称搜索"
+                  search-placeholder="输入合集名称,按回车搜索"
+                  @change="handleBiliCollectionChange"
+                />
               </div>
             </template>
 
@@ -264,11 +262,31 @@
             <template v-if="selectedPlatform === 'channels' && selectedAccountId">
               <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
                 <div class="setting-label" :style="{ color: currentPlatformConfig.color }">选择合集</div>
-                <ChannelsCollectionSelect :account-id="selectedAccountId" v-model="form.channelsCollectionName" :data="form.channelsCollectionData" @change="handleChannelsCollectionChange" />
+                <RemoteSearchSelect
+                  v-model="form.channelsCollectionName"
+                  :data="form.channelsCollectionData"
+                  :fetcher="fetchChannelsCollections"
+                  :field-map="{ label: 'name' }"
+                  search-mode="frontend"
+                  empty-behavior="load-all"
+                  placeholder="输入合集名称搜索"
+                  search-placeholder="输入合集名称,按回车搜索"
+                  @change="handleChannelsCollectionChange"
+                />
               </div>
               <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
                 <div class="setting-label" :style="{ color: currentPlatformConfig.color }">位置</div>
-                <ChannelsLocationSelect :account-id="selectedAccountId" v-model="form.channelsLocationName" :data="form.channelsLocationData" @change="handleChannelsLocationChange" />
+                <RemoteSearchSelect
+                  v-model="form.channelsLocationName"
+                  :data="form.channelsLocationData"
+                  :fetcher="fetchChannelsLocations"
+                  :field-map="{ label: 'name', desc: 'desc' }"
+                  search-mode="backend"
+                  empty-behavior="block"
+                  placeholder="输入位置关键词搜索"
+                  search-placeholder="输入位置关键词,按回车搜索"
+                  @change="handleChannelsLocationChange"
+                />
               </div>
             </template>
 
@@ -391,11 +409,16 @@
                     filterable
                     class="cursor-pointer weibo-cascader"
                   />
-                  <AlipayCompilationSelect
+                  <RemoteSearchSelect
                     v-else-if="field.type === 'compilationSelect'"
-                    :account-id="selectedAccountId"
-                    :platform="selectedPlatform === 'toutiao' ? 'toutiao' : 'alipay'"
                     v-model="form[field.key]"
+                    :data="form.compilationData"
+                    :fetcher="fetchCompilation"
+                    :field-map="compilationFieldMap"
+                    search-mode="backend"
+                    empty-behavior="clear"
+                    placeholder="输入合集名称搜索"
+                    search-placeholder="输入合集名称,按回车搜索"
                     @change="(val) => handleAlipayCompilationChange(field.key, val)"
                   />
                 </div>
@@ -429,14 +452,6 @@
         <div class="phone-panel-header">
           <span class="phone-panel-title">视频预览</span>
         </div>
-        <div class="phone-mode-tabs">
-          <button :class="['mode-tab', { active: videoModeTab === 'portrait' }]" @click="videoModeTab = 'portrait'">
-            <span class="mode-icon-portrait"></span> 竖版 {{ appStore.portraitRatio }}
-          </button>
-          <button :class="['mode-tab', { active: videoModeTab === 'landscape' }]" @click="videoModeTab = 'landscape'">
-            <span class="mode-icon-landscape"></span> 横版 {{ appStore.landscapeRatio }}
-          </button>
-        </div>
         <div class="phone-preview-area">
           <div :class="['phone-mockup', videoModeTab]">
             <div class="phone-notch"></div>
@@ -450,9 +465,9 @@
                 ></video>
               </template>
               <template v-else>
-                <div class="phone-empty" @click="triggerUploadVideo(videoModeTab)">
+                <div class="phone-empty" @click="triggerUploadVideo()">
                   <el-icon :size="28"><Upload /></el-icon>
-                  <span>上传{{ videoModeTab === 'portrait' ? '竖版' : '横版' }}视频</span>
+                  <span>上传视频</span>
                 </div>
               </template>
             </div>
@@ -460,16 +475,16 @@
           </div>
         </div>
         <div class="phone-panel-actions">
-          <button class="cover-action-btn primary" @click="triggerUploadVideo(videoModeTab)">
+          <button class="cover-action-btn primary" @click="triggerUploadVideo()">
             <el-icon :size="14"><Upload /></el-icon><span>本地上传</span>
           </button>
-          <button class="cover-action-btn" @click="selectFromLibrary('video', videoModeTab)">
+          <button class="cover-action-btn" @click="selectFromLibrary('video')">
             <el-icon :size="14"><Picture /></el-icon><span>素材库</span>
           </button>
         </div>
         <div v-if="currentVideoData" class="phone-panel-info">
           <span class="phone-info-name">{{ currentVideoData.name }}</span>
-          <button class="phone-info-remove" @click="clearVideo(videoModeTab)">
+          <button class="phone-info-remove" @click="clearVideo()">
             <el-icon :size="12"><Delete /></el-icon>
           </button>
         </div>
@@ -494,7 +509,7 @@
       accept="video/*"
       :max-size="null"
       :multiple="false"
-      :title="'上传' + (videoUploadTarget === 'portrait' ? '竖版' : '横版') + '视频'"
+      :title="'上传视频'"
       tip="支持 MP4、AVI、MKV 等视频格式，不限大小"
       @uploaded="onVideoUploaded"
     />
@@ -558,18 +573,16 @@ import MaterialSelectDialog from '@/components/MaterialSelectDialog.vue'
 import MaterialUploader from '@/components/MaterialUploader.vue'
 import OneClickFillDialog from '@/components/OneClickFillDialog.vue'
 import DouyinActivitySelect from '@/components/douyin/ActivitySelect.vue'
-import DouyinHotspotSelect from '@/components/douyin/HotspotSelect.vue'
 import DouyinTagSelect from '@/components/douyin/TagSelect.vue'
-import DouyinMixSelect from '@/components/douyin/MixSelect.vue'
-import XhsCollectionSelect from '@/components/xiaohongshu/CollectionSelect.vue'
-import BiliCollectionSelect from '@/components/bilibili/CollectionSelect.vue'
-import ChannelsCollectionSelect from '@/components/channels/CollectionSelect.vue'
-import ChannelsLocationSelect from '@/components/channels/LocationSelect.vue'
+import { channelsApi } from '@/api/channels'
 import XhsPoiSelect from '@/components/xiaohongshu/PoiSelect.vue'
-import AlipayCompilationSelect from '@/components/alipay/CompilationSelect.vue'
 import RemoteSearchSelect from '@/components/common/RemoteSearchSelect.vue'
 import PrePublishCheckDialog from '@/components/PrePublishCheckDialog.vue'
 import { xhsApi } from '@/api/xiaohongshu'
+import { biliApi } from '@/api/bilibili'
+import { douyinImageApi } from '@/api/douyinImage'
+import { alipayApi } from '@/api/alipay'
+import { toutiaoApi } from '@/api/toutiao'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useBatchSetApply } from '@/composables/useBatchSetApply'
 import { frameApi } from '@/api/frame'
@@ -609,8 +622,9 @@ const accountGroups = computed(() => {
 
 const totalCount = computed(() => accountStore.accounts.length)
 
+// 当前预览视频:横版优先,无则取竖版(发布时不再区分横竖,上传了即可发)
 const currentVideoData = computed(() =>
-  videoModeTab.value === 'portrait' ? currentEditTarget.value.videoPortrait : currentEditTarget.value.videoLandscape
+  currentEditTarget.value.videoLandscape || currentEditTarget.value.videoPortrait
 )
 
 const currentPlatformConfig = computed(() =>
@@ -719,7 +733,6 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     videoLandscape: accountOv?.videoLandscape ?? platformOv?.videoLandscape ?? common.videoLandscape,
     videoPortrait:  accountOv?.videoPortrait  ?? platformOv?.videoPortrait  ?? common.videoPortrait,
     // 平台特有字段走 platformDefault 兜底
-    videoFormat: accountOv?.videoFormat ?? platformOv?.videoFormat ?? platformDefault?.videoFormat ?? '',
     enableTimer: accountOv?.enableTimer ?? platformOv?.enableTimer ?? platformDefault?.enableTimer ?? 0,
     scheduleTime: accountOv?.scheduleTime ?? platformOv?.scheduleTime ?? platformDefault?.scheduleTime ?? '',
     aiContent: accountOv?.aiContent ?? platformOv?.aiContent ?? platformDefault?.aiContent ?? '',
@@ -810,7 +823,11 @@ function onEditorUpdate({ coverLandscape, coverPortrait }) {
 const coverEditorRef = ref(null)
 const landscapeFrames = ref([])
 const portraitFrames = ref([])
-const videoModeTab = ref('portrait')
+// 预览区 mockup 比例:根据当前视频方向自动推导(horizontal→横版,其余→竖版)
+// 不再需要用户手动切换 tab;无视频时默认竖版
+const videoModeTab = computed(() =>
+  currentVideoData.value?.orientation === 'horizontal' ? 'landscape' : 'portrait'
+)
 
 const portraitCoverFrames = computed(() =>
   portraitFrames.value.length > 0 ? portraitFrames.value : landscapeFrames.value
@@ -821,20 +838,20 @@ const landscapeCoverFrames = computed(() =>
 
 // ========== Per-platform Config ==========
 const platformConfigs = reactive({
-  douyin: { title: '', description: '', tags: [], aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', activityId: [], hotspotId: '', hotspotData: null, selectedTag: null, tagType: '', tagValue: '', mixId: '', mixData: null },
-  xiaohongshu: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [], collectionId: '', collectionName: '', collectionData: null },
-  kuaishou: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
-  bilibili: { title: '', description: '', zone: '', tags: [], creationDeclaration: '', isOriginal: false, scheduleTime: '', videoFormat: '', biliCollectionName: '', biliCollectionData: null },
-  channels: { title: '', description: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [], channelsCollectionName: '', channelsCollectionData: null, channelsLocationName: '', channelsLocationData: null },
-  baijiahao: { title: '', description: '', isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
-  tiktok: { title: '', description: '', aiContent: false, isOriginal: false, scheduleTime: '', videoFormat: '', tags: [] },
-  youtube: { title: '', description: '', audience: 'not_kids', alteredContent: false, scheduleTime: '', videoFormat: '', tags: [] },
-  iqiyi: { title: '', description: '', creationDeclaration: '', riskWarning: '', enableCashActivity: false, scheduleTime: '', videoFormat: '', tags: [] },
-  tencent_video: { title: '', description: '', creationDeclaration: [], scheduleTime: '', videoFormat: '', tags: [] },
+  douyin: { title: '', description: '', tags: [], aiContent: '', isOriginal: false, scheduleTime: '', activityId: [], hotspotId: '', hotspotData: null, selectedTag: null, tagType: '', tagValue: '', mixId: '', mixData: null },
+  xiaohongshu: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', tags: [], collectionId: '', collectionName: '', collectionData: null },
+  kuaishou: { title: '', description: '', aiContent: '', isOriginal: false, scheduleTime: '', tags: [] },
+  bilibili: { title: '', description: '', zone: '', tags: [], creationDeclaration: '', isOriginal: false, scheduleTime: '', biliCollectionName: '', biliCollectionData: null },
+  channels: { title: '', description: '', isOriginal: false, scheduleTime: '', tags: [], channelsCollectionName: '', channelsCollectionData: null, channelsLocationName: '', channelsLocationData: null },
+  baijiahao: { title: '', description: '', isOriginal: false, scheduleTime: '', tags: [] },
+  tiktok: { title: '', description: '', aiContent: false, isOriginal: false, scheduleTime: '', tags: [] },
+  youtube: { title: '', description: '', audience: 'not_kids', alteredContent: false, scheduleTime: '', tags: [] },
+  iqiyi: { title: '', description: '', creationDeclaration: '', riskWarning: '', enableCashActivity: false, scheduleTime: '', tags: [] },
+  tencent_video: { title: '', description: '', creationDeclaration: [], scheduleTime: '', tags: [] },
   weibo: { title: '', description: '', videoType: '', weiboCategory: [], contentStatement: '', tags: [] },
-  alipay: { title: '', description: '', authorStatement: '', compilation: '', scheduleTime: '', videoFormat: '', tags: [] },
-  toutiao: { title: '', description: '', creationDeclaration: [], enableGenerateImage: true, collection: '', extendLink: false, extendLinkUrl: '', scheduleTime: '', videoFormat: '', tags: [] },
-  zhihu: { title: '', description: '', creationDeclaration: '内容无需标注', category: '', scheduleTime: '', videoFormat: '', tags: [] },
+  alipay: { title: '', description: '', authorStatement: '', compilation: '', scheduleTime: '', tags: [] },
+  toutiao: { title: '', description: '', creationDeclaration: [], enableGenerateImage: true, collection: '', extendLink: false, extendLinkUrl: '', scheduleTime: '', tags: [] },
+  zhihu: { title: '', description: '', creationDeclaration: '内容无需标注', category: '', scheduleTime: '', tags: [] },
 })
 
 const accountOverrides = reactive({})
@@ -842,22 +859,6 @@ const accountOverrides = reactive({})
 const currentSettings = computed(() =>
   selectedPlatform.value ? platformConfigs[selectedPlatform.value] || {} : {}
 )
-
-// ========== Video Format Helpers ==========
-const videoFormatOptions = computed(() => {
-  const hasLandscape = !!commonConfig.videoLandscape
-  const hasPortrait = !!commonConfig.videoPortrait
-  return [
-    { label: '横版', value: 'landscape', disabled: !hasLandscape && hasPortrait },
-    { label: '竖版', value: 'portrait', disabled: !hasPortrait && hasLandscape },
-  ]
-})
-
-const effectiveVideoFormat = computed(() => {
-  if (commonConfig.videoLandscape && !commonConfig.videoPortrait) return 'landscape'
-  if (commonConfig.videoPortrait && !commonConfig.videoLandscape) return 'portrait'
-  return ''
-})
 
 // ========== Account-level Settings Merging ==========
 function getAccountSettings(accountId, platformKey) {
@@ -1046,6 +1047,23 @@ function handleDouyinHotspotChange(hotspot) {
   }
 }
 
+// 抖音关联热点 —— RemoteSearchSelect 数据源(后端搜索模式,必须传 keyword)
+async function fetchDouyinHotspots(keyword) {
+  const resp = await douyinImageApi.searchHotspot(selectedAccountId.value || '', keyword || '')
+  return { list: resp.data?.sentences || [] }
+}
+// 热点字段映射:word 标题,hot_value 派生热度文案,word_cover.url_list.0 嵌套封面
+const douyinHotspotFieldMap = {
+  label: 'word',
+  key: 'sentence_id',
+  desc: (item) => item.hot_value ? `热度 ${formatHotValue(item.hot_value)}` : '',
+  cover: 'word_cover.url_list.0'
+}
+function formatHotValue(value) {
+  if (!value) return '0'
+  return value >= 10000 ? (value / 10000).toFixed(1) + '万' : String(value)
+}
+
 function handleDouyinTagSelect(tag) {
   if (tag) {
     form.selectedTag = tag
@@ -1078,6 +1096,46 @@ function handleAlipayCompilationChange(fieldKey, comp) {
   } else {
     form.compilationData = null
   }
+}
+
+// B站合集 —— RemoteSearchSelect 数据源(前端过滤模式)
+async function fetchBiliCollections(keyword) {
+  const resp = await biliApi.getCollections(selectedAccountId.value)
+  const all = resp.data?.list || []
+  const kw = keyword?.trim().toLowerCase()
+  return {
+    list: kw ? all.filter(c => c.name?.toLowerCase().includes(kw)) : all
+  }
+}
+
+// 抖音合集(mix)—— RemoteSearchSelect 数据源(前端过滤模式,空关键词清空)
+async function fetchDouyinMixes(keyword) {
+  const resp = await douyinImageApi.getMixList(selectedAccountId.value)
+  const all = resp.data?.mix_list || []
+  const kw = keyword?.trim().toLowerCase()
+  return {
+    list: kw ? all.filter(m => m.mix_name?.toLowerCase().includes(kw)) : all
+  }
+}
+
+// 支付宝/头条合集(compilation)—— RemoteSearchSelect 数据源(后端搜索模式)
+// 按 selectedPlatform 切换 api:头条用 toutiaoApi,其余用 alipayApi
+async function fetchCompilation(keyword) {
+  const api = selectedPlatform.value === 'toutiao' ? toutiaoApi : alipayApi
+  const resp = await api.searchCompilation(selectedAccountId.value, keyword || '')
+  return { list: resp.data?.list || [] }
+}
+// compilation 字段映射:title 主标题,category+total 派生描述,coverUrl 扁平封面
+const compilationFieldMap = {
+  label: 'title',
+  key: 'compilationId',
+  desc: (item) => {
+    const parts = []
+    if (item.category) parts.push(item.category)
+    if (item.total != null) parts.push(`${item.total} 个内容`)
+    return parts.join(' · ')
+  },
+  cover: 'coverUrl'
 }
 
 // 小红书合集选择回调:v-model 已把 collectionName 绑到 form.collectionName,
@@ -1145,6 +1203,22 @@ function handleChannelsLocationChange(loc) {
   } else {
     form.channelsLocationData = null
   }
+}
+
+// 视频号合集 —— RemoteSearchSelect 数据源(前端过滤模式,后端一次返回全量)
+async function fetchChannelsCollections(keyword) {
+  const resp = await channelsApi.getCollections(selectedAccountId.value)
+  const all = resp.data?.list || []
+  const kw = keyword?.trim().toLowerCase()
+  return {
+    list: kw ? all.filter(c => c.name?.toLowerCase().includes(kw)) : all
+  }
+}
+
+// 视频号位置 —— RemoteSearchSelect 数据源(后端搜索模式,必须传 keyword)
+async function fetchChannelsLocations(keyword) {
+  const resp = await channelsApi.getLocations(selectedAccountId.value, keyword || '')
+  return { list: resp.data?.list || [] }
 }
 
 // ========== Init ==========
@@ -1252,14 +1326,16 @@ function onAccountConfirm(ids) {
 
 // ========== Upload Methods ==========
 
-function triggerUploadVideo(target = 'landscape') {
-  videoUploadTarget.value = target
+function triggerUploadVideo() {
+  // 统一上传入口:写入主字段 videoLandscape(onVideoUploaded 内固定)
+  videoUploadTarget.value = 'landscape'
   videoUploadDialogVisible.value = true
 }
 
-function clearVideo(type) {
-  if (type === 'landscape') currentEditTarget.value.videoLandscape = null
-  else currentEditTarget.value.videoPortrait = null
+function clearVideo() {
+  // 移除横竖区分:同时清两个视频字段
+  currentEditTarget.value.videoLandscape = null
+  currentEditTarget.value.videoPortrait = null
 }
 
 // ========== Cover Editor ==========
@@ -1396,16 +1472,6 @@ function onMaterialSelect(material) {
   }
 }
 
-// Auto-select video format
-watch(effectiveVideoFormat, (format) => {
-  if (format && selectedPlatform.value && !currentSettings.value?.videoFormat) {
-    const platformKey = selectedPlatform.value
-    if (platformConfigs[platformKey]) {
-      platformConfigs[platformKey].videoFormat = format
-    }
-  }
-})
-
 // Watch content changes
 watch(commonConfig, () => { hasChanges.value = true }, { deep: true })
 watch(platformConfigs, () => { hasChanges.value = true }, { deep: true })
@@ -1439,7 +1505,6 @@ async function saveDraft() {
       selectedPlatform: selectedPlatform.value,
       selectedAccountId: selectedAccountId.value,
       expandedGroups: [...expandedGroups.value],
-      videoModeTab: videoModeTab.value,
     }
 
     if (currentDraftId.value) {
@@ -1568,8 +1633,11 @@ async function restoreDraft(draftId) {
       selectedAccountId.value = dd.selectedAccountId
     }
 
-    if (dd.videoModeTab) {
-      videoModeTab.value = dd.videoModeTab
+    // 旧草稿兼容:清除残留的 videoFormat(videoModeTab 已废弃,由视频方向自动推导)
+    if (dd.platformConfigs) {
+      for (const key of Object.keys(dd.platformConfigs)) {
+        if (dd.platformConfigs[key]) delete dd.platformConfigs[key].videoFormat
+      }
     }
 
     currentDraftId.value = draftId
@@ -1661,11 +1729,10 @@ async function publishAll() {
     errors.push({ type: '封面', accounts: ['所有账号都缺封面，请上传至少一张'] })
   }
 
-  // 2. 作品声明 + 标题 + 视频格式 + 封面 per-account
+  // 2. 作品声明 + 标题 + 封面 per-account
   const accountsWithoutDeclaration = []
   const accountsWithoutTitle = []
-  const accountsWithoutCover = []  // 格式: '账号X(平台Y)' 或 '账号X(平台Y) 缺竖版封面'
-  const accountsWithoutVideoFormat = []
+  const accountsWithoutCover = []  // 格式: '账号X(平台Y)'
   const DECLARATION_PLATFORMS = {
     xiaohongshu: 'aiContent',
     douyin: 'aiContent',
@@ -1709,26 +1776,15 @@ async function publishAll() {
         accountsWithoutTitle.push(`${account.name}(${group.name})`)
       }
 
-      // 2c. 视频格式
-      if (!merged.videoFormat) {
-        accountsWithoutVideoFormat.push(`${account.name}(${group.name})`)
-      }
-
-      // 2d. 封面 per-account
-      const videoFormat = merged.videoFormat || ''
+      // 2c. 封面 per-account(横竖任一即可,不再按视频格式区分)
       if (!merged.coverLandscape && !merged.coverPortrait) {
         accountsWithoutCover.push(`${account.name}(${group.name})`)
-      } else if (videoFormat === 'portrait' && !merged.coverPortrait) {
-        accountsWithoutCover.push(`${account.name}(${group.name}) 缺竖版封面`)
-      } else if (videoFormat === 'landscape' && !merged.coverLandscape) {
-        accountsWithoutCover.push(`${account.name}(${group.name}) 缺横版封面`)
       }
     }
   }
 
   if (accountsWithoutDeclaration.length > 0) errors.push({ type: '作品声明', accounts: accountsWithoutDeclaration })
   if (accountsWithoutTitle.length > 0) errors.push({ type: '标题', accounts: accountsWithoutTitle })
-  if (accountsWithoutVideoFormat.length > 0) errors.push({ type: '视频格式', accounts: accountsWithoutVideoFormat })
   if (accountsWithoutCover.length > 0) errors.push({ type: '封面', accounts: accountsWithoutCover })
 
   // 3. 视频时长/大小校验
@@ -1740,12 +1796,8 @@ async function publishAll() {
       const merged = resolveAccountConfig(group.key, account.id)
       const platformKey = group.key
 
-      // 取有效视频（按 videoFormat 或兜底）
-      const fmt = merged.videoFormat
-      let video = null
-      if (fmt === 'landscape') video = merged.videoLandscape
-      else if (fmt === 'portrait') video = merged.videoPortrait
-      else video = merged.videoLandscape || merged.videoPortrait
+      // 取有效视频:横版优先,无则竖版(不再依赖 videoFormat)
+      const video = merged.videoLandscape || merged.videoPortrait
 
       if (!video || !video.duration || video.duration === 0) {
         // 未上传视频的账号：跳过（必填标题会先拦住）
@@ -2031,25 +2083,17 @@ async function publishAll() {
     // DEBUG: dump merged 关键字段，便于排查前端到底有没有 category
     console.log('[ZHIHU DEBUG] platform=' + group.key + ' form.category=' + JSON.stringify(form.category) + ' platformConfigs[zhihu].category=' + JSON.stringify(platformConfigs['zhihu']?.category) + ' accountOverrides[account.id]?.category=' + JSON.stringify(accountOverrides[account.id]?.category) + ' merged.category=' + JSON.stringify(merged.category))
 
-    const videoFormat = merged.videoFormat || ''
-
-    let selectedVideo
-    if (videoFormat === 'portrait') {
-      selectedVideo = merged.videoPortrait || commonConfig.videoPortrait
-    } else if (videoFormat === 'landscape') {
-      selectedVideo = merged.videoLandscape || commonConfig.videoLandscape
-    } else {
-      selectedVideo = merged.videoLandscape || commonConfig.videoLandscape || merged.videoPortrait || commonConfig.videoPortrait
-    }
+    // 取发布视频:横版优先,无则竖版(不再区分横竖,上传了即可发)
+    const selectedVideo = merged.videoLandscape || commonConfig.videoLandscape || merged.videoPortrait || commonConfig.videoPortrait
 
     // [DEBUG 2026-06-10] 详细日志：把 4 级合并后的视频相关字段都打出来
-    console.log('[PublishCenter.publish.account] account=' + account.name + ' platform=' + group.key + ' videoFormat=' + videoFormat + ' merged.videoLandscape.id=' + (merged.videoLandscape && merged.videoLandscape.id) + ' merged.videoPortrait.id=' + (merged.videoPortrait && merged.videoPortrait.id) + ' commonConfig.videoLandscape.id=' + (commonConfig.videoLandscape && commonConfig.videoLandscape.id) + ' commonConfig.videoPortrait.id=' + (commonConfig.videoPortrait && commonConfig.videoPortrait.id) + ' selectedVideo.id=' + (selectedVideo && selectedVideo.id))
+    console.log('[PublishCenter.publish.account] account=' + account.name + ' platform=' + group.key + ' merged.videoLandscape.id=' + (merged.videoLandscape && merged.videoLandscape.id) + ' merged.videoPortrait.id=' + (merged.videoPortrait && merged.videoPortrait.id) + ' commonConfig.videoLandscape.id=' + (commonConfig.videoLandscape && commonConfig.videoLandscape.id) + ' commonConfig.videoPortrait.id=' + (commonConfig.videoPortrait && commonConfig.videoPortrait.id) + ' selectedVideo.id=' + (selectedVideo && selectedVideo.id))
 
     if (!selectedVideo) {
         publishResults.value.push({
           label: account.name,
           status: 'error',
-          message: '未找到匹配的视频（请检查视频格式设置）',
+          message: '未找到可发布的视频',
         })
         continue
       }
@@ -2069,7 +2113,6 @@ async function publishAll() {
         tags: tags,
         activities: merged.activityId || [],
         fileList: [selectedVideo.stored_path],
-        videoFormat: videoFormat,
         // 视频素材方向(horizontal/vertical/square):小红书据此选择对应方向封面
         videoOrientation: selectedVideo.orientation || '',
         accountList: [account.filePath],

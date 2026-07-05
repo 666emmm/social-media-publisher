@@ -11,13 +11,13 @@
       @visible-change="handleVisibleChange"
       style="width: 100%"
     >
-      <!-- ===== 搜索区:磨砂玻璃底,贴顶,底部渐隐分隔线 ===== -->
+      <!-- ===== 顶部区:搜索框(仅非 autoLoad)+ loading(始终可用) ===== -->
       <template #header>
-        <div class="rss-header">
+        <!-- 搜索框:autoLoad 模式隐藏(全量加载无需搜索) -->
+        <div v-if="!isAutoLoad" class="rss-header">
           <div class="rss-search" :class="{ 'is-focused': searchFocused }">
             <el-icon class="rss-search-icon"><Search /></el-icon>
-            <input
-              ref="searchInputRef"
+            <el-input
               v-model="searchKeyword"
               class="rss-search-input"
               :placeholder="searchPlaceholder"
@@ -35,13 +35,13 @@
             <el-icon><Promotion /></el-icon>
             <span>按 Enter 搜索</span>
           </div>
-          <!-- loading:三个脉冲点(贴在搜索区下方) -->
-          <div v-if="loading" class="rss-loading">
-            <span class="rss-dot" />
-            <span class="rss-dot" />
-            <span class="rss-dot" />
-            <span class="rss-loading-text">正在搜索...</span>
-          </div>
+        </div>
+        <!-- loading:三个脉冲点(autoLoad / 手动搜索 都显示) -->
+        <div v-if="loading" class="rss-loading" :class="{ 'rss-loading--standalone': isAutoLoad }">
+          <span class="rss-dot" />
+          <span class="rss-dot" />
+          <span class="rss-dot" />
+          <span class="rss-loading-text">正在加载...</span>
         </div>
       </template>
 
@@ -130,6 +130,15 @@ const props = defineProps({
     default: 'frontend'
   },
   /**
+   * autoLoad=true 时:下拉打开即调 fetcher 加载全量,隐藏搜索框。
+   * 适用于「后端一次返回全量」的场景(合集/mix)。默认跟随 searchMode:
+   * frontend → true(打开即加载),backend → false(需手动搜索)。
+   */
+  autoLoad: {
+    type: Boolean,
+    default: null
+  },
+  /**
    * 空关键词行为(仅 searchMode=frontend 时生效):
    * load-all(默认) / clear / block
    */
@@ -155,7 +164,11 @@ const selectedValue = ref(props.modelValue)
 const searchKeyword = ref('')
 const searchFocused = ref(false)
 const searched = ref(false)   // 是否已发起过搜索(用于空态文案区分)
-const searchInputRef = ref(null)
+
+// autoLoad:未显式传时,frontend 模式默认 true(打开即加载),backend 默认 false
+const isAutoLoad = computed(() =>
+  props.autoLoad === null ? props.searchMode === 'frontend' : props.autoLoad
+)
 
 // 每个实例独立的 popper class,避免多实例共用同一 loading 遮罩
 const popperClass = computed(() => `rss-popper rss-popper-${instanceId}`)
@@ -242,10 +255,12 @@ function handleChange(val) {
   emit('change', item ? { ...item, _searchKeyword: searchKeyword.value } : null)
 }
 
-// 下拉打开时,聚焦搜索框
+// 下拉可见性变化:autoLoad 模式下,打开即加载全量(只加载一次,避免重复请求)
+const autoLoaded = ref(false)
 function handleVisibleChange(visible) {
-  if (visible) {
-    setTimeout(() => searchInputRef.value?.focus(), 50)
+  if (visible && isAutoLoad.value && !autoLoaded.value && !loading.value) {
+    autoLoaded.value = true
+    handleSearch()
   }
 }
 
@@ -349,13 +364,18 @@ watch(() => props.modelValue, (val) => {
   .rss-search-input {
     flex: 1;
     min-width: 0;
-    height: 100%;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: $text-primary;
-    font-size: 14px;
-    &::placeholder { color: $text-placeholder; }
+    // el-input 透明融入搜索区(去掉自身 wrapper 背景/边框/阴影)
+    :deep(.el-input__wrapper) {
+      background: transparent;
+      box-shadow: none !important;
+      padding: 0;
+    }
+    :deep(.el-input__inner) {
+      color: $text-primary;
+      font-size: 14px;
+      height: 38px;
+      &::placeholder { color: $text-placeholder; }
+    }
   }
   .rss-search-clear {
     color: $text-muted;
@@ -484,6 +504,10 @@ watch(() => props.modelValue, (val) => {
     justify-content: center;
     gap: 6px;
     padding: 10px 0 4px;
+    // autoLoad 模式:无搜索框包裹,独立显示时加大上下间距
+    &.rss-loading--standalone {
+      padding: 18px 0 14px;
+    }
   }
   .rss-loading-text {
     margin-left: 6px;

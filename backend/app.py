@@ -138,6 +138,10 @@ from blueprints.bilibili_bp import bilibili_bp  # noqa: E402
 app.register_blueprint(bilibili_bp)
 logger.info("[Startup] bilibili_bp registered OK")
 
+from blueprints.weibo_bp import weibo_bp  # noqa: E402
+app.register_blueprint(weibo_bp)
+logger.info("[Startup] weibo_bp registered OK")
+
 from blueprints.channels_bp import channels_bp  # noqa: E402
 app.register_blueprint(channels_bp)
 logger.info("[Startup] channels_bp registered OK")
@@ -776,6 +780,7 @@ def postVideo():
                 mini_link=mini_link,
                 mix_id=mix_id,
                 content_statement=data.get('contentStatement', ''),
+                weibo_collection=data.get('weiboCollection', ''),
                 author_statement=data.get('authorStatement', ''),
                 compilation=data.get('compilation', ''),
                 video_format=data.get('videoFormat', ''),
@@ -834,6 +839,7 @@ def postVideo():
                 mini_link=mini_link,
                 mix_id=mix_id,
                 content_statement=data.get('contentStatement', ''),
+                weibo_collection=data.get('weiboCollection', ''),
                 author_statement=data.get('authorStatement', ''),
                 compilation=data.get('compilation', ''),
                 video_format=data.get('videoFormat', ''),

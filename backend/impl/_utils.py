@@ -330,10 +330,21 @@ async def scrape_baijiahao_profile(page):
         # Navigate to account settings page where avatar and name are rendered
         await page.goto(
             "https://baijiahao.baidu.com/builder/rc/settings/accountSet",
-            timeout=15000,
+            timeout=20000,
         )
-        await page.wait_for_load_state('domcontentloaded', timeout=10000)
-        await asyncio.sleep(2)
+        await page.wait_for_load_state('domcontentloaded', timeout=15000)
+
+        # 等待用户信息节点出现（SPA 异步渲染）
+        # userName 容器比 userImg 先就绪，先等 name
+        try:
+            await page.locator('div[class*="userName"]').first.wait_for(
+                state="visible", timeout=12000,
+            )
+        except Exception as e:
+            # 未在 12s 内出现：可能 cookie 失效跳转到了登录页，记录后继续
+            logger.info(f"[baijiahao] userName 元素等待超时: {e}; 当前 url={page.url}")
+
+        await asyncio.sleep(1)
 
         # Avatar: img with class containing "userImg"
         avatar_el = page.locator('img[class*="userImg"]').first
@@ -343,7 +354,10 @@ async def scrape_baijiahao_profile(page):
         # Username: div with class containing "userName"
         name_el = page.locator('div[class*="userName"]').first
         if await name_el.count():
-            name = (await name_el.text_content() or '').strip()
+            # 优先取 title 兜底 text
+            name = (await name_el.get_attribute('title') or '').strip()
+            if not name:
+                name = (await name_el.text_content() or '').strip()
 
         logger.info(f"[baijiahao] profile scraped - name={name!r} avatar={avatar[:50] if avatar else 'None'}")
     except Exception as e:

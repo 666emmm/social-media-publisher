@@ -201,11 +201,11 @@ def _get_db_path():
 
 
 DB_PATH = _get_db_path()
-PLATFORM_MAP = {1: "小红书", 2: "视频号", 3: "抖音", 4: "快手", 5: "B站", 6: "百家号", 7: "TikTok", 8: "YouTube", 9: "腾讯视频", 10: "爱奇艺", 11: "微博", 12: "支付宝", 13: "今日头条", 14: "知乎"}
+PLATFORM_MAP = {1: "小红书", 2: "视频号", 3: "抖音", 4: "快手", 5: "B站", 6: "百家号", 7: "TikTok", 8: "YouTube", 9: "腾讯视频", 10: "爱奇艺", 11: "微博", 12: "支付宝", 13: "今日头条", 14: "知乎", 15: "CSDN"}
 PLATFORM_ID_TO_KEY = {
     1: 'xiaohongshu', 2: 'channels', 3: 'douyin', 4: 'kuaishou', 5: 'bilibili',
     6: 'baijiahao', 7: 'tiktok', 8: 'youtube', 9: 'tencent_video', 10: 'iqiyi',
-    11: 'weibo', 12: 'alipay', 13: 'toutiao', 14: 'zhihu',
+    11: 'weibo', 12: 'alipay', 13: 'toutiao', 14: 'zhihu', 15: 'csdn',
 }
 
 
@@ -666,6 +666,145 @@ def login():
     return response
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Cookie 导入账号
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 导入任务的 task_id → status_queue；与 /login 共用 SSE 协议
+import_active_queues: dict[str, Queue] = {}
+
+
+@app.route('/platforms/import-supported', methods=['GET'])
+def platforms_import_supported():
+    """列出所有支持 cookie 字符串导入的平台。
+
+    返回精简字段，前端用来渲染「导入用户」弹窗的平台选择下拉。
+    """
+    from impl.registry import get_platform
+    out = []
+    for pid in sorted(PLATFORM_MAP.keys()):
+        p = get_platform(pid)
+        if p is None or not getattr(p, "supports_cookie_import", False):
+            continue
+        out.append({
+            "id": pid,
+            "key": p.platform_key,
+            "name": p.platform_name,
+            "letter": (p.platform_name[:1] if p.platform_name else ""),
+        })
+    return jsonify({"code": 200, "msg": "ok", "data": out}), 200
+
+
+@app.route('/importAccount', methods=['POST'])
+def import_account_start():
+    """启动一个 cookie 导入任务。
+
+    Request body (JSON):
+        type:        platform_id (int)
+        cookie_str:  浏览器导出的 'k=v; k=v' 字符串
+        account_id:  可选；已存在账号的 id（re-import 时更新 cookie 文件）
+
+    Response:
+        {"code": 200, "msg": "ok", "data": {"task_id": "..."}}
+
+    前端拿到 task_id 后再 EventSource('/importAccount/stream?task_id=...') 拉进度。
+    """
+    data = request.get_json(silent=True) or {}
+    type_raw = data.get('type')
+    cookie_str = (data.get('cookie_str') or '').strip()
+    account_id_raw = data.get('account_id')
+
+    if type_raw is None or not cookie_str:
+        return jsonify({
+            "code": 400, "msg": "缺少 type 或 cookie_str", "data": None,
+        }), 400
+
+    try:
+        type_int = int(type_raw)
+    except (TypeError, ValueError):
+        return jsonify({
+            "code": 400, "msg": "type 必须是整数", "data": None,
+        }), 400
+
+    platform = get_platform(type_int)
+    if platform is None:
+        return jsonify({
+            "code": 400, "msg": "不支持的平台", "data": None,
+        }), 400
+    if not getattr(platform, "supports_cookie_import", False):
+        return jsonify({
+            "code": 400, "msg": f"{platform.platform_name} 暂不支持 cookie 导入",
+            "data": None,
+        }), 400
+
+    account_id = None
+    if account_id_raw is not None and str(account_id_raw).strip():
+        try:
+            account_id = int(account_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({
+                "code": 400, "msg": "account_id 必须是整数", "data": None,
+            }), 400
+
+    task_id = uuid.uuid4().hex
+    status_queue: Queue = Queue()
+    import_active_queues[task_id] = status_queue
+
+    def _cleanup():
+        import_active_queues.pop(task_id, None)
+
+    def _run_import():
+        try:
+            asyncio.run(platform.import_cookie(
+                cookie_str, status_queue, account_id=account_id,
+            ))
+        except asyncio.CancelledError:
+            status_queue.put(json.dumps({
+                "status": "error", "step": 0, "msg": "任务被取消",
+            }))
+        except Exception as e:
+            # import_cookie 内部已经把 error 推过 queue 了；这里是兜底
+            logger.info(f"[importAccount] 未捕获异常: {e}")
+            try:
+                status_queue.put(json.dumps({
+                    "status": "error", "step": 0, "msg": str(e),
+                }))
+            except Exception:
+                pass
+
+    thread = threading.Thread(target=_run_import, daemon=True)
+    thread.start()
+
+    return jsonify({
+        "code": 200, "msg": "ok",
+        "data": {"task_id": task_id},
+    }), 200
+
+
+@app.route('/importAccount/stream', methods=['GET'])
+def import_account_stream():
+    """SSE 推送 cookie 导入进度。"""
+    task_id = request.args.get('task_id')
+    if not task_id or task_id not in import_active_queues:
+        return jsonify({
+            "code": 404, "msg": "task 不存在或已结束", "data": None,
+        }), 404
+
+    status_queue = import_active_queues[task_id]
+
+    def _cleanup():
+        import_active_queues.pop(task_id, None)
+
+    response = Response(
+        sse_stream(status_queue), mimetype='text/event-stream',
+    )
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Content-Type'] = 'text/event-stream'
+    response.call_on_close(_cleanup)
+    return response
+
+
 def _validate_publish_video(type_id, file_list):
     """校验视频文件是否符合平台限制。
 
@@ -846,6 +985,8 @@ def postVideo():
                 channels_collection_name=data.get('channelsCollectionName', ''),
                 # 视频号位置(平台级,空=不显示位置)
                 channels_location_name=data.get('channelsLocationName', ''),
+                # CSDN 是否推荐
+                recommend=data.get('recommend', False),
             ))
         else:
             result = publish_fn(
@@ -905,6 +1046,8 @@ def postVideo():
                 channels_collection_name=data.get('channelsCollectionName', ''),
                 # 视频号位置(平台级,空=不显示位置)
                 channels_location_name=data.get('channelsLocationName', ''),
+                # CSDN 是否推荐
+                recommend=data.get('recommend', False),
             )
         if result:
             return jsonify({"code": 200, "msg": "发布任务已提交", "data": None}), 200
@@ -1477,4 +1620,6 @@ if __name__ == "__main__":
     logger.info(f"[Startup] Starting Waitress server on port {port}")
     from waitress import serve
     os.environ["SAU_PORT"] = str(port)
-    serve(app, host="0.0.0.0", port=port)
+    # threads=16：默认 4 线程会被「并发 checkCookie + 多个 SSE /login 长连接」
+    # 占满，导致后端假死。加大线程池让两者不再互相挤占。
+    serve(app, host="0.0.0.0", port=port, threads=16)

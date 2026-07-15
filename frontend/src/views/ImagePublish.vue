@@ -316,6 +316,7 @@ import PrePublishCheckDialog from '@/components/PrePublishCheckDialog.vue'
 const accountStore = useAccountStore()
 const appStore = useAppStore()
 appStore.loadAutoFillTitle()
+appStore.loadAccountCheckMode()
 appStore.loadAutoSaveSettings()
 const route = useRoute()
 
@@ -757,7 +758,8 @@ async function publishAll() {
   }
 
   // ===== 表单校验全部通过后，进行 Cookie 预检 =====
-  if (prePublishCheckRef.value) {
+  // 如果设置为「启动时检测」模式,则跳过发布前预检(两个机制互斥)
+  if (appStore.accountCheckMode === 'pre-publish' && publishAccountIds.size > 0 && prePublishCheckRef.value) {
     const accountsToCheck = accountStore.accounts.filter(a => publishAccountIds.has(a.id))
     if (accountsToCheck.length > 0) {
       const allValid = await prePublishCheckRef.value.open(accountsToCheck)

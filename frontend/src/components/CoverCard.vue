@@ -106,7 +106,7 @@ defineEmits(['update:modelValue', 'edit', 'open-library'])
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(0, 0, 0, 0.3);
+  background: $bg-surface;
   padding: 12px;
   min-height: 180px;
 }
@@ -168,7 +168,7 @@ defineEmits(['update:modelValue', 'edit', 'open-library'])
   backdrop-filter: blur(4px);
   border-radius: 4px;
   font-size: 10px;
-  color: rgba($overlay-rgb, 0.7);
+  color: #fff;
   font-family: monospace;
 }
 

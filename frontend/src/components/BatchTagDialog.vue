@@ -348,7 +348,7 @@ watch(() => props.modelValue, (v) => {
       border-color: $brand-start;
       box-shadow: 0 0 0 1px rgba($brand-start, 0.25);
 
-      .batch-account-name { color: #fff; font-weight: 600; }
+      .batch-account-name { color: $text-primary; font-weight: 600; }
     }
 
     &.disabled {

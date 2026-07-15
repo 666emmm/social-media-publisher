@@ -379,7 +379,7 @@ onMounted(() => {
 
 $brand-1: #5b8cff;
 $brand-2: #8b5cff;
-$text-1: #e5e7eb;
+$text-1: $text-primary;
 $text-2: #9ca3af;
 $text-3: #6b7280;
 $border: rgba($overlay-rgb, 0.08);

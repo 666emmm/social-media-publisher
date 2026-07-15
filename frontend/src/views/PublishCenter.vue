@@ -2452,6 +2452,12 @@ function formatSize(bytes) {
 // ========== Config Section ==========
 .config-section {
   margin-bottom: 24px;
+
+  // 直接子级、且不在网格/标题组里的独立 setting-card（如通用标签卡片）
+  // 与下方 settings-grid 之间需要间距
+  > .setting-card {
+    margin-bottom: 12px;
+  }
 }
 
 .xhs-warning {

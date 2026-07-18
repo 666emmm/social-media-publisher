@@ -20,7 +20,7 @@ VIDEO_LIMITS: dict[str, dict] = {
     "alipay":        {"min_duration": 5,    "max_duration": math.inf,         "max_size": 8 * 1024**3,  "max_title_length": math.inf},   # 5s~无,    8G(文档:≤8G,时长不限)
     "zhihu":         {"min_duration": 0,    "max_duration": math.inf,         "max_size": math.inf,     "max_title_length": math.inf},   # 文档:时长大小不限
     # CSDN: 视频大小≤2G, 时长不限, 标题≤30字
-    "csdn":          {"min_duration": 0,    "max_duration": math.inf,         "max_size": 2 * 1024**3,  "max_title_length": 30},
+"csdn":          {"min_duration": 0,    "max_duration": float("inf"), "max_size": 2 * 1024**3,  "max_title_length": 30},`r`n    "x":             {"min_duration": 0,    "max_duration": 140,           "max_size": 512 * 1024**2, "max_title_length": 280},
 }
 
 
@@ -38,7 +38,7 @@ _PLATFORM_NAMES = {
     "youtube": "YouTube",
     "alipay": "支付宝",
     "zhihu": "知乎",
-    "csdn": "CSDN",
+    "csdn": "CSDN",`r`n    "x": "X",
 }
 
 
@@ -174,4 +174,40 @@ def validate_desc_for_platform(platform_key: str, desc: str) -> tuple[bool, str]
         return False, (
             f"{name}：简介 {desc_len} 字超过限制 (最多 {max_len} 字,emoji 按 3 算)"
         )
+    return True, ""
+
+
+# ---------------------------------------------------------------------------
+# X / Twitter 字符计数规则
+# ---------------------------------------------------------------------------
+
+_URL_RE = re.compile(r"https?://\S+")
+
+def count_x_chars(text: str) -> int:
+    """按 X / Twitter 规则计算字符数。
+    规则：
+    - 英文字母、数字、空格、换行、标点、中文汉字 → 各算 1 字符
+    - URL → 固定算 23 字符
+    - Emoji → 按 Unicode 实际字符数计算
+    """
+    if not text:
+        return 0
+    replaced = _URL_RE.sub(lambda m: "U" * 23, text)
+    return len(replaced)
+
+def validate_x_combined(title: str, desc: str, tags: list) -> tuple:
+    """验证 X 平台标题+内容+标签合并后是否 ≤ 280 字符。"""
+    parts = []
+    if title:
+        parts.append(title)
+    if desc and desc != title:
+        parts.append(desc)
+    if tags:
+        tag_text = " ".join(f"#{t.strip().replace(' ', '')}" for t in tags if t)
+        if tag_text:
+            parts.append(tag_text)
+    combined = "\n\n".join(parts) if len(parts) > 1 else (parts[0] if parts else "")
+    char_count = count_x_chars(combined)
+    if char_count > 280:
+        return False, f"X：标题+内容+标签共 {char_count} 字符，超过限制 (最多 280 字符，URL 按 23 算)"
     return True, ""

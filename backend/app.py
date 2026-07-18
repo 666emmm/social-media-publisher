@@ -201,11 +201,12 @@ def _get_db_path():
 
 
 DB_PATH = _get_db_path()
-PLATFORM_MAP = {1: "小红书", 2: "视频号", 3: "抖音", 4: "快手", 5: "B站", 6: "百家号", 7: "TikTok", 8: "YouTube", 9: "腾讯视频", 10: "爱奇艺", 11: "微博", 12: "支付宝", 13: "今日头条", 14: "知乎", 15: "CSDN"}
+PLATFORM_MAP = {1: "小红书", 2: "视频号", 3: "抖音", 4: "快手", 5: "B站", 6: "百家号", 7: "TikTok", 8: "YouTube", 9: "腾讯视频", 10: "爱奇艺", 11: "微博", 12: "支付宝", 13: "今日头条", 14: "知乎", 15: "CSDN", 16: "X"}
 PLATFORM_ID_TO_KEY = {
     1: 'xiaohongshu', 2: 'channels', 3: 'douyin', 4: 'kuaishou', 5: 'bilibili',
     6: 'baijiahao', 7: 'tiktok', 8: 'youtube', 9: 'tencent_video', 10: 'iqiyi',
     11: 'weibo', 12: 'alipay', 13: 'toutiao', 14: 'zhihu', 15: 'csdn',
+    16: 'x',
 }
 
 
@@ -882,7 +883,7 @@ def postVideo():
         return jsonify({"code": 400, "msg": err}), 400
 
     # 标题长度校验（如小红书 ≤ 20 字，B 站 ≤ 80 字，emoji 按 3 算）
-    from util.video_limits import validate_title_for_platform, validate_desc_for_platform
+    from util.video_limits import validate_title_for_platform, validate_desc_for_platform, validate_x_combined
     ok, err = validate_title_for_platform(platform.platform_key, data.get('title', '') or '')
     if not ok:
         logger.info(f"发布标题校验失败: {err}")
@@ -893,6 +894,17 @@ def postVideo():
     if not ok:
         logger.info(f"发布简介校验失败: {err}")
         return jsonify({"code": 400, "msg": err}), 400
+
+    # X 平台合并字符数校验（标题+内容+标签 ≤ 280）
+    if platform.platform_key == "x":
+        ok, err = validate_x_combined(
+            data.get("title", "") or "",
+            data.get("description", "") or "",
+            data.get("tags", []) or [],
+        )
+        if not ok:
+            logger.info(f"发布 X 合并校验失败: {err}")
+            return jsonify({"code": 400, "msg": err}), 400
 
     try:
         # Resolve file paths through storage abstraction

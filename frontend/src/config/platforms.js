@@ -20,6 +20,7 @@ import logoAlipay from '@/assets/logos/alipay.png'
 import logoToutiao from '@/assets/logos/toutiao.png'
 import logoZhihu from '@/assets/logos/zhihu.png'
 import logoCsdn from '@/assets/logos/csdn.png'
+import logoX from '@/assets/logos/x.svg'
 
 import { WEIBO_CATEGORIES } from './weibo-categories'
 
@@ -568,6 +569,23 @@ export const PLATFORMS = {
       { key: 'recommend', label: '是否推荐', type: 'switch', description: '勾选后发布的视频将被推荐' },
     ],
     defaultSettings: { title: '', description: '', recommend: false, scheduleTime: '' },
+  },
+
+  X: {
+    id: 16,
+    key: 'x',
+    name: 'X',
+    shortName: 'X',
+    letter: 'X',
+    logo: logoX,
+    color: '#1DA1F2',
+    bgColor: 'rgba(29, 161, 242, 0.15)',
+    cssClass: 'x',
+    creatorUrl: 'https://x.com/home',
+    settingsFields: [
+      { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
+    ],
+    defaultSettings: { title: '', description: '', scheduleTime: '' },
   },
 }
 

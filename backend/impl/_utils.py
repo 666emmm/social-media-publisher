@@ -836,6 +836,59 @@ async def scrape_zhihu_profile(page):
     return name, avatar
 
 
+
+async def scrape_x_profile(page):
+    """X / Twitter 专用 scraper。
+
+    登录成功后用户在 X 首页 (x.com/home)，从侧边栏账户按钮抓取昵称和头像。
+
+    Returns:
+        tuple[str, str]: (user_name, avatar_url)
+    """
+    name = ""
+    avatar = ""
+    try:
+        await page.wait_for_load_state("domcontentloaded", timeout=5000)
+        await asyncio.sleep(2)
+
+        result = await page.evaluate("""() => {
+            let name = '', avatar = '';
+            const accountBtn = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+            if (accountBtn) {
+                const img = accountBtn.querySelector('img');
+                if (img) avatar = img.src || '';
+                const spans = accountBtn.querySelectorAll('span');
+                for (const span of spans) {
+                    const text = span.textContent.trim();
+                    if (text && text.length > 1 && text.length < 50) {
+                        name = text;
+                        break;
+                    }
+                }
+            }
+            if (!name) {
+                const profileLink = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
+                if (profileLink) {
+                    const spans = profileLink.querySelectorAll('span');
+                    for (const span of spans) {
+                        const text = span.textContent.trim();
+                        if (text && text.length > 1 && text.length < 30) {
+                            name = text;
+                            break;
+                        }
+                    }
+                }
+            }
+            return { name, avatar };
+        }""")
+        name = (result.get("name") or "").strip()
+        avatar = (result.get("avatar") or "").strip()
+        logger.info(f"[x] profile scraped - name={name!r} avatar={avatar[:80] if avatar else 'None'}")
+    except Exception as e:
+        logger.warning(f"[x] profile scrape failed: {e}")
+
+    return name, avatar
+
 async def scrape_csdn_profile(page):
     """CSDN 专用 scraper。
 
@@ -1068,7 +1121,7 @@ PLATFORM_SYNC_URLS = {
     12: "https://c.alipay.com/page/life-account/index",
     13: "https://mp.toutiao.com/profile_v4/index",
     14: "https://www.zhihu.com/settings/account",
-    15: "https://mp.csdn.net/",
+    15: "https://mp.csdn.net/",`r`n    16: "https://x.com/home",
 }
 
 
@@ -1090,6 +1143,7 @@ PLATFORM_SCRAPE_FNS = {
     13: scrape_toutiao_profile,     # Toutiao
     14: scrape_zhihu_profile,       # Zhihu
     15: scrape_csdn_profile,        # CSDN
+    16: scrape_x_profile,            # X
 }
 
 

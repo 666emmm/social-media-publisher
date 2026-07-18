@@ -874,6 +874,7 @@ const platformConfigs = reactive({
   toutiao: { title: '', description: '', creationDeclaration: [], enableGenerateImage: true, collection: '', extendLink: false, extendLinkUrl: '', scheduleTime: '', tags: [] },
   zhihu: { title: '', description: '', creationDeclaration: '内容无需标注', category: '', scheduleTime: '', tags: [] },
   csdn: { title: '', description: '', recommend: false, scheduleTime: '', tags: [] },
+  x: { title: '', description: '', scheduleTime: '', tags: [] },
 })
 
 const accountOverrides = reactive({})

@@ -23,7 +23,7 @@ export const VIDEO_LIMITS = {
   alipay:        { minDuration: 5,    maxDuration: Infinity,     maxSize: 8 * GB,  maxTitleLength: Infinity },   // 文档:≤8G,时长不限
   zhihu:         { minDuration: 0,    maxDuration: Infinity,     maxSize: Infinity, maxTitleLength: Infinity }, // 文档:时长大小不限
   // CSDN: 视频大小≤2G, 时长不限, 标题≤30字
-  csdn:          { minDuration: 0,    maxDuration: Infinity,     maxSize: 2 * GB, maxTitleLength: 30 },
+  csdn:          { minDuration: 0,    maxDuration: Infinity,     maxSize: 2 * GB, maxTitleLength: 30 },`r`n  x:             { minDuration: 0,    maxDuration: 140,          maxSize: 512 * MB, maxTitleLength: 280 },
 }
 
 const PLATFORM_NAMES = {
@@ -40,7 +40,7 @@ const PLATFORM_NAMES = {
   youtube: 'YouTube',
   alipay: '支付宝',
   zhihu: '知乎',
-  csdn: 'CSDN',
+  csdn: 'CSDN',`r`n  x: 'X',
 }
 
 export function formatSize(sizeBytes) {

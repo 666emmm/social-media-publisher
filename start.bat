@@ -30,7 +30,7 @@ if exist "%PROJECT_ROOT%\dependency\cloakbrowser\chrome.exe" (
     set "CLOAKBROWSER_BINARY_PATH=%PROJECT_ROOT%\dependency\cloakbrowser\chrome.exe"
 )
 :: --- 项目代码管理（git clone / 强制更新到最新）---
-set "REPO_URL=https://github.com/DevilJie/social-auto-upload-web-ui.git"
+set "REPO_URL=https://github.com/666emmm/social-media-publisher.git"
 set "MAIN_BRANCH=master"
 
 if not exist "%BACKEND_DIR%" (

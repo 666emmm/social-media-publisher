@@ -146,7 +146,7 @@ function extractTags(text) {
   const tagRegex = /#([\w\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af-]+)/g;
   let match;
   while ((match = tagRegex.exec(text)) !== null) {
-    tags.push(match[1]);
+    tags.push(match[0]);
   }
   cleanText = text.replace(tagRegex, '').replace(/\n{3,}/g, '\n\n').trim();
   return { tags, cleanText };
@@ -163,8 +163,8 @@ function parsePlatformText(platformKey, block) {
 
   if (!block) return { title, description, tags };
 
-  if (platformKey === 'youtube') {
-    // YouTube: 第一个&前=标题, 第一个#前=描述, #后=标签
+  if (platformKey === 'youtube' || platformKey === 'channels' || platformKey === 'douyin' || platformKey === 'kuaishou') {
+    // YouTube/视频号/抖音/快手: 第一个&前=标题, 第一个#前=描述, #后=标签
     const firstAmp = block.indexOf('&');
     if (firstAmp >= 0) {
       title = block.substring(0, firstAmp).trim();

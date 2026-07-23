@@ -671,7 +671,17 @@ function handleParseContent() {
   if (appliedPlatforms.length > 0) {
     ElMessage.success('已解析并填入: ' + appliedPlatforms.join('、'))
   } else {
-    ElMessage.warning('未匹配到已选账号对应的平台，请确认平台名称正确')
+    // 诊断信息：列出解析到的平台和可选平台
+    const parsedPlatforms = Object.keys(result).filter(k => result[k])
+    const availablePlatforms = accountGroups.value.map(g => g.key + '(' + g.name + ')')
+    const selectedPlatforms = accountGroups.value
+      .filter(g => g.accounts.some(a => publishAccountIds.has(a.id)))
+      .map(g => g.key + '(' + g.name + ')')
+    ElMessage.warning(
+      '未匹配到已选账号。' +
+      '解析到: [' + (parsedPlatforms.join(', ') || '无') + ']；' +
+      '已选账号: [' + (selectedPlatforms.join(', ') || '无') + ']'
+    )
   }
 }
 

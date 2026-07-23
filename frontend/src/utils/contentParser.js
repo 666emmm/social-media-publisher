@@ -163,8 +163,28 @@ function parsePlatformText(platformKey, block) {
 
   if (!block) return { title, description, tags };
 
-  if (platformKey === 'youtube' || platformKey === 'bilibili') {
-    // YouTube / B站：第一行是标题，后面是描述+标签
+  if (platformKey === 'youtube') {
+    // YouTube: 第一个&前=标题, 第一个#前=描述, #后=标签
+    const firstAmp = block.indexOf('&');
+    if (firstAmp >= 0) {
+      title = block.substring(0, firstAmp).trim();
+      const rest = block.substring(firstAmp + 1);
+      const firstHash = rest.indexOf('#');
+      if (firstHash >= 0) {
+        description = rest.substring(0, firstHash).trim();
+        const tagResult = extractTags(rest.substring(firstHash));
+        tags.push(...tagResult.tags);
+      } else {
+        description = rest.trim();
+      }
+    } else {
+      // 无 & 分隔符：整体视为描述+标签
+      const result = extractTags(block);
+      description = result.cleanText;
+      tags = result.tags;
+    }
+  } else if (platformKey === 'bilibili') {
+    // B站：第一行是标题，后面是描述+标签
     const lines = block.split('\n').map(cleanLine).filter(l => l);
     if (lines.length > 0) {
       title = lines[0];

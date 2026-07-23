@@ -163,7 +163,7 @@ function parsePlatformText(platformKey, block) {
 
   if (!block) return { title, description, tags };
 
-  if (platformKey === 'youtube' || platformKey === 'channels' || platformKey === 'douyin' || platformKey === 'kuaishou') {
+  if (platformKey === 'youtube' || platformKey === 'douyin' || platformKey === 'kuaishou') {
     // YouTube/视频号/抖音/快手: 第一个&前=标题, 第一个#前=描述, #后=标签
     const firstAmp = block.indexOf('&');
     if (firstAmp >= 0) {

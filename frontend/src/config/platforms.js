@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 统一平台配置 — 所有平台相关数据的唯一真实来源
  *
  * 使用方式：
@@ -19,6 +19,7 @@ import logoWeibo from '@/assets/logos/weibo.png'
 import logoAlipay from '@/assets/logos/alipay.png'
 import logoToutiao from '@/assets/logos/toutiao.png'
 import logoZhihu from '@/assets/logos/zhihu.png'
+import logoCsdn from '@/assets/logos/csdn.png'
 import logoX from '@/assets/logos/x.svg'
 import logoFacebook from '@/assets/logos/facebook.svg'
 
@@ -554,9 +555,25 @@ export const PLATFORMS = {
     ],
     defaultSettings: { title: '', description: '', creationDeclaration: '内容无需标注', category: '', scheduleTime: '', videoFormat: '' },
   },
-  CSDN: ,
-    X: {
+  CSDN: {
     id: 15,
+    key: 'csdn',
+    name: 'CSDN',
+    shortName: 'CSDN',
+    letter: 'C',
+    logo: logoCsdn,
+    color: '#FC5531',
+    bgColor: 'rgba(252, 85, 49, 0.15)',
+    cssClass: 'csdn',
+    creatorUrl: 'https://mp.csdn.net/',
+    settingsFields: [
+      { key: 'recommend', label: '是否推荐', type: 'switch', description: '勾选后发布的视频将被推荐' },
+    ],
+    defaultSettings: { title: '', description: '', recommend: false, scheduleTime: '' },
+  },
+
+  X: {
+    id: 16,
     key: 'x',
     name: 'X',
     shortName: 'X',
@@ -571,12 +588,9 @@ export const PLATFORMS = {
     ],
     defaultSettings: { title: '', description: '', scheduleTime: '' },
   },
-}
-
-
   // Facebook
   facebook: {
-    id: 16,
+    id: 17,
     key: 'facebook',
     name: 'Facebook',
     shortName: 'FB',
@@ -591,6 +605,7 @@ export const PLATFORMS = {
     ],
     defaultSettings: { title: '', description: '', scheduleTime: '' },
   },
+}
 
 // 派生数据
 export const platformList = Object.values(PLATFORMS)
@@ -638,3 +653,4 @@ export function getPlatformByKey(key) {
 export const platformKeyToId = Object.fromEntries(
   platformList.map(p => [p.key, p.id])
 )
+

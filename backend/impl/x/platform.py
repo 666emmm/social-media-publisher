@@ -46,7 +46,7 @@ _X_MAX_CHARS = 280
 
 
 class XPlatform(BasePlatform):
-    platform_id = 15
+    platform_id = 16
     platform_key = "x"
     platform_name = "X"
 
@@ -241,7 +241,7 @@ class XPlatform(BasePlatform):
         tag_text = " ".join(f"#{t.strip().replace(' ', '')}" for t in tags if t)
         if tag_text:
             text_parts.append(tag_text)
-        full_text = "\n\n".join(text_parts) if len(text_parts) > 1 else (text_parts[0] if text_parts else "")
+        full_text = "\n\n".join(text_parts) if len(text_parts) > 1 else text_parts[0]
 
         # Truncate to X's 280 char limit
         if len(full_text) > _X_MAX_CHARS:

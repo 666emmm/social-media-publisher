@@ -111,6 +111,27 @@
           />
         </div>
 
+
+
+                <!-- 内容解析面板 -->
+      <div class="setting-card content-parser-card" :style="{ borderColor: '#6366f1' + '26', background: '#6366f1' + '0a' }">
+        <div class="setting-label" style="color: #6366f1">内容解析</div>
+        <div class="setting-hint">输入混合平台文案，自动拆分到对应平台的标题/描述/标签</div>
+        <div class="parser-options">
+          <el-checkbox v-model="parserDeleteChinese" size="small">删除中文</el-checkbox>
+          <el-checkbox v-model="parserDeleteEnglish" size="small">删除英文</el-checkbox>
+        </div>
+        <el-input
+          v-model="parserRawText"
+          type="textarea"
+          :rows="6"
+          placeholder="格式示例：&#10;抖音&#10;这里写抖音的标题或内容&#10;#标签1 #标签2&#10;&#10;X&#10;这里写X的内容&#10;#tag"
+        />
+        <el-button type="primary" size="small" @click="handleParseContent" :disabled="!parserRawText.trim()" style="margin-top: 8px">
+          解析并填入
+        </el-button>
+      </div>
+
         <!-- Divider -->
         <div class="divider"></div>
 
@@ -133,8 +154,7 @@
             <el-icon><WarningFilled /></el-icon>
             <span>由于小红书反检测机制比较恶心，如果出现被警告的情况！请立即停止使用小红书渠道！</span>
           </div>
-
-          <div class="platform-title-desc">
+<div class="platform-title-desc">
             <div class="setting-card" :style="{ borderColor: currentPlatformConfig.color + '26', background: currentPlatformConfig.color + '0a' }">
               <div class="setting-label" :style="{ color: currentPlatformConfig.color }">标题</div>
               <el-input
@@ -607,6 +627,53 @@ import { frameApi } from '@/api/frame'
 import { draftApi } from '@/api/draft'
 import { useRoute } from 'vue-router'
 import { HASHTAG_RE as DESC_HASHTAG_RE, countDescriptionHashtags, useAutoExtractHashtags } from '@/utils/hashtag'
+import { parseContent } from '@/utils/contentParser'
+
+
+// ========== 内容解析 ==========
+const parserRawText = ref('')
+const parserDeleteChinese = ref(false)
+const parserDeleteEnglish = ref(false)
+
+function handleParseContent() {
+  const raw = parserRawText.value
+  if (!raw.trim()) return
+  const result = parseContent(raw, {
+    removeChinese: parserDeleteChinese.value,
+    removeEnglish: parserDeleteEnglish.value,
+  })
+  const appliedPlatforms = []
+  for (const [platformKey, parsed] of Object.entries(result)) {
+    if (!parsed) continue
+    const group = accountGroups.value.find(g => g.key === platformKey)
+    if (!group) continue
+    const hasSelectedAccount = group.accounts.some(a => publishAccountIds.has(a.id))
+    if (!hasSelectedAccount) continue
+    if (selectedPlatform.value === platformKey) {
+      if (parsed.title) form.title = parsed.title
+      if (parsed.description) form.description = parsed.description
+      if (parsed.tags && parsed.tags.length > 0) {
+        form.tags = [...new Set([...form.tags, ...parsed.tags])]
+      }
+    } else {
+      // 直接写入 platformConfigs，确保跨平台数据持久化
+      const pConfig = platformConfigs[platformKey]
+      if (pConfig) {
+        if (parsed.title) pConfig.title = parsed.title
+        if (parsed.description) pConfig.description = parsed.description
+        if (parsed.tags && parsed.tags.length > 0) {
+          pConfig.tags = [...new Set([...(pConfig.tags || []), ...parsed.tags])]
+        }
+      }
+    }
+    appliedPlatforms.push(group.name)
+  }
+  if (appliedPlatforms.length > 0) {
+    ElMessage.success('已解析并填入: ' + appliedPlatforms.join('、'))
+  } else {
+    ElMessage.warning('未匹配到已选账号对应的平台，请确认平台名称正确')
+  }
+}
 
 // ========== Stores & Config ==========
 const accountStore = useAccountStore()
@@ -817,7 +884,7 @@ function mergeConfig(common, platformDefault, platformOv, accountOv) {
     // 视频号位置(账号级,空=不显示位置)
     channelsLocationName: accountOv?.channelsLocationName ?? platformOv?.channelsLocationName ?? platformDefault?.channelsLocationName ?? '',
     channelsLocationData: accountOv?.channelsLocationData ?? platformOv?.channelsLocationData ?? platformDefault?.channelsLocationData ?? null,
-    // CSDN 是否推荐(平台级开关)
+    // X 发布设置
     recommend: accountOv?.recommend ?? platformOv?.recommend ?? platformDefault?.recommend ?? false,
   }
 }
@@ -873,7 +940,8 @@ const platformConfigs = reactive({
   alipay: { title: '', description: '', authorStatement: '', compilation: '', scheduleTime: '', tags: [] },
   toutiao: { title: '', description: '', creationDeclaration: [], enableGenerateImage: true, collection: '', extendLink: false, extendLinkUrl: '', scheduleTime: '', tags: [] },
   zhihu: { title: '', description: '', creationDeclaration: '内容无需标注', category: '', scheduleTime: '', tags: [] },
-  csdn: { title: '', description: '', recommend: false, scheduleTime: '', tags: [] },
+  csdn: { title: '', description: '', scheduleTime: '', tags: [] },
+  x: { title: '', description: '', scheduleTime: '', tags: [] },
 })
 
 const accountOverrides = reactive({})
@@ -1813,7 +1881,7 @@ async function publishAll() {
       }
 
       // 2b. 标题
-      if (!merged.title || !merged.title.trim()) {
+      if (platformKey !== 'x' && (!merged.title || !merged.title.trim())) {
         accountsWithoutTitle.push(`${account.name}(${group.name})`)
       }
 
@@ -2195,8 +2263,8 @@ async function publishAll() {
         collection: merged.collection || '',
         extendLink: merged.extendLink || false,
         extendLinkUrl: merged.extendLinkUrl || '',
-        // CSDN 是否推荐
-        recommend: merged.recommend || false,
+        // X 发布设置
+        // recommend removed for X
         hotspot: merged.hotspotId || '',
         tag_type: merged.tagType || '',
         tag_value: merged.tagValue || '',

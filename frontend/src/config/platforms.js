@@ -19,7 +19,8 @@ import logoWeibo from '@/assets/logos/weibo.png'
 import logoAlipay from '@/assets/logos/alipay.png'
 import logoToutiao from '@/assets/logos/toutiao.png'
 import logoZhihu from '@/assets/logos/zhihu.png'
-import logoCsdn from '@/assets/logos/csdn.png'
+import logoX from '@/assets/logos/x.svg'
+import logoFacebook from '@/assets/logos/facebook.svg'
 
 import { WEIBO_CATEGORIES } from './weibo-categories'
 
@@ -553,23 +554,43 @@ export const PLATFORMS = {
     ],
     defaultSettings: { title: '', description: '', creationDeclaration: '内容无需标注', category: '', scheduleTime: '', videoFormat: '' },
   },
-  CSDN: {
+  CSDN: ,
+    X: {
     id: 15,
-    key: 'csdn',
-    name: 'CSDN',
-    shortName: 'CSDN',
-    letter: 'C',
-    logo: logoCsdn,
-    color: '#FC5531',
-    bgColor: 'rgba(252, 85, 49, 0.15)',
-    cssClass: 'csdn',
-    creatorUrl: 'https://mp.csdn.net/',
+    key: 'x',
+    name: 'X',
+    shortName: 'X',
+    letter: 'X',
+    logo: logoX,
+    color: '#1DA1F2',
+    bgColor: 'rgba(29, 161, 242, 0.15)',
+    cssClass: 'x',
+    creatorUrl: 'https://x.com/home',
     settingsFields: [
-      { key: 'recommend', label: '是否推荐', type: 'switch', description: '勾选后发布的视频将被推荐' },
+      { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
     ],
-    defaultSettings: { title: '', description: '', recommend: false, scheduleTime: '' },
+    defaultSettings: { title: '', description: '', scheduleTime: '' },
   },
 }
+
+
+  // Facebook
+  facebook: {
+    id: 16,
+    key: 'facebook',
+    name: 'Facebook',
+    shortName: 'FB',
+    letter: 'F',
+    logo: logoFacebook,
+    color: '#1877F2',
+    bgColor: 'rgba(24, 119, 242, 0.15)',
+    cssClass: 'facebook',
+    creatorUrl: 'https://www.facebook.com/',
+    settingsFields: [
+      { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
+    ],
+    defaultSettings: { title: '', description: '', scheduleTime: '' },
+  },
 
 // 派生数据
 export const platformList = Object.values(PLATFORMS)
